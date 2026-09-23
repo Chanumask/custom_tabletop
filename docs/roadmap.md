@@ -20,13 +20,14 @@ Version control, docs structure, and the Claude Code workflow.
 - ESLint (flat config) + Prettier across the workspace; Vitest wired up with a smoke test per package.
 - **Exit check:** ✅ `server/src/server.test.ts` starts a real server, connects a real `socket.io-client`, and asserts a ping/pong round trip — verified to fail without the handler and pass with it. The client's connection-status page proves the same thing visually.
 
-## M2 — Sessions & connection
+## M2 — Sessions & connection ✅
 
-- `session:join` / `session:leave`, server-side session registry.
-- Host vs. player role, assigned on join.
-- Server-authoritative `GameState` shell, broadcast to a session's clients on change.
-- Basic reconnect handling (a dropped client can rejoin the same session).
-- **Exit check:** two+ browser tabs join the same session and see each other in a player list. Still no visuals beyond a plain page — the room comes next.
+- `session:join` / `session:leave` (plus a new `session:state` broadcast — see `docs/decisions.md`), server-side session registry (`server/src/sessionStore.ts`).
+- Host vs. player role, derived from `GameState.hostId` rather than stored per-player.
+- Server-authoritative `GameState` shell, broadcast to a session's room on every membership change.
+- Basic reconnect handling: a client identity (`playerId`) persisted in `sessionStorage` lets a dropped/reloaded tab rejoin as the same player, no duplicate.
+- Client: a join screen (name + session code, or generate one to host) and a live player list, host labeled.
+- **Exit check:** ✅ `server/src/session.test.ts` connects two real `socket.io-client`s, joins them to the same session, and asserts each sees the other in the resulting player list — verified to fail without the broadcast and pass with it. Manually smoke-tested against the real `npm run dev` process pair too.
 
 ## M3 — 3D room shell & first-person movement
 

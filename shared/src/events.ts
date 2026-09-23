@@ -6,6 +6,13 @@
 export const SocketEvent = {
   SessionJoin: 'session:join',
   SessionLeave: 'session:leave',
+  /**
+   * Server -> client broadcast of the authoritative GameState, sent to a
+   * session's room whenever membership changes. Not in the original spec's
+   * event list (which named session:join/leave but not how the resulting
+   * state actually reaches clients) — added in Milestone 2.
+   */
+  SessionState: 'session:state',
 
   SceneCreate: 'scene:create',
   SceneChange: 'scene:change',

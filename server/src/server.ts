@@ -2,7 +2,14 @@ import cors from 'cors';
 import express from 'express';
 import { createServer, type Server as HttpServer } from 'node:http';
 import { Server as SocketIoServer } from 'socket.io';
-import { ConnectionEvent } from '@custom-tabletop/shared';
+import {
+  ConnectionEvent,
+  SocketEvent,
+  type SessionJoinResponse,
+  type SessionLeaveResponse,
+} from '@custom-tabletop/shared';
+import { SessionStore } from './sessionStore.js';
+import { parseSessionJoinRequest, parseSessionLeaveRequest } from './validation.js';
 
 export interface AppServer {
   http: HttpServer;
@@ -27,6 +34,8 @@ export function createAppServer(): AppServer {
     cors: { origin: '*' },
   });
 
+  const sessions = new SessionStore();
+
   io.on('connection', (socket) => {
     console.log(`[socket] connected: ${socket.id}`);
 
@@ -34,8 +43,48 @@ export function createAppServer(): AppServer {
       socket.emit(ConnectionEvent.Pong, payload);
     });
 
+    socket.on(
+      SocketEvent.SessionJoin,
+      (payload: unknown, ack?: (response: SessionJoinResponse) => void) => {
+        const request = parseSessionJoinRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and playerName are required.' });
+          return;
+        }
+
+        const state = sessions.join(request.sessionId, request.playerId, request.playerName);
+        socket.join(request.sessionId);
+
+        ack?.({ ok: true, state });
+        io.to(request.sessionId).emit(SocketEvent.SessionState, state);
+      },
+    );
+
+    socket.on(
+      SocketEvent.SessionLeave,
+      (payload: unknown, ack?: (response: SessionLeaveResponse) => void) => {
+        const request = parseSessionLeaveRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId and playerId are required.' });
+          return;
+        }
+
+        const state = sessions.leave(request.sessionId, request.playerId);
+        socket.leave(request.sessionId);
+        ack?.({ ok: true });
+
+        if (state) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, state);
+        }
+      },
+    );
+
     socket.on('disconnect', (reason) => {
       console.log(`[socket] disconnected: ${socket.id} (${reason})`);
+      // No session cleanup here, by design: a dropped connection keeps its
+      // Player record in the session so the same identity (a client-side
+      // playerId) can rejoin later without creating a duplicate. See
+      // docs/decisions.md ("disconnect vs. explicit leave").
     });
   });
 

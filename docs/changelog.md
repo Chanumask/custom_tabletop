@@ -6,6 +6,40 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-23 (Milestone 2) — Sessions, host role, and reconnect: two clients can join and see each other
+
+**Asked** (user): "continue with milestone 2 i will set up th remote in the mean time" — build sessions & connection per [docs/roadmap.md](roadmap.md).
+
+### What landed
+
+- **`shared`**: `SocketEvent.SessionState` (a new broadcast event — the spec named `session:join`/`session:leave` but not how the resulting state reaches clients) and `session.ts` (the `SessionJoinRequest`/`Response`, `SessionLeaveRequest`/`Response` payload shapes, also not specified originally).
+- **`server`**: `sessionStore.ts` (an in-memory `Map<sessionId, GameState>` registry — first joiner becomes host, rejoining with the same `playerId` rebinds rather than duplicates, leaving empties/deletes the session) and `validation.ts` (runtime guards rejecting malformed `session:join`/`session:leave` payloads without crashing a handler). Wired into `server.ts`: `session:join`/`session:leave` handlers with ack callbacks, plus a room broadcast (`session:state`) on every membership change.
+- **`client`**: `playerIdentity.ts` (a `sessionStorage`-backed stable id per tab — deliberately *not* `localStorage`, see below), `sessionCode.ts` (a short shareable code generator), `JoinForm.tsx` and `SessionView.tsx` (name + session-code entry, live player list with the host labeled), and `App.tsx` rewritten to wire them to the socket, including auto-rejoin on reconnect (a dropped/reconnected socket re-sends the last successful `session:join` automatically).
+- Four design calls made and logged in [decisions.md](decisions.md): implicit session creation on first join, host role derived from `hostId` rather than stored per-player (host migration explicitly deferred), disconnect ≠ leave (a dropped client's `Player` record stays until an explicit leave), and `sessionStorage` over `localStorage` for identity (so two tabs of one browser stay distinct players).
+- Branch `feat/sessions-connection`, squash-merged into local `main`. **Not pushed.**
+
+### Checked
+
+- **The M2 exit-check test** (`server/src/session.test.ts`): two real `socket.io-client`s join the same session; each sees the other in the resulting player list, host is correctly the first joiner. Break-round verified: removed the room broadcast, watched the "Alice sees Bob join" assertion time out and fail, restored it, watched it pass again. Also covers disconnect → rejoin-same-identity (no duplicate) → leave, and a malformed-payload rejection that doesn't take the server down.
+- `sessionStore.test.ts` (6 unit tests) and `validation.test.ts` (15 unit tests, `it.each` over malformed payloads) cover the registry and guards in isolation.
+- `npm run lint`/`format:check`/`build`/`test` all clean across `shared`/`server`/`client` — verified before committing and again after the squash-merge onto `main`.
+- Manually smoke-tested against the real `npm run dev` process pair (not just the in-process test): `curl`'d `/health` and the Vite dev page, then ran two independent `socket.io-client` connections against the live server — both joins succeeded with correct player lists. One nuance, not a defect: a one-shot manual script's `.once()` listener caught a different (but still correct-at-the-time) broadcast than the in-process test does, explained in [decisions.md](decisions.md) — the real client uses a persistent `.on()` listener and isn't affected. Dev server processes confirmed stopped afterward (nothing on 3001/5173).
+- **`git remote -v` now shows `origin` → `https://github.com/Chanumask/custom_tabletop.git`** (fetch+push) — the user set this up in parallel per their prompt. Nothing has been pushed to it from this session.
+
+### Next session
+
+Paste-to-start prompt:
+
+> Start Milestone 3: a placeholder Blender room + table exported as glTF/GLB and loaded via Three.js's GLTFLoader, first-person camera with WASD + mouse-look movement, and collision against the walls/table. Solo exploration only — no other players visible yet (that's Milestone 4), no map/dice. Exit check: a player joins a session and can walk around a 3D room and bump into the table/walls without clipping through them.
+
+- **Branch:** `main` — none open. `feat/sessions-connection` merged and deleted.
+- **State:** sessions/connection working end to end (join, live player list, host label, reconnect). Still just a flat HTML page — no 3D/room work has started.
+- **Do next:** Milestone 3 per [docs/roadmap.md](roadmap.md) — this is where the Blender/Three.js pipeline actually starts. Check `extraction_project`'s `docs/engineering/blender-workflow.md` first for the reusable parts of its Blender MCP setup (the add-on/server/per-session steps) before setting that up from scratch — its FBX→Unreal import mechanics don't transfer (we're glTF→Three.js), but the MCP setup itself is stack-agnostic. See memory or ask if this isn't already front-of-mind.
+- **Watch for:** `hostId` can point at a departed player once someone leaves (host migration is deferred, see `decisions.md`) — not relevant yet since nothing is host-gated until Milestone 5, but don't be surprised by it later. The PATH-after-Node-install gotcha in [engineering/tooling.md](engineering/tooling.md) still applies to every fresh shell on this machine.
+- **Environment:** nothing running — no dev server. A git remote (`origin`) now exists; whether/when to push is still an explicit per-instance ask, unchanged.
+
+---
+
 ## 2026-09-23 (Milestone 1) — Toolchain scaffolded: npm workspaces, WebSocket round trip verified
 
 **Asked** (user): "kick off m1" — build the toolchain scaffold per [docs/roadmap.md](roadmap.md).

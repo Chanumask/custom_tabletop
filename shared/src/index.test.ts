@@ -11,4 +11,8 @@ describe('shared/events', () => {
     expect(ConnectionEvent.Ping).toBe('connection:ping');
     expect(ConnectionEvent.Pong).toBe('connection:pong');
   });
+
+  it('exposes the session-state broadcast event added in Milestone 2', () => {
+    expect(SocketEvent.SessionState).toBe('session:state');
+  });
 });
