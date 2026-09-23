@@ -1,0 +1,43 @@
+# Tooling
+
+← [CLAUDE.md](../../CLAUDE.md) · [engineering index](README.md)
+
+The exact commands behind `CLAUDE.md`'s "Sanity work" section and the `sanity-check` skill, set up in Milestone 1. npm workspaces: `shared`, `server`, `client` (in that dependency order).
+
+## Prerequisite
+
+**Node.js 24 (LTS)**, installed via winget (`OpenJS.NodeJS.LTS`) on 2026-09-23. `.nvmrc` pins the major version. `npm install` at the repo root installs all three workspaces.
+
+**Known environment gotcha (this machine):** installing Node.js updates the system `PATH`, but already-running shells — and any tool that spawns a *new* shell from a parent process that predates the install — won't see the update until that parent process itself restarts. If `node`/`npm` report "not found" right after an install that should have worked, this is why; open a genuinely new terminal window (not just a new command in an existing one) rather than re-diagnosing the install.
+
+## Commands
+
+Run from the repo root unless noted; each fans out to whichever workspaces define the script (`--workspaces --if-present`).
+
+| Command | What it does |
+|---|---|
+| `npm install` | Install all workspace dependencies |
+| `npm run dev` | Runs `server` (`tsx watch`, port 3001) and `client` (Vite, port 5173) together via `concurrently` |
+| `npm run build` | Type-checks `shared` and `server` (`tsc --noEmit`), type-checks and bundles `client` (`tsc --noEmit && vite build`) |
+| `npm run lint` | ESLint (flat config, `eslint.config.js`) across the whole repo |
+| `npm run format` / `npm run format:check` | Prettier, write or check-only |
+| `npm test` | Vitest, `run` mode, per workspace |
+
+Scoped to one workspace: `npm run <script> -w server` (or `-w client`, `-w shared`).
+
+## Ports
+
+- **Server:** `3001` (override via `PORT` env var). REST health check at `/health`; Socket.IO on the same HTTP server.
+- **Client:** `5173` (Vite default). Reads the server URL from `VITE_SERVER_URL` (see `client/.env.example`), defaulting to `http://localhost:3001`.
+
+## How `shared` is consumed
+
+`shared`'s `package.json` points `main`/`types` straight at `src/index.ts` — **no build step**. `server` (via `tsx`, which resolves a `./foo.js` import to a sibling `foo.ts`, the same convention TypeScript's `NodeNext` resolution uses) and `client` (via Vite/esbuild, which resolves the same way) both consume it as TypeScript source directly through the npm-workspace symlink in `node_modules`. Verified working 2026-09-23: `shared`'s own build/test pass, and both `server` and `client` type-check and run against it with no separate compile step. See `docs/decisions.md` for why TS project references (`tsc -b`) were tried and dropped in favor of this.
+
+## Known accepted state
+
+`npm audit` reports vulnerabilities in `vite`/`esbuild`/`vitest`'s dev-server-only code paths (moderate-to-critical severity, but scoped to accepting arbitrary requests against a *local dev server* — not a production runtime risk for this project, which has no production build serving through Vite's dev server). Fixing requires major version bumps (`vite@8`, `vitest@5`) that are a breaking-change upgrade, out of scope for Milestone 1. Revisit before this ever gets deployed or exposed beyond localhost.
+
+## Test discipline
+
+Same "why both passes" logic as the `sanity-check` skill: run the checks once while writing code, then again right before committing. For a test meant to *prove* something (like Milestone 1's WebSocket round-trip exit check in `server/src/server.test.ts`), also do a break-round once when you write it — temporarily break the behavior it claims to cover, confirm the test actually fails, then restore the fix. Not required for every test on every change, just for a test whose entire job is being the proof of a specific exit check.

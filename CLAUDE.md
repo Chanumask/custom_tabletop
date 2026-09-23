@@ -6,7 +6,7 @@ Entry point for Claude Code sessions in this repo. Keep this file short — it o
 
 **Custom Tabletop** — a browser-based virtual tabletop for running tabletop RPG sessions as a **walkable 3D room** (Blender-built, first-person, WASD + mouse-look): a table whose surface carries the map/drawing (rendered as a canvas texture), 3D dice, and player avatars, all real-time multiplayer over WebSockets with server-authoritative state. No native client — Chrome/Edge/Firefox, Safari best-effort. See [docs/decisions.md](docs/decisions.md) (2026-09-23) for why this isn't the flat 2D-map version the original spec describes.
 
-Status: **pre-implementation.** The repo, docs, and workflow are set up; no application code exists yet. See [docs/roadmap.md](docs/roadmap.md) for milestones and [docs/overview.md](docs/overview.md) for the full picture.
+Status: **Milestone 1 done** — the npm-workspace toolchain (`client`/`server`/`shared`) is scaffolded and the WebSocket round trip works end to end. No room/gameplay code yet. See [docs/roadmap.md](docs/roadmap.md) for milestones and [docs/overview.md](docs/overview.md) for the full picture.
 
 ## Where things live
 
@@ -46,7 +46,7 @@ If the newest `docs/changelog.md` entry ends with a **Next session** block, the 
 - Write tests for new code and actually run them.
 - Run the project's linter/formatter and confirm it's clean, both after writing code and again before committing.
 
-Exact commands live in [docs/engineering/tooling.md](docs/engineering/tooling.md) once the toolchain exists (Milestone 1) — until then this section is aspirational, not yet actionable.
+Exact commands: [docs/engineering/tooling.md](docs/engineering/tooling.md) (`npm run lint`, `npm run format:check`, `npm run build`, `npm test`, or just run the `sanity-check` skill).
 
 ### Git workflow
 

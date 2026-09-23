@@ -6,6 +6,18 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-23 — TS project references dropped in favor of plain node_modules resolution for `shared`
+
+**Decided.** `server/tsconfig.json` and `client/tsconfig.json` originally declared a TypeScript project reference (`"references": [{ "path": "../shared" }]`) to `shared`. `tsc` rejected it: a referenced project must be `"composite": true` and may not disable emit, which conflicts with `shared` being consumed as plain TS source (`main`/`types` pointing straight at `src/index.ts`, no build step — see [engineering/tooling.md](engineering/tooling.md)). Dropped the `references` array from both; `@custom-tabletop/shared` still resolves correctly for both type-checking and runtime through ordinary Node module resolution via the npm-workspace symlink in `node_modules`, which reads `shared/package.json`'s `main`/`types` fields directly — no project-reference machinery needed for a package with no build step of its own. **Rules out:** using `tsc -b` for this repo unless `shared` later gains a real build step (e.g. if it needs to ship compiled output to something that isn't `tsx`/Vite). **Verified:** `npm run build` type-checks clean in all three workspaces.
+
+## 2026-09-23 — Server port 3001, client dev port 5173 (Vite default); ping/pong added as an infra-only event pair
+
+**Decided.** Server listens on `3001` (`PORT` env var, default), Vite serves the client on its default `5173`; the client reads the server URL from `VITE_SERVER_URL` (see `client/.env.example`). None of the spec's domain events (`docs/engineering/architecture.md`) are a generic connectivity check, so a `connection:ping`/`connection:pong` pair was added in `shared/src/events.ts`, explicitly namespaced apart from `SocketEvent` (as `ConnectionEvent`) so it reads as infrastructure, not a Milestone-2+ domain event. **Rules out:** overloading a real domain event (e.g. `session:join`) as the M1 connectivity proof, which would've tied an infra concern to game logic prematurely.
+
+## 2026-09-23 — `npm audit` vulnerabilities in dev-server tooling accepted, not fixed, for now
+
+**Decided.** `npm install` surfaces 5 advisories (3 moderate, 1 high, 1 critical) in `vite`/`esbuild`/`vitest`'s dev-server request-handling code — all about a *local dev server* accepting requests it shouldn't, not a production runtime risk for a project with no Vite-dev-server-based deployment. Fixing means `npm audit fix --force`, which bumps to `vite@8`/`vitest@5` — a breaking-change upgrade out of scope for a toolchain-scaffolding milestone. **Rules out:** silently ignoring this going forward — logged here and in [engineering/tooling.md](engineering/tooling.md) so it gets revisited before anything is deployed or exposed beyond localhost, rather than forgotten.
+
 ## 2026-09-23 — Player experience is a walkable 3D room, not a 2D map with 3D accents
 
 **Decided.** The source spec ([engineering/architecture.md](engineering/architecture.md)) describes a 2D-canvas-first VTT — a top-down map filling the screen, with a Three.js layer floating 3D dice/figures over it (Roll20/Foundry model). The actual product vision is a **Blender-built 3D room** (a big table, walls, interactable furniture) that the player **walks around in free first-person** (WASD + mouse-look, collision). The map/drawing surface becomes a `THREE.CanvasTexture` applied to the table inside that room, rather than a full-screen 2D canvas.
@@ -32,4 +44,4 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ## Table of Contents
 
-**2026-09-23** — Player experience is a walkable 3D room, not a 2D map with 3D accents; repo workflow reused from `extraction_project`, trimmed to scope; documentation-only commits allowed to `main`; tech stack taken as given from the source spec
+**2026-09-23** — TS project references dropped for `shared`; server/client ports and the infra-only ping/pong event pair; `npm audit` dev-tooling vulnerabilities accepted for now; player experience is a walkable 3D room, not a 2D map with 3D accents; repo workflow reused from `extraction_project`, trimmed to scope; documentation-only commits allowed to `main`; tech stack taken as given from the source spec

@@ -1,5 +1,5 @@
 # client
 
-React + TypeScript frontend (Vite). Empty placeholder — scaffolded in Milestone 1, see [../docs/roadmap.md](../docs/roadmap.md).
+React + TypeScript frontend (Vite). Scaffolded in Milestone 1 — see [../docs/roadmap.md](../docs/roadmap.md) and [../docs/engineering/tooling.md](../docs/engineering/tooling.md) for commands.
 
-Planned structure (per [../docs/engineering/architecture.md](../docs/engineering/architecture.md)): `src/components`, `src/canvas`, `src/scene`, `src/three`, `src/dice`, `src/players`, `src/soundboard`.
+Currently just a connection-status page proving the WebSocket round trip works (M1's exit check). The room/canvas/three/dice/players/soundboard structure from [../docs/engineering/architecture.md](../docs/engineering/architecture.md) lands starting Milestone 3.

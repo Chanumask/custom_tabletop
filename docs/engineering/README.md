@@ -7,3 +7,4 @@ Architecture, tech stack, and how the client/server/shared code is organized. No
 | File | Read when... |
 |---|---|
 | [architecture.md](architecture.md) | Touching the stack, the client/server split, the event model, or the shared game-state shape |
+| [tooling.md](tooling.md) | Running lint/format/build/test, or starting a dev server — exact commands and ports |

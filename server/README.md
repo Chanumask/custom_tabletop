@@ -1,5 +1,5 @@
 # server
 
-Node.js + TypeScript backend (Express REST + Socket.IO). Empty placeholder — scaffolded in Milestone 1, see [../docs/roadmap.md](../docs/roadmap.md).
+Node.js + TypeScript backend (Express REST + Socket.IO). Scaffolded in Milestone 1 — see [../docs/roadmap.md](../docs/roadmap.md) and [../docs/engineering/tooling.md](../docs/engineering/tooling.md) for commands.
 
-Planned structure (per [../docs/engineering/architecture.md](../docs/engineering/architecture.md)): `src/sessions`, `src/websocket`, `src/scenes`, `src/players`, `src/game-state`.
+Currently just a health-check route and a `connection:ping`/`connection:pong` round trip (M1's exit check, `server.test.ts`). The `sessions`/`websocket`/`scenes`/`players`/`game-state` structure from [../docs/engineering/architecture.md](../docs/engineering/architecture.md) lands starting Milestone 2.

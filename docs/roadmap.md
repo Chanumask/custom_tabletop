@@ -10,15 +10,15 @@ Reordered 2026-09-23 around the walkable-3D-room decision — see [engineering/a
 
 Version control, docs structure, and the Claude Code workflow.
 
-## M1 — Toolchain & project scaffolding
+## M1 — Toolchain & project scaffolding ✅
 
-- Install Node.js (LTS) on this machine.
+- Node.js 24 LTS installed.
 - npm workspaces: `client/`, `server/`, `shared/`, each with its own `package.json` and `tsconfig.json`.
-- `client`: Vite + React + TypeScript, empty app shell.
-- `server`: Node + TypeScript + Express (REST) + Socket.IO, empty server that starts and accepts a connection.
-- `shared`: TypeScript types/event contracts, imported by both.
-- ESLint + Prettier across the workspace; a test runner (Vitest) wired up with one smoke test per package.
-- **Exit check:** client connects to server over a WebSocket, server logs the connection, one round-trip event works end to end.
+- `client`: Vite + React + TypeScript, connection-status page.
+- `server`: Node + TypeScript + Express (REST health check) + Socket.IO.
+- `shared`: the spec's `GameState`/`Scene`/`Player` types and event names, consumed as TS source directly by both (no build step) — plus an infra-only `connection:ping`/`connection:pong` pair for this milestone's exit check.
+- ESLint (flat config) + Prettier across the workspace; Vitest wired up with a smoke test per package.
+- **Exit check:** ✅ `server/src/server.test.ts` starts a real server, connects a real `socket.io-client`, and asserts a ping/pong round trip — verified to fail without the handler and pass with it. The client's connection-status page proves the same thing visually.
 
 ## M2 — Sessions & connection
 
