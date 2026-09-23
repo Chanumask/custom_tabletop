@@ -11,6 +11,7 @@ import {
   type DrawingUpdateRequest,
   type DrawingEndRequest,
   type DrawingDeleteRequest,
+  type Dice,
 } from '@custom-tabletop/shared';
 import { loadRoom } from './RoomLoader.js';
 import { FirstPersonController } from './FirstPersonController.js';
@@ -19,6 +20,7 @@ import { PlayerAvatars } from './PlayerAvatars.js';
 import { TableCanvas } from './TableCanvas.js';
 import { TableDrawing } from './TableDrawing.js';
 import { remapTableTopUV } from './tableTopUV.js';
+import { DiceManager } from './DiceManager.js';
 
 const ROOM_GLTF_URL = '/models/room.glb';
 // Throttle: enough for smooth-looking remote avatars without flooding the
@@ -34,6 +36,7 @@ export interface RoomViewProps {
   playerId: string;
   players: Player[];
   activeScene: GameScene;
+  dice: Dice[];
 }
 
 /** Full first-person view of the room: renders the real Blender-exported
@@ -41,10 +44,18 @@ export interface RoomViewProps {
  * via `loadRoom`'s `gltfUrl` option, drives WASD + mouse-look movement
  * through `FirstPersonController`, renders/moves every other connected
  * player as a placeholder capsule avatar (`PlayerAvatars`, Milestone 4),
- * and renders the active scene's background/drawings as a `CanvasTexture`
- * on the table (`TableCanvas`/`TableDrawing`, Milestone 5). Click-to-lock,
+ * renders the active scene's background/drawings as a `CanvasTexture` on
+ * the table (`TableCanvas`/`TableDrawing`, Milestone 5), and renders/
+ * animates dice on the table (`DiceManager`, Milestone 6). Click-to-lock,
  * Esc (browser default) to release; drawing only while not locked. */
-export function RoomView({ socket, sessionId, playerId, players, activeScene }: RoomViewProps) {
+export function RoomView({
+  socket,
+  sessionId,
+  playerId,
+  players,
+  activeScene,
+  dice,
+}: RoomViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FirstPersonController | null>(null);
   const avatarsRef = useRef<PlayerAvatars | null>(null);
@@ -52,6 +63,8 @@ export function RoomView({ socket, sessionId, playerId, players, activeScene }: 
   const tableCanvasRef = useRef<TableCanvas | null>(null);
   const activeSceneRef = useRef<GameScene>(activeScene);
   const lastRedrawnSignatureRef = useRef<string>('');
+  const diceManagerRef = useRef<DiceManager | null>(null);
+  const diceRef = useRef<Dice[]>(dice);
   const [locked, setLocked] = useState(false);
 
   // Membership (who has an avatar at all) is driven by GameState.players —
@@ -78,6 +91,14 @@ export function RoomView({ socket, sessionId, playerId, players, activeScene }: 
       void tableCanvasRef.current?.redraw(activeScene);
     }
   }, [activeScene]);
+
+  // Dice (Milestone 6): spawn/roll/remove all arrive via the same
+  // GameState.dice snapshot (no separate delta channel like player:move),
+  // so a single sync per change covers membership and live roll results.
+  useEffect(() => {
+    diceRef.current = dice;
+    diceManagerRef.current?.sync(dice);
+  }, [dice]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -159,6 +180,10 @@ export function RoomView({ socket, sessionId, playerId, players, activeScene }: 
       avatars.sync(playersRef.current, playerId);
       avatarsRef.current = avatars;
 
+      const diceManager = new DiceManager(scene);
+      diceManager.sync(diceRef.current);
+      diceManagerRef.current = diceManager;
+
       const controller = new FirstPersonController({
         camera,
         domElement: renderer.domElement,
@@ -233,7 +258,9 @@ export function RoomView({ socket, sessionId, playerId, players, activeScene }: 
 
       const animate = () => {
         animationFrameId = requestAnimationFrame(animate);
-        controller.update(clock.getDelta());
+        const delta = clock.getDelta();
+        controller.update(delta);
+        diceManagerRef.current?.update(delta);
         renderer.render(scene, camera);
 
         const now = performance.now();
@@ -273,6 +300,8 @@ export function RoomView({ socket, sessionId, playerId, players, activeScene }: 
       controllerRef.current = null;
       avatarsRef.current?.dispose();
       avatarsRef.current = null;
+      diceManagerRef.current?.dispose();
+      diceManagerRef.current = null;
       tableDrawing?.dispose();
       tableCanvasRef.current?.dispose();
       tableCanvasRef.current = null;

@@ -6,6 +6,39 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-24 (Milestone 6) — Dice: any player spawns and rolls a die, the result is visible to everyone live
+
+**Asked** (user): "next milestone" — after Milestone 5 finished (tabletop map & drawing), picked up Milestone 6 per `docs/roadmap.md`.
+
+### What landed
+
+- **`shared`**: `Dice` gained `position: Vector3` (the original spec never had one) and lost `sceneId` — a die is a physical object on the table itself, not part of the 2D map layer, so swapping the map shouldn't affect it (logged in `docs/decisions.md`). `dice.ts` (`DiceSpawnRequest`/`DiceRollRequest`/`DiceRemoveRequest`, ack'd + full-state-broadcast like `scene:*`).
+- **`server`**: `SessionStore.spawnDice/rollDice/removeDice` — none host-gated (any player), the roll result decided by `Math.random()` server-side and never trusted from the client. Matching validators and `dice:*` socket handlers in `server.ts`. Renamed `SceneMutationResult` to the more accurate `GameStateMutationResult` since dice mutations now share the same ack+broadcast result shape.
+- **`client`**: `DiceManager.ts` (a spinning-cube + camera-facing number-label sprite per die, membership and roll-detection both driven by one `sync()` since dice changes — unlike `player:move`/`drawing:*` — arrive via the same full-`GameState` channel as scenes); `diceSync.ts` (pure add/remove/rolled diffing, extracted for testability the same way `tableCoordinates.ts` was in Milestone 5); `diceSpawn.ts` (picks a random resting spot within the table's radius, client-side, sent as part of the spawn request — mirrors `player:move`'s trust boundary, since the server has no room-geometry knowledge by design). `SessionView.tsx` gained a "Dice" section (spawn button + a Roll/Remove per die), available to every player, not just the host. `RoomView.tsx` wires `DiceManager` into the room-load/animate-loop/cleanup lifecycle alongside `PlayerAvatars`/`TableCanvas`.
+- Branch `feat/dice`, squash-merged into local `main`. **Not pushed.**
+
+### Checked
+
+- **The M6 exit-check test** (`server/src/dice.test.ts`, 4 tests): a spawn and a roll are each seen live by another player; a die spawned by one player can be rolled/removed by a *different* player (confirms it's genuinely not owner/host-gated); a later joiner's initial state includes an already-rolled die; malformed payloads are rejected without crashing. Break-round verified: disabled the spawn broadcast, watched the "seen live" assertion time out and fail, restored it, watched it pass again.
+- `client/src/three/diceSync.test.ts` (7 tests) and `client/src/diceSpawn.test.ts` (3 tests) cover the pure logic in isolation; `DiceManager` itself (real `HTMLCanvasElement`/`THREE.Sprite` APIs) isn't unit-testable under Vitest's `node` environment, same as `TableCanvas` in Milestone 5 — covered by the browser check below instead.
+- Full `sanity-check` (lint/format/build/test, 154 tests across all 3 workspaces) clean, both mid-session and right before merge.
+- **Real two-tab browser verification**: spawned a die (showed a "?" label), rolled it (resolved to a visible number, both tabs in sync), had the *second, non-host* player re-roll it live (both tabs updated to the new result simultaneously with no refresh), then removed it. No console errors on either tab.
+- Dev server processes confirmed stopped, ports 3001/5173 clear afterward.
+
+### Next session
+
+Milestone 6 is done. Paste-to-start prompt:
+
+> Start Milestone 7: soundboard & mute. `sound:play` (host-triggered, or per scope decided at the time) and `player:mute`/`player:unmute`. Exit check: host plays a sound, all players hear it; a muted player's state is visible to the group.
+
+- **Branch:** `main` — none open. `feat/dice` merged and deleted.
+- **State:** M1–M6 all done. Players can now spawn, roll, and remove 3D dice on the table, server-authoritative and visible to everyone live, alongside the room/avatars/map/drawing from earlier milestones.
+- **Do next:** Milestone 7 per [docs/roadmap.md](roadmap.md) — first milestone touching audio.
+- **Watch for:** the Chrome Pointer Lock automation restriction (M3+) and the Blender MCP concurrent-session gotcha (M3 part 2) if either comes up again. The PATH-after-install gotcha (`docs/engineering/tooling.md`) for `npm`/`node` in fresh Bash/PowerShell tool shells on this machine. `scene:create`/`scene:change` are still implemented/tested but not wired to UI (M5 scope cut) — unrelated to M7 but still true.
+- **Environment:** nothing running — no dev server. Both ports confirmed clear at session end.
+
+---
+
 ## 2026-09-24 (Milestone 5) — Tabletop map & drawing: the host swaps the map, players draw on the physical table, everyone sees it live
 
 **Asked** (user): "continue with the next milestones" — after Milestone 4 finished (player avatars), picked up Milestone 5 per `docs/roadmap.md`. Two scope questions asked and answered before implementation: drawing interaction model (raycast-on-the-table while pointer-lock is released, not a flat 2D overlay) and scene scope (one active scene per session with a swappable background URL, not a full multi-scene manager) — both logged in `docs/decisions.md`.

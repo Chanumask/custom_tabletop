@@ -4,3 +4,4 @@ export * from './session.js';
 export * from './player.js';
 export * from './scene.js';
 export * from './drawing.js';
+export * from './dice.js';

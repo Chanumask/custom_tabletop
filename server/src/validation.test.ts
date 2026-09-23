@@ -10,6 +10,9 @@ import {
   parseDrawingUpdateRequest,
   parseDrawingEndRequest,
   parseDrawingDeleteRequest,
+  parseDiceSpawnRequest,
+  parseDiceRollRequest,
+  parseDiceRemoveRequest,
 } from './validation.js';
 
 describe('parseSessionJoinRequest', () => {
@@ -246,6 +249,64 @@ describe('parseDrawingDeleteRequest', () => {
     'rejects malformed payload %#',
     (payload) => {
       expect(parseDrawingDeleteRequest(payload)).toBeNull();
+    },
+  );
+});
+
+describe('parseDiceSpawnRequest', () => {
+  it('accepts a well-formed payload and trims whitespace', () => {
+    const result = parseDiceSpawnRequest({
+      sessionId: ' abc ',
+      playerId: ' p1 ',
+      diceId: ' d1 ',
+      position: { x: 0.5, y: 0.8, z: -0.2 },
+    });
+    expect(result).toEqual({
+      sessionId: 'abc',
+      playerId: 'p1',
+      diceId: 'd1',
+      position: { x: 0.5, y: 0.8, z: -0.2 },
+    });
+  });
+
+  it.each([
+    [null],
+    [{ sessionId: 'abc', playerId: 'p1', diceId: 'd1' }], // missing position
+    [{ sessionId: 'abc', playerId: 'p1', diceId: 'd1', position: { x: 0, y: 0 } }],
+    [{ sessionId: 'abc', playerId: 'p1', diceId: '', position: { x: 0, y: 0, z: 0 } }],
+  ])('rejects malformed payload %#', (payload) => {
+    expect(parseDiceSpawnRequest(payload)).toBeNull();
+  });
+});
+
+describe('parseDiceRollRequest', () => {
+  it('accepts a well-formed payload and trims whitespace', () => {
+    expect(parseDiceRollRequest({ sessionId: ' abc ', playerId: ' p1 ', diceId: ' d1 ' })).toEqual({
+      sessionId: 'abc',
+      playerId: 'p1',
+      diceId: 'd1',
+    });
+  });
+
+  it.each([[null], [{ sessionId: 'abc', playerId: 'p1' }], [{ diceId: 'd1' }]])(
+    'rejects malformed payload %#',
+    (payload) => {
+      expect(parseDiceRollRequest(payload)).toBeNull();
+    },
+  );
+});
+
+describe('parseDiceRemoveRequest', () => {
+  it('accepts a well-formed payload and trims whitespace', () => {
+    expect(
+      parseDiceRemoveRequest({ sessionId: ' abc ', playerId: ' p1 ', diceId: ' d1 ' }),
+    ).toEqual({ sessionId: 'abc', playerId: 'p1', diceId: 'd1' });
+  });
+
+  it.each([[null], [{ sessionId: 'abc', playerId: 'p1' }], [{ diceId: 'd1' }]])(
+    'rejects malformed payload %#',
+    (payload) => {
+      expect(parseDiceRemoveRequest(payload)).toBeNull();
     },
   );
 });

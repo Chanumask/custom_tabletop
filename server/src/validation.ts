@@ -9,6 +9,9 @@ import type {
   DrawingUpdateRequest,
   DrawingEndRequest,
   DrawingDeleteRequest,
+  DiceSpawnRequest,
+  DiceRollRequest,
+  DiceRemoveRequest,
   Vector3,
   Point2D,
 } from '@custom-tabletop/shared';
@@ -230,4 +233,53 @@ export function parseDrawingDeleteRequest(payload: unknown): DrawingDeleteReques
   }
 
   return { sessionId: sessionId.trim(), sceneId: sceneId.trim(), drawingId: drawingId.trim() };
+}
+
+export function parseDiceSpawnRequest(payload: unknown): DiceSpawnRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, diceId, position } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    !isNonEmptyString(diceId) ||
+    !isVector3(position)
+  ) {
+    return null;
+  }
+
+  return {
+    sessionId: sessionId.trim(),
+    playerId: playerId.trim(),
+    diceId: diceId.trim(),
+    position,
+  };
+}
+
+export function parseDiceRollRequest(payload: unknown): DiceRollRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, diceId } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || !isNonEmptyString(diceId)) {
+    return null;
+  }
+
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), diceId: diceId.trim() };
+}
+
+export function parseDiceRemoveRequest(payload: unknown): DiceRemoveRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, diceId } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || !isNonEmptyString(diceId)) {
+    return null;
+  }
+
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), diceId: diceId.trim() };
 }

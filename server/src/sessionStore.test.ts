@@ -205,4 +205,73 @@ describe('SessionStore', () => {
     const sceneId = state.scenes[0]!.id;
     expect(store.deleteDrawing('abc', sceneId, 'nope')).toBe(false);
   });
+
+  it('spawnDice adds a new die at the given position, unrolled', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+
+    const result = store.spawnDice('abc', 'p1', 'd1', { x: 0.2, y: 0.8, z: -0.1 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.dice).toEqual([
+      { id: 'd1', ownerId: 'p1', position: { x: 0.2, y: 0.8, z: -0.1 }, result: null },
+    ]);
+  });
+
+  it('spawnDice rejects a duplicate dice id', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.spawnDice('abc', 'p1', 'd1', { x: 0, y: 0, z: 0 });
+
+    const result = store.spawnDice('abc', 'p1', 'd1', { x: 1, y: 1, z: 1 });
+    expect(result).toEqual({ ok: false, error: 'A die with that id already exists.' });
+  });
+
+  it('spawnDice on an unknown session returns an error', () => {
+    const store = new SessionStore();
+    expect(store.spawnDice('nope', 'p1', 'd1', { x: 0, y: 0, z: 0 })).toEqual({
+      ok: false,
+      error: 'Session not found.',
+    });
+  });
+
+  it('rollDice sets a result between 1 and 6', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.spawnDice('abc', 'p1', 'd1', { x: 0, y: 0, z: 0 });
+
+    const result = store.rollDice('abc', 'd1');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const die = result.state.dice[0]!;
+    expect(die.result).not.toBeNull();
+    expect(die.result).toBeGreaterThanOrEqual(1);
+    expect(die.result).toBeLessThanOrEqual(6);
+  });
+
+  it('rollDice for an unknown die returns an error', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    expect(store.rollDice('abc', 'nope')).toEqual({ ok: false, error: 'Die not found.' });
+  });
+
+  it('removeDice removes just that die', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.spawnDice('abc', 'p1', 'd1', { x: 0, y: 0, z: 0 });
+    store.spawnDice('abc', 'p1', 'd2', { x: 1, y: 0, z: 1 });
+
+    const result = store.removeDice('abc', 'd1');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.dice.map((d) => d.id)).toEqual(['d2']);
+  });
+
+  it('removeDice for an unknown die returns an error', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    expect(store.removeDice('abc', 'nope')).toEqual({ ok: false, error: 'Die not found.' });
+  });
 });

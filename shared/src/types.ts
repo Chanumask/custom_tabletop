@@ -35,10 +35,19 @@ export interface Drawing {
   points: Point2D[];
 }
 
+/**
+ * A physical object sitting on the table, not part of the 2D map layer —
+ * unlike `Drawing`, deliberately has no `sceneId` (Milestone 6, logged in
+ * docs/decisions.md): swapping the map underneath a die shouldn't make it
+ * vanish, the same way a real die on a real table doesn't care what's
+ * printed on the paper under it.
+ */
 export interface Dice {
   id: string;
-  sceneId: string;
   ownerId: string;
+  position: Vector3;
+  /** null until rolled/settled; a fresh roll is server-authoritative
+   * (Math.random() never runs on the client) so it can't be faked. */
   result: number | null;
 }
 

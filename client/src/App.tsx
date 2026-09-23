@@ -6,6 +6,9 @@ import {
   type SessionJoinResponse,
   type SessionLeaveResponse,
   type SceneUpdateResponse,
+  type DiceSpawnResponse,
+  type DiceRollResponse,
+  type DiceRemoveResponse,
 } from '@custom-tabletop/shared';
 import { createSocket } from './socket.js';
 import { connectionStatusLabel, type ConnectionStatus } from './connectionStatus.js';
@@ -13,6 +16,9 @@ import { getOrCreatePlayerId } from './playerIdentity.js';
 import { JoinForm } from './JoinForm.js';
 import { SessionView } from './SessionView.js';
 import { RoomView } from './three/RoomView.js';
+import { DIE_SIZE } from './three/DiceManager.js';
+import { PLACEHOLDER_ROOM_LAYOUT } from './three/RoomLayout.js';
+import { randomDiceSpawnPosition } from './diceSpawn.js';
 
 interface JoinIntent {
   playerName: string;
@@ -118,6 +124,62 @@ export function App() {
     );
   }
 
+  function handleSpawnDie() {
+    const socket = socketRef.current;
+    if (!socket || !gameState) {
+      return;
+    }
+
+    socket.emit(
+      SocketEvent.DiceSpawn,
+      {
+        sessionId: gameState.sessionId,
+        playerId,
+        diceId: crypto.randomUUID(),
+        position: randomDiceSpawnPosition(PLACEHOLDER_ROOM_LAYOUT, DIE_SIZE),
+      },
+      (response: DiceSpawnResponse) => {
+        if (!response.ok) {
+          console.error('Failed to spawn a die:', response.error);
+        }
+      },
+    );
+  }
+
+  function handleRollDie(diceId: string) {
+    const socket = socketRef.current;
+    if (!socket || !gameState) {
+      return;
+    }
+
+    socket.emit(
+      SocketEvent.DiceRoll,
+      { sessionId: gameState.sessionId, playerId, diceId },
+      (response: DiceRollResponse) => {
+        if (!response.ok) {
+          console.error('Failed to roll the die:', response.error);
+        }
+      },
+    );
+  }
+
+  function handleRemoveDie(diceId: string) {
+    const socket = socketRef.current;
+    if (!socket || !gameState) {
+      return;
+    }
+
+    socket.emit(
+      SocketEvent.DiceRemove,
+      { sessionId: gameState.sessionId, playerId, diceId },
+      (response: DiceRemoveResponse) => {
+        if (!response.ok) {
+          console.error('Failed to remove the die:', response.error);
+        }
+      },
+    );
+  }
+
   const activeScene = gameState?.scenes.find((scene) => scene.id === gameState.activeSceneId);
 
   if (gameState && socketRef.current && activeScene) {
@@ -129,6 +191,7 @@ export function App() {
           playerId={playerId}
           players={gameState.players}
           activeScene={activeScene}
+          dice={gameState.dice}
         />
         <div className="session-overlay">
           <SessionView
@@ -136,6 +199,9 @@ export function App() {
             playerId={playerId}
             onLeave={handleLeave}
             onSetMapBackground={handleSetMapBackground}
+            onSpawnDie={handleSpawnDie}
+            onRollDie={handleRollDie}
+            onRemoveDie={handleRemoveDie}
           />
         </div>
       </main>

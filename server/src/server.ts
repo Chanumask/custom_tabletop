@@ -10,6 +10,9 @@ import {
   type SceneCreateResponse,
   type SceneChangeResponse,
   type SceneUpdateResponse,
+  type DiceSpawnResponse,
+  type DiceRollResponse,
+  type DiceRemoveResponse,
 } from '@custom-tabletop/shared';
 import { SessionStore } from './sessionStore.js';
 import {
@@ -23,6 +26,9 @@ import {
   parseDrawingUpdateRequest,
   parseDrawingEndRequest,
   parseDrawingDeleteRequest,
+  parseDiceSpawnRequest,
+  parseDiceRollRequest,
+  parseDiceRemoveRequest,
 } from './validation.js';
 
 export interface AppServer {
@@ -237,6 +243,66 @@ export function createAppServer(): AppServer {
         socket.to(request.sessionId).emit(SocketEvent.DrawingDelete, request);
       }
     });
+
+    // Infrequent, full-state ack + broadcast — same pattern as scene:*, but
+    // not host-gated: any player can spawn/roll/remove a die (the M6 exit
+    // check is explicit about this). The roll result is decided in
+    // sessions.rollDice, server-side, never trusted from the client.
+    socket.on(
+      SocketEvent.DiceSpawn,
+      (payload: unknown, ack?: (response: DiceSpawnResponse) => void) => {
+        const request = parseDiceSpawnRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, diceId, and position are required.' });
+          return;
+        }
+
+        const result = sessions.spawnDice(
+          request.sessionId,
+          request.playerId,
+          request.diceId,
+          request.position,
+        );
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+        }
+      },
+    );
+
+    socket.on(
+      SocketEvent.DiceRoll,
+      (payload: unknown, ack?: (response: DiceRollResponse) => void) => {
+        const request = parseDiceRollRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and diceId are required.' });
+          return;
+        }
+
+        const result = sessions.rollDice(request.sessionId, request.diceId);
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+        }
+      },
+    );
+
+    socket.on(
+      SocketEvent.DiceRemove,
+      (payload: unknown, ack?: (response: DiceRemoveResponse) => void) => {
+        const request = parseDiceRemoveRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and diceId are required.' });
+          return;
+        }
+
+        const result = sessions.removeDice(request.sessionId, request.diceId);
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+        }
+      },
+    );
 
     socket.on('disconnect', (reason) => {
       console.log(`[socket] disconnected: ${socket.id} (${reason})`);

@@ -49,11 +49,11 @@ Version control, docs structure, and the Claude Code workflow.
 - Freehand drawing synced via `drawing:start` / `drawing:update` / `drawing:end` / `drawing:delete` — only the stroke delta goes over the wire. **Done**, drawn by raycasting pointer input against the table mesh while not pointer-locked (`TableDrawing.ts`) — a deliberate "physical surface" interaction model, agreed with the user, not a flat 2D overlay.
 - **Exit check:** host switches the map on the table and all players see it change; any player draws on the table and everyone sees the stroke live, from wherever they're standing in the room. **✅** — proven by `server/src/tabletopMap.test.ts` (break-round verified) and confirmed live in a real two-tab browser check (host's background swap and a non-host's drawn stroke each appeared on the other tab with no refresh).
 
-## M6 — Dice
+## M6 — Dice ✅
 
-- `dice:spawn` / `dice:roll` / `dice:remove`, server-authoritative.
-- 3D dice rendered and animated on the table, visible to everyone in the room regardless of where they're standing/looking.
-- **Exit check:** any player spawns and rolls a die on the table; the result and motion are visible to everyone.
+- `dice:spawn` / `dice:roll` / `dice:remove`, server-authoritative — not host-gated, any player can do all three. The roll result is decided with `Math.random()` server-side (`SessionStore.rollDice`), never trusted from the client.
+- 3D dice rendered and animated on the table, visible to everyone in the room regardless of where they're standing/looking — a spinning placeholder cube (`client/src/three/DiceManager.ts`) plus a camera-facing sprite label showing the current result, deliberately decoupled from the cube's own rotation (see `docs/decisions.md` for why).
+- **Exit check:** any player spawns and rolls a die on the table; the result and motion are visible to everyone. **✅** — proven by `server/src/dice.test.ts` (break-round verified, including a non-owner/non-host roll and remove) and confirmed live in a real two-tab browser check (a second, non-host player's re-roll appeared on both tabs simultaneously with no refresh).
 
 ## M7 — Soundboard & mute
 

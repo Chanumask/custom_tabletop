@@ -1,5 +1,6 @@
 import {
   DEFAULT_SPAWN_POSITION,
+  type Dice,
   type GameState,
   type Player,
   type Point2D,
@@ -8,8 +9,12 @@ import {
 } from '@custom-tabletop/shared';
 
 const DEFAULT_SCENE_ID = 'default';
+const DIE_FACES = 6;
 
-export type SceneMutationResult = { ok: true; state: GameState } | { ok: false; error: string };
+/** Shared by every mutation that's infrequent/authorized enough to ack with
+ * the full new GameState rather than a fire-and-forget delta (scene:* and
+ * dice:*, unlike player:move/drawing:*). */
+export type GameStateMutationResult = { ok: true; state: GameState } | { ok: false; error: string };
 
 /**
  * The server-authoritative registry of live sessions. Trusts its inputs are
@@ -92,7 +97,7 @@ export class SessionStore {
     sceneId: string,
     name: string,
     backgroundImage: string,
-  ): SceneMutationResult {
+  ): GameStateMutationResult {
     const state = this.sessions.get(sessionId);
     if (!state) {
       return { ok: false, error: 'Session not found.' };
@@ -109,7 +114,7 @@ export class SessionStore {
   }
 
   /** Host-only. Switches which existing scene is active. */
-  changeScene(sessionId: string, playerId: string, sceneId: string): SceneMutationResult {
+  changeScene(sessionId: string, playerId: string, sceneId: string): GameStateMutationResult {
     const state = this.sessions.get(sessionId);
     if (!state) {
       return { ok: false, error: 'Session not found.' };
@@ -134,7 +139,7 @@ export class SessionStore {
     playerId: string,
     sceneId: string,
     patch: { name?: string; backgroundImage?: string },
-  ): SceneMutationResult {
+  ): GameStateMutationResult {
     const state = this.sessions.get(sessionId);
     if (!state) {
       return { ok: false, error: 'Session not found.' };
@@ -203,6 +208,59 @@ export class SessionStore {
     const before = scene.drawings.length;
     scene.drawings = scene.drawings.filter((drawing) => drawing.id !== drawingId);
     return scene.drawings.length < before;
+  }
+
+  /** Not host-gated — any player can spawn a die. */
+  spawnDice(
+    sessionId: string,
+    playerId: string,
+    diceId: string,
+    position: Vector3,
+  ): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    if (state.dice.some((die) => die.id === diceId)) {
+      return { ok: false, error: 'A die with that id already exists.' };
+    }
+
+    const die: Dice = { id: diceId, ownerId: playerId, position, result: null };
+    state.dice.push(die);
+    return { ok: true, state };
+  }
+
+  /** Not host-gated. The result is decided here, server-side, with
+   * `Math.random()` — never trusted from the client, so a roll can't be
+   * faked (docs/engineering/architecture.md's "Autorität und
+   * Synchronisierung" lists dice as needing server validation). */
+  rollDice(sessionId: string, diceId: string): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const die = state.dice.find((candidate) => candidate.id === diceId);
+    if (!die) {
+      return { ok: false, error: 'Die not found.' };
+    }
+
+    die.result = Math.floor(Math.random() * DIE_FACES) + 1;
+    return { ok: true, state };
+  }
+
+  /** Not host-gated — any player can remove a die. */
+  removeDice(sessionId: string, diceId: string): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const before = state.dice.length;
+    state.dice = state.dice.filter((die) => die.id !== diceId);
+    if (state.dice.length === before) {
+      return { ok: false, error: 'Die not found.' };
+    }
+
+    return { ok: true, state };
   }
 }
 
