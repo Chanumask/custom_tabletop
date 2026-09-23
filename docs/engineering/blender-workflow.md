@@ -28,9 +28,22 @@ That repo's `docs/engineering/blender-workflow.md` (a sibling repo, not part of 
 
 ## Status
 
-**Not yet built.** M3 (see [roadmap.md](../roadmap.md)) split into two parts because of the fresh-session requirement above:
+**Built** (2026-09-23, M3 part 2). The room is modeled entirely by driving Blender's Python API over MCP (`execute_blender_code`) — no manual work in the Blender UI — matching `PLACEHOLDER_ROOM_LAYOUT`'s dimensions exactly so it's a pure asset swap. Source at `blender/room.blend` (repo root, not under `client/public/` — it isn't a web asset). Export at `client/public/models/room.glb`, loaded via `RoomLoader.ts`'s `gltfUrl` option (now the default in `RoomView.tsx`).
 
-1. **Movement/collision engine**, buildable immediately, tested against a procedural (non-Blender) placeholder room built directly in Three.js — doesn't need live Blender/MCP access at all.
-2. **The actual Blender-built room + table**, which needs a fresh session (for the `blender` MCP tools to load) to actually drive Blender and produce the `.glb`, then swap it in for the procedural placeholder from step 1.
+### The round trip
 
-This file gets filled in with the real round-trip procedure (the equivalent of `extraction_project`'s "The round trip" section) once step 2 actually happens — don't assume it works a particular way before that's proven.
+1. **Start Blender** if it isn't running (the addon's socket server auto-starts with it on `localhost:9876`). Per-session ritual: one `get_scene_info` read, then `disable_telemetry`.
+2. **Build/edit geometry** via `execute_blender_code`. Gotcha hit and fixed this session: `bpy.ops.mesh.primitive_*_add(size=1)` shapes have **half-extent 0.5**, so `.scale = (desired/2, ...)` silently halves everything again — the correct scale factor equals the *desired full size*, not half of it. Verify dimensions with `get_object_info`'s `world_bounding_box` (not just a viewport screenshot) before exporting.
+3. **Export**: `bpy.ops.export_scene.gltf(filepath=..., export_format='GLB', use_selection=False)` (the MCP `export_scene` tool works too, but doesn't expose `export_lights` — call `bpy.ops.export_scene.gltf` directly via `execute_blender_code` when you need that flag). **Do not set `export_lights=True`** — see the lighting note below.
+4. **Wire it in**: point `loadRoom({ gltfUrl: '/models/room.glb' })` at the file (already done in `RoomView.tsx`); Vite serves anything under `client/public/` at the site root, no build step needed.
+5. **Verify visually in a real browser**, not just `sanity-check` — this is a rendering change; type-checks and unit tests don't catch a black or overexposed room. This session used Chrome browser automation (`claude-in-chrome` skill) to load the page, join a session, and screenshot the result, catching a real lighting bug (see below) that no other check would have.
+
+### Lighting: keep it out of the glb
+
+Exporting Blender's point lights into the glTF (`export_lights=True`) converts Blender's Watt-based `light.energy` into `KHR_lights_punctual` candela values via a fixed watts→lumens constant — a modest 600W Blender light becomes ~30,000 cd. Three.js's renderer is physically-correct by default (light units are real photometric SI units), and with no tone mapping configured that blows straight to flat white on nearby surfaces while anything outside a light's falloff stays pitch black. Verified this directly: overexposed floor, correct-looking pedestal (grazing light, stayed dark) — a giveaway that it's a unit/exposure problem, not a missing-light problem.
+
+**Fix used:** export geometry/materials only (`export_lights=False`, the default). Scene lighting lives in `client/src/three/RoomLighting.ts` — a `HemisphereLight` plus two `PointLight`s tuned directly in Three's units against `renderer.toneMapping = THREE.ACESFilmicToneMapping` (set in `RoomView.tsx`). Any future Blender asset for this project should follow the same split: geometry/materials from Blender, lighting from Three.js code.
+
+### Concurrent Blender MCP sessions
+
+The addon's socket server (`localhost:9876`) is a **single shared instance** — any session with the `blender` MCP tools loaded drives the *same* live Blender document, with no per-session isolation or locking. This session hit it directly: a background subagent kept running after being told to stop, and built its own furniture in the same live scene concurrently, leaving ~82 mismatched objects to clean up. If `get_scene_info` ever shows more objects than expected, or names you don't recognize, suspect this before debugging your own script — don't assume a live Blender connection is exclusive.

@@ -29,15 +29,12 @@ Version control, docs structure, and the Claude Code workflow.
 - Client: a join screen (name + session code, or generate one to host) and a live player list, host labeled.
 - **Exit check:** ✅ `server/src/session.test.ts` connects two real `socket.io-client`s, joins them to the same session, and asserts each sees the other in the resulting player list — verified to fail without the broadcast and pass with it. Manually smoke-tested against the real `npm run dev` process pair too.
 
-## M3 — 3D room shell & first-person movement
+## M3 — 3D room shell & first-person movement ✅
 
-**Part 1 (movement engine) ✅ — Part 2 (the real Blender room) still open.** Split because Blender MCP tools only load at session startup (see `docs/decisions.md`, "Milestone 3 split in two"); the movement engine was built and proven against a procedural placeholder, and the real Blender-built room is a follow-up session away, not blocked on anything but starting one.
-
-- ~~Placeholder Blender room + table, exported as glTF/GLB, loaded via `GLTFLoader`.~~ **Not done yet.** What exists instead: a *procedural* placeholder room built directly in Three.js (`client/src/three/ProceduralRoom.ts`) — walls, floor, a round table (4-5 players), a couple of cozy-room blockout shapes, warm lighting. The `GLTFLoader` path is wired and ready (`RoomLoader.ts`'s `gltfUrl` option) but nothing calls it with a real asset yet.
+- **The real Blender-built room** (floor, walls, round table, bookshelf, window, rug — "cozy tabletop game room", 4-5 players) is exported as `.glb` (`client/public/models/room.glb`, source at `blender/room.blend`) and loaded via `GLTFLoader` through `RoomLoader.ts`'s `gltfUrl` option, now the default in `RoomView.tsx`. Dimensions match the placeholder layout exactly (10m×8m room, 3m walls, table radius 1.1m/height 0.75m), so no collision-code changes were needed. Scene lighting is set up client-side in Three.js (`RoomLighting.ts`), not baked into the glb — see `docs/decisions.md`. The procedural placeholder (`ProceduralRoom.ts`) remains as a fallback when `loadRoom()` is called with no `gltfUrl`, otherwise unused.
 - First-person camera (`PointerLockControls`), WASD + mouse-look movement, collision against walls/table (`client/src/three/collision.ts`, `FirstPersonController.ts`) — **done**, unit-tested (13 tests, break-round verified against a fully-disabled passthrough).
 - Solo exploration only — no other players visible yet, no map/dice. **Done**, matches scope.
-- **Exit check:** a player joins a session and can walk around a 3D room and bump into the table/walls without clipping through them. **✅ against the procedural placeholder** — re-verify once the real Blender room replaces it (geometry/scale could differ enough to matter).
-- **Follow-up session, once `blender` MCP tools are loaded:** build the room + round table in Blender per [engineering/blender-workflow.md](engineering/blender-workflow.md) and this milestone's aesthetic direction (cozy tabletop game room), export to `.glb`, and swap it in via `loadRoom({ gltfUrl })`. Only then does M3 get its ✅.
+- **Exit check:** a player joins a session and can walk around a 3D room and bump into the table/walls without clipping through them. **✅** — verified visually against the real Blender room via browser automation (geometry/materials/lighting render correctly); WASD movement itself rests on the unchanged, unit-tested collision suite rather than a fresh in-browser drive, since Chrome's Pointer Lock API rejects automated synthetic clicks (see `docs/decisions.md`).
 
 ## M4 — Player avatars
 

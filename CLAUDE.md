@@ -6,7 +6,7 @@ Entry point for Claude Code sessions in this repo. Keep this file short — it o
 
 **Custom Tabletop** — a browser-based virtual tabletop for running tabletop RPG sessions as a **walkable 3D room** (Blender-built, first-person, WASD + mouse-look): a table whose surface carries the map/drawing (rendered as a canvas texture), 3D dice, and player avatars, all real-time multiplayer over WebSockets with server-authoritative state. No native client — Chrome/Edge/Firefox, Safari best-effort. See [docs/decisions.md](docs/decisions.md) (2026-09-23) for why this isn't the flat 2D-map version the original spec describes.
 
-Status: **Milestone 1 done** — the npm-workspace toolchain (`client`/`server`/`shared`) is scaffolded and the WebSocket round trip works end to end. No room/gameplay code yet. See [docs/roadmap.md](docs/roadmap.md) for milestones and [docs/overview.md](docs/overview.md) for the full picture.
+Status: **Milestones 1-3 done** — toolchain, sessions/connection, and the 3D room shell (real Blender-built room, first-person movement/collision) all work end to end. No player avatars, map/drawing, or dice yet. See [docs/roadmap.md](docs/roadmap.md) for milestones and [docs/overview.md](docs/overview.md) for the full picture.
 
 ## Where things live
 

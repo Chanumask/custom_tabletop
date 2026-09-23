@@ -10,7 +10,9 @@ Scope is deliberately narrow at the start: get a host and a few players walking 
 
 ## Where it stands (2026-09-23)
 
-**Pre-implementation.** This session set up the repository (version control, documentation structure, the Claude Code workflow — `docs/process/`, `.claude/skills/` — adapted from a sister project's proven setup) and then settled the player-experience direction: a walkable 3D room rather than a flat 2D map with 3D accents (full reasoning in [decisions.md](decisions.md)). No application code exists yet — Node.js itself isn't installed on this machine yet, so Milestone 1 (see [roadmap.md](roadmap.md)) starts with toolchain setup.
+**Milestones 1-3 done.** The npm-workspace toolchain, sessions/connection (join, live player list, host role, reconnect), and the 3D room shell (a real Blender-built "cozy tabletop game room" with a round table, first-person WASD + mouse-look movement, wall/table collision) all work end to end — see [roadmap.md](roadmap.md) for exactly what each milestone covers and [changelog.md](changelog.md) for how they were built. No player avatars, tabletop map/drawing, or dice yet (Milestones 4+).
+
+The player-experience direction — a walkable 3D room rather than a flat 2D map with 3D accents — was settled early (full reasoning in [decisions.md](decisions.md)) and everything since has built toward it.
 
 The original design/technical specification is captured in [docs/engineering/architecture.md](engineering/architecture.md), along with the room extension decided this session.
 

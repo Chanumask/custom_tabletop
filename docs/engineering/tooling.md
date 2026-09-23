@@ -10,6 +10,8 @@ The exact commands behind `CLAUDE.md`'s "Sanity work" section and the `sanity-ch
 
 **Known environment gotcha (this machine):** installing Node.js updates the system `PATH`, but already-running shells — and any tool that spawns a *new* shell from a parent process that predates the install — won't see the update until that parent process itself restarts. If `node`/`npm` report "not found" right after an install that should have worked, this is why; open a genuinely new terminal window (not just a new command in an existing one) rather than re-diagnosing the install.
 
+**Observed again 2026-09-23 (M3 part 2), in a fresh session's Bash/PowerShell tool shells specifically** (not right after an install): `npm`/`node` were not on `PATH` even in brand-new tool-spawned shells. Node itself was present and working (`C:\Program Files\nodejs\node.exe`) — just not on that particular shell's `PATH`. Workaround, no restart needed: prepend it for the session, e.g. in PowerShell `$env:PATH = "C:\Program Files\nodejs;" + $env:PATH` before `npm`/`node` commands. Cause not fully diagnosed (possibly the tool shells don't source the profile that sets `PATH`) — if `npm`/`node` "not found" recurs, try this before assuming a reinstall is needed.
+
 ## Commands
 
 Run from the repo root unless noted; each fans out to whichever workspaces define the script (`--workspaces --if-present`).

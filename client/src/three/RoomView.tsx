@@ -3,11 +3,15 @@ import * as THREE from 'three';
 import { loadRoom } from './RoomLoader.js';
 import { FirstPersonController } from './FirstPersonController.js';
 import { PLAYER_EYE_HEIGHT } from './RoomLayout.js';
+import { addRoomLighting, configureRoomToneMapping } from './RoomLighting.js';
 
-/** Full first-person view of the room: renders the placeholder scene (or,
- * once it exists, the real Blender-exported room via `loadRoom`'s
- * `gltfUrl` option) and drives WASD + mouse-look movement through
- * `FirstPersonController`. Click-to-lock, Esc (browser default) to release. */
+const ROOM_GLTF_URL = '/models/room.glb';
+
+/** Full first-person view of the room: renders the real Blender-exported
+ * room (`public/models/room.glb`, see docs/engineering/blender-workflow.md)
+ * via `loadRoom`'s `gltfUrl` option, and drives WASD + mouse-look movement
+ * through `FirstPersonController`. Click-to-lock, Esc (browser default) to
+ * release. */
 export function RoomView() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FirstPersonController | null>(null);
@@ -36,6 +40,7 @@ export function RoomView() {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
+    configureRoomToneMapping(renderer);
     container.appendChild(renderer.domElement);
 
     const clock = new THREE.Clock();
@@ -49,11 +54,12 @@ export function RoomView() {
     };
     window.addEventListener('resize', handleResize);
 
-    void loadRoom().then((room) => {
+    void loadRoom({ gltfUrl: ROOM_GLTF_URL }).then((room) => {
       if (disposed) {
         return;
       }
       scene.add(room.object3D);
+      addRoomLighting(scene, room.layout);
 
       const controller = new FirstPersonController({
         camera,
