@@ -14,6 +14,7 @@ import {
   type DiceRollResponse,
   type DiceRemoveResponse,
   type SoundPlayResponse,
+  type SoundUploadResponse,
   type PlayerMuteResponse,
   type PlayerUnmuteResponse,
 } from '@custom-tabletop/shared';
@@ -33,9 +34,11 @@ import {
   parseDiceRollRequest,
   parseDiceRemoveRequest,
   parseSoundPlayRequest,
+  parseSoundUploadRequest,
   parsePlayerMuteRequest,
   parsePlayerUnmuteRequest,
 } from './validation.js';
+import { registerUploadRoutes } from './uploads.js';
 
 export interface AppServer {
   http: HttpServer;
@@ -54,6 +57,8 @@ export function createAppServer(): AppServer {
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
+
+  registerUploadRoutes(app);
 
   const http = createServer(app);
   const io = new SocketIoServer(http, {
@@ -331,9 +336,40 @@ export function createAppServer(): AppServer {
           ack?.({ ok: false, error: 'Only the host can play a sound.' });
           return;
         }
+        if (!sessions.hasSound(request.sessionId, request.soundId)) {
+          ack?.({ ok: false, error: 'Sound not found.' });
+          return;
+        }
 
         ack?.({ ok: true });
         io.to(request.sessionId).emit(SocketEvent.SoundPlay, request);
+      },
+    );
+
+    // Not host-gated — any player can contribute a sound to the shared
+    // soundboard (Milestone 8). Infrequent, full-state ack + broadcast —
+    // same pattern as scene:*/dice:*, unlike sound:play. The file itself
+    // was already uploaded over REST (see uploads.ts); this just registers
+    // the resulting URL into GameState.soundboard.
+    socket.on(
+      SocketEvent.SoundUpload,
+      (payload: unknown, ack?: (response: SoundUploadResponse) => void) => {
+        const request = parseSoundUploadRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, soundId, name, and url are required.' });
+          return;
+        }
+
+        const result = sessions.addSound(
+          request.sessionId,
+          request.soundId,
+          request.name,
+          request.url,
+        );
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+        }
       },
     );
 

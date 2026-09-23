@@ -4,6 +4,7 @@ import {
   SocketEvent,
   type SessionJoinResponse,
   type SoundPlayResponse,
+  type SoundUploadResponse,
   type PlayerMuteResponse,
 } from '@custom-tabletop/shared';
 import { createAppServer, type AppServer } from './server.js';
@@ -14,6 +15,10 @@ function joinAck(client: ClientSocket, payload: unknown): Promise<SessionJoinRes
 
 function soundPlayAck(client: ClientSocket, payload: unknown): Promise<SoundPlayResponse> {
   return new Promise((resolve) => client.emit(SocketEvent.SoundPlay, payload, resolve));
+}
+
+function soundUploadAck(client: ClientSocket, payload: unknown): Promise<SoundUploadResponse> {
+  return new Promise((resolve) => client.emit(SocketEvent.SoundUpload, payload, resolve));
 }
 
 function muteAck(client: ClientSocket, payload: unknown): Promise<PlayerMuteResponse> {
@@ -86,6 +91,92 @@ describe('Soundboard & mute (Milestone 7 exit check)', () => {
       soundId: 'bell',
     });
     expect(result).toEqual({ ok: false, error: 'Only the host can play a sound.' });
+  });
+
+  it('rejects playing an unrecognized sound id', async () => {
+    const alice = await connect(url);
+    clients.push(alice);
+    await joinAck(alice, { sessionId: 'table-2b', playerId: 'alice-id', playerName: 'Alice' });
+
+    const result = await soundPlayAck(alice, {
+      sessionId: 'table-2b',
+      playerId: 'alice-id',
+      soundId: 'not-a-real-sound',
+    });
+    expect(result).toEqual({ ok: false, error: 'Sound not found.' });
+  });
+
+  it('a fresh session already has the built-in soundboard presets', async () => {
+    const alice = await connect(url);
+    clients.push(alice);
+    const joined = await joinAck(alice, {
+      sessionId: 'table-2c',
+      playerId: 'alice-id',
+      playerName: 'Alice',
+    });
+    expect(joined.ok).toBe(true);
+    if (!joined.ok) return;
+    expect(joined.state.soundboard.map((s) => s.id)).toEqual(['bell', 'drum', 'alert']);
+  });
+
+  it("a non-host player's uploaded sound is added to the shared soundboard, seen live by everyone, and can then be played by the host", async () => {
+    const alice = await connect(url);
+    const bob = await connect(url);
+    clients.push(alice, bob);
+
+    await joinAck(alice, { sessionId: 'table-2d', playerId: 'alice-id', playerName: 'Alice' });
+    await joinAck(bob, { sessionId: 'table-2d', playerId: 'bob-id', playerName: 'Bob' });
+    // Let Bob's own join broadcast fully drain before listening for the
+    // *next* one — see the same note on the mute test below.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const aliceSeesTheUpload = new Promise((resolve) =>
+      alice.once(SocketEvent.SessionState, resolve),
+    );
+
+    // Bob (not the host) uploads a sound — uploading is explicitly not
+    // host-gated, unlike playing.
+    const uploadResult = await soundUploadAck(bob, {
+      sessionId: 'table-2d',
+      playerId: 'bob-id',
+      soundId: 'custom-1',
+      name: 'Air Horn',
+      url: 'http://localhost:3001/uploads/sounds/air-horn.mp3',
+    });
+    expect(uploadResult.ok).toBe(true);
+    if (!uploadResult.ok) return;
+    expect(uploadResult.state.soundboard).toContainEqual({
+      id: 'custom-1',
+      name: 'Air Horn',
+      url: 'http://localhost:3001/uploads/sounds/air-horn.mp3',
+      playing: false,
+    });
+
+    const broadcast = (await aliceSeesTheUpload) as { soundboard: { id: string }[] };
+    expect(broadcast.soundboard.map((s) => s.id)).toContain('custom-1');
+
+    // The host can now play the uploaded sound.
+    const playResult = await soundPlayAck(alice, {
+      sessionId: 'table-2d',
+      playerId: 'alice-id',
+      soundId: 'custom-1',
+    });
+    expect(playResult).toEqual({ ok: true });
+  });
+
+  it('sound:upload rejects a duplicate sound id', async () => {
+    const alice = await connect(url);
+    clients.push(alice);
+    await joinAck(alice, { sessionId: 'table-2e', playerId: 'alice-id', playerName: 'Alice' });
+
+    const result = await soundUploadAck(alice, {
+      sessionId: 'table-2e',
+      playerId: 'alice-id',
+      soundId: 'bell', // already a built-in preset id
+      name: 'Not actually a bell',
+      url: 'http://localhost:3001/uploads/sounds/whatever.mp3',
+    });
+    expect(result).toEqual({ ok: false, error: 'A sound with that id already exists.' });
   });
 
   it("a muted player's state is seen live by everyone in the session", async () => {

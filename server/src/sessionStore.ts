@@ -1,4 +1,5 @@
 import {
+  BUILTIN_SOUND_PRESETS,
   DEFAULT_SPAWN_POSITION,
   type Dice,
   type GameState,
@@ -292,6 +293,28 @@ export class SessionStore {
     target.muted = muted;
     return { ok: true, state };
   }
+
+  hasSound(sessionId: string, soundId: string): boolean {
+    return this.sessions.get(sessionId)?.soundboard.some((sound) => sound.id === soundId) ?? false;
+  }
+
+  /** Not host-gated — any player can contribute a sound to the shared
+   * soundboard (Milestone 8). `url` is the already-uploaded file's address
+   * (see server.ts's /uploads/sounds REST route and client/src/uploads.ts)
+   * — this just registers it into the session, the same "upload over REST,
+   * register over the socket" split `scene:update`'s map background uses. */
+  addSound(sessionId: string, soundId: string, name: string, url: string): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    if (state.soundboard.some((sound) => sound.id === soundId)) {
+      return { ok: false, error: 'A sound with that id already exists.' };
+    }
+
+    state.soundboard.push({ id: soundId, name, url, playing: false });
+    return { ok: true, state };
+  }
 }
 
 function createEmptySession(sessionId: string, hostId: string): GameState {
@@ -302,7 +325,10 @@ function createEmptySession(sessionId: string, hostId: string): GameState {
     scenes: [createDefaultScene()],
     players: [],
     dice: [],
-    soundboard: [],
+    // A fresh copy per session — never the shared BUILTIN_SOUND_PRESETS
+    // array/objects themselves, so per-session mutation (a future rename,
+    // say) can't leak across sessions.
+    soundboard: BUILTIN_SOUND_PRESETS.map((preset) => ({ ...preset })),
   };
 }
 

@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type ChangeEvent, type FormEvent } from 'react';
 import type { GameState } from '@custom-tabletop/shared';
-import { SOUND_PRESETS } from './sounds.js';
+import { uploadImage, uploadSound } from './uploads.js';
 
 export interface SessionViewProps {
   state: GameState;
@@ -11,6 +11,7 @@ export interface SessionViewProps {
   onRollDie: (diceId: string) => void;
   onRemoveDie: (diceId: string) => void;
   onPlaySound: (soundId: string) => void;
+  onUploadSound: (name: string, url: string) => void;
   onMutePlayer: (targetPlayerId: string) => void;
   onUnmutePlayer: (targetPlayerId: string) => void;
 }
@@ -24,16 +25,59 @@ export function SessionView({
   onRollDie,
   onRemoveDie,
   onPlaySound,
+  onUploadSound,
   onMutePlayer,
   onUnmutePlayer,
 }: SessionViewProps) {
   const isHost = playerId === state.hostId;
   const activeScene = state.scenes.find((scene) => scene.id === state.activeSceneId);
   const [backgroundUrl, setBackgroundUrl] = useState('');
+  const [mapUploadError, setMapUploadError] = useState<string | null>(null);
+  const [mapUploading, setMapUploading] = useState(false);
+  const [soundUploadError, setSoundUploadError] = useState<string | null>(null);
+  const [soundUploading, setSoundUploading] = useState(false);
 
   function handleSetMap(event: FormEvent) {
     event.preventDefault();
     onSetMapBackground(backgroundUrl.trim());
+  }
+
+  async function handleMapFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = ''; // lets the same file be picked again later
+    if (!file) {
+      return;
+    }
+
+    setMapUploading(true);
+    setMapUploadError(null);
+    try {
+      const url = await uploadImage(file);
+      onSetMapBackground(url);
+    } catch (error) {
+      setMapUploadError(error instanceof Error ? error.message : 'Upload failed.');
+    } finally {
+      setMapUploading(false);
+    }
+  }
+
+  async function handleSoundFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+
+    setSoundUploading(true);
+    setSoundUploadError(null);
+    try {
+      const url = await uploadSound(file);
+      onUploadSound(file.name.replace(/\.[^./]+$/, ''), url);
+    } catch (error) {
+      setSoundUploadError(error instanceof Error ? error.message : 'Upload failed.');
+    } finally {
+      setSoundUploading(false);
+    }
   }
 
   return (
@@ -68,17 +112,29 @@ export function SessionView({
         })}
       </ul>
       {isHost && (
-        <form onSubmit={handleSetMap}>
+        <div>
+          <form onSubmit={handleSetMap}>
+            <label>
+              Map background URL
+              <input
+                value={backgroundUrl}
+                onChange={(event) => setBackgroundUrl(event.target.value)}
+                placeholder={activeScene?.backgroundImage || 'leave blank for a plain map'}
+              />
+            </label>
+            <button type="submit">Set map</button>
+          </form>
           <label>
-            Map background URL
+            or upload an image
             <input
-              value={backgroundUrl}
-              onChange={(event) => setBackgroundUrl(event.target.value)}
-              placeholder={activeScene?.backgroundImage || 'leave blank for a plain map'}
+              type="file"
+              accept="image/*"
+              onChange={(event) => void handleMapFileChange(event)}
             />
           </label>
-          <button type="submit">Set map</button>
-        </form>
+          {mapUploading && <p>Uploading map…</p>}
+          {mapUploadError && <p role="alert">{mapUploadError}</p>}
+        </div>
       )}
       <div>
         <p>Dice</p>
@@ -99,16 +155,34 @@ export function SessionView({
           ))}
         </ul>
       </div>
-      {isHost && (
-        <div>
-          <p>Soundboard</p>
-          {SOUND_PRESETS.map((preset) => (
-            <button key={preset.id} type="button" onClick={() => onPlaySound(preset.id)}>
-              {preset.name}
-            </button>
+      <div>
+        <p>Soundboard</p>
+        <ul>
+          {state.soundboard.map((sound) => (
+            <li key={sound.id}>
+              {sound.name}
+              {isHost && (
+                <>
+                  {' '}
+                  <button type="button" onClick={() => onPlaySound(sound.id)}>
+                    Play
+                  </button>
+                </>
+              )}
+            </li>
           ))}
-        </div>
-      )}
+        </ul>
+        <label>
+          Upload a sound (shared with everyone)
+          <input
+            type="file"
+            accept="audio/*"
+            onChange={(event) => void handleSoundFileChange(event)}
+          />
+        </label>
+        {soundUploading && <p>Uploading sound…</p>}
+        {soundUploadError && <p role="alert">{soundUploadError}</p>}
+      </div>
       <button onClick={onLeave}>Leave session</button>
     </div>
   );

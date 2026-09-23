@@ -6,6 +6,41 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-24 (M5/M7 extension) — File uploads: players upload sounds to the shared soundboard, the host uploads a map image
+
+**Asked** (user): "continue with m8. i want to be able for the players to upload sounds for a shared soundboard and i want the map/background of the tabe to be changeable by file upload or link" — plus a mid-turn follow-up describing four related future ideas (standard map presets, wall drawing + a pen tool, a full-screen "sit down" tabletop mode, and interactive map resize/fit), asking them captured in the roadmap if not already there.
+
+### What landed
+
+- **`server`**: `uploads.ts` — REST routes (`POST /uploads/images`, `POST /uploads/sounds`) via `multer` disk storage under `server/uploads/{images,sounds}/` (gitignored), with mimetype allowlists and size caps (10MB/8MB), served back via `express.static`. `SessionStore.hasSound`/`addSound`; a new `sound:upload` socket handler (open to any player, not host-gated) that registers an uploaded file's URL into `GameState.soundboard`; `sound:play` now rejects an unrecognized `soundId`.
+- **`shared`**: `SoundState` gained a `url` field (`''` = built-in synthesized preset, set = uploaded file URL) and a new `BUILTIN_SOUND_PRESETS` constant the server seeds every session's soundboard with; `sound.ts` gained `SoundUploadRequest`/`Response`.
+- **`client`**: `uploads.ts` (`uploadImage`/`uploadSound`, `fetch` + `FormData` against the new REST routes); `sounds.ts` rewritten around a `playSound(entry: SoundState)` API that plays a built-in tone or an uploaded file depending on `entry.url`; `SessionView.tsx` gained a map-image file input alongside the existing URL field, and the soundboard section now renders from live `GameState.soundboard` (not a static catalog) with an always-visible upload input; `App.tsx`'s `SoundPlay` listener now looks up the played sound from live state (via a `gameStateRef`) instead of a hardcoded preset id, and a new `handleUploadSound` wires the upload-then-register flow. `TableCanvas.ts` + new `imageFit.ts` (`computeCoverRect`) replaced straight image-stretch with an aspect-preserving "cover" crop, as a partial answer to the mid-turn map-fit ask.
+- `docs/roadmap.md`'s "Later, out of scope for now" section expanded with the three other mid-turn asks (map presets, wall drawing/pen tool, tabletop "sit down" mode), each with the date and reasoning for deferring.
+- Branch `feat/file-uploads`, squash-merged into local `main`. **Not pushed.**
+
+### Checked
+
+- `server/src/uploads.test.ts` (5 tests, real `fetch`/`FormData`/`Blob`): valid image/sound upload+serve, rejected mimetype (both kinds), oversized file rejected.
+- `server/src/soundAndMute.test.ts` extended to 9 tests: a fresh session has the built-in presets; a non-host's uploaded sound is added to the shared soundboard, seen live by everyone, and playable by the host afterward; `sound:play` rejects an unknown id; `sound:upload` rejects a duplicate id. Break-round done on the new `sound:upload` broadcast.
+- `client/src/three/imageFit.test.ts` (4 tests) covers the cover-fit crop math in isolation.
+- Full `sanity-check` (lint/format/build/test, 189 tests across all 3 workspaces) clean, both mid-session and right before merge.
+- **Real two-tab browser verification**: a non-host player uploaded a sound file — it appeared live in both tabs' soundboard list, Play button visible only on the host's tab; the host played both the upload and a built-in preset with no console errors on either tab; the host uploaded a map image — the table's texture visibly changed in sync on both tabs (POST and the subsequent image GET both 200), including for the second tab rejoining fresh afterward (its initial state already carried the uploaded background). No console errors anywhere in the flow.
+- Dev server processes confirmed stopped, ports 3001/5173 clear afterward.
+
+### Next session
+
+This extension is done; Milestone 8 itself (room interactables) is still owed from the original "continue with m8" ask. Paste-to-start prompt:
+
+> Start Milestone 8: room interactables. Additional 3D objects in the room beyond the table/dice that a player can approach and use (dice tray, shelf, etc.) — the first real use of the "future 3D tabletop objects" bucket from the original spec. New event(s) (e.g. `object:interact`), server-validated same as everything else. Exit check: a player walks up to an interactable and triggers it; the effect is visible to everyone in the session.
+
+- **Branch:** `main` — none open. `feat/file-uploads` merged and deleted.
+- **State:** M1–M7 all done, plus this file-uploads extension on top of M5/M7. The soundboard and map background are now backed by real uploads, not just built-ins/links.
+- **Do next:** Milestone 8 per [docs/roadmap.md](roadmap.md) — likely needs a proximity/interaction-range check (how close counts as "approaching" an interactable), a design call worth flagging to the user rather than assuming.
+- **Watch for:** four related-but-bigger asks are now logged in `docs/roadmap.md`'s "Later" section (map presets, wall drawing/pen tool, tabletop "sit down" mode, full interactive map resize/fit) — don't assume any of them are in scope for M8 just because they were mentioned in the same conversation. The Chrome Pointer Lock automation restriction (M3+) and the Blender MCP concurrent-session gotcha (M3 part 2) if either comes up again. The PATH-after-install gotcha (`docs/engineering/tooling.md`) for `npm`/`node` in fresh Bash/PowerShell tool shells on this machine.
+- **Environment:** the client dev server (started this session for browser verification) should be stopped before ending — confirm ports 3001/5173 are clear.
+
+---
+
 ## 2026-09-24 (Milestone 7) — Soundboard & mute: the host plays a sound everyone hears, a player's mute status is visible to the group
 
 **Asked** (user): "next milestones" — after Milestone 6 finished (dice), picked up Milestone 7 per `docs/roadmap.md`.

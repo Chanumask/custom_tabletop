@@ -30,6 +30,7 @@ export const SocketEvent = {
   DiceRemove: 'dice:remove',
 
   SoundPlay: 'sound:play',
+  SoundUpload: 'sound:upload',
 
   PlayerMute: 'player:mute',
   PlayerUnmute: 'player:unmute',

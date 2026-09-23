@@ -54,8 +54,24 @@ export interface Dice {
 export interface SoundState {
   id: string;
   name: string;
+  /** Empty for a built-in synthesized preset — the client plays it locally
+   * from its own tone catalog, keyed by `id` (see client/src/sounds.ts).
+   * A server URL (from a player's upload) otherwise. */
+  url: string;
   playing: boolean;
 }
+
+/**
+ * The soundboard's built-in entries — every session seeds `soundboard`
+ * with these (Milestone 8). Kept here rather than only client-side so the
+ * server can seed real `GameState.soundboard` entries without owning
+ * synthesis details (frequency/waveform/duration stay client-only).
+ */
+export const BUILTIN_SOUND_PRESETS: SoundState[] = [
+  { id: 'bell', name: 'Bell', url: '', playing: false },
+  { id: 'drum', name: 'Drum', url: '', playing: false },
+  { id: 'alert', name: 'Alert', url: '', playing: false },
+];
 
 export interface Player {
   id: string;

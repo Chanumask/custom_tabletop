@@ -1,19 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { SOUND_PRESETS, playSoundPreset } from './sounds.js';
+import { playSound } from './sounds.js';
 
-describe('SOUND_PRESETS', () => {
-  it('has at least one preset, each with a unique id', () => {
-    expect(SOUND_PRESETS.length).toBeGreaterThan(0);
-    const ids = SOUND_PRESETS.map((preset) => preset.id);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-});
-
-describe('playSoundPreset', () => {
-  it('is a silent no-op for an unknown preset id (never touches AudioContext)', () => {
-    // AudioContext isn't available under Vitest's node environment, so this
-    // only proves the early-return path for an unrecognized id — playback
-    // itself is covered by the browser check (see docs/decisions.md).
-    expect(() => playSoundPreset('not-a-real-preset')).not.toThrow();
+describe('playSound', () => {
+  it('is a silent no-op for an unrecognized built-in preset id (never touches AudioContext)', () => {
+    // AudioContext/Audio aren't available under Vitest's node environment,
+    // so this only proves the early-return path for an id with no matching
+    // tone params. Actual tone synthesis and uploaded-file playback are
+    // covered by the browser check instead (see docs/decisions.md,
+    // Milestone 8).
+    expect(() =>
+      playSound({ id: 'not-a-real-preset', name: 'Nope', url: '', playing: false }),
+    ).not.toThrow();
   });
 });

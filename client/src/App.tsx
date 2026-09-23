@@ -11,6 +11,7 @@ import {
   type DiceRemoveResponse,
   type SoundPlayRequest,
   type SoundPlayResponse,
+  type SoundUploadResponse,
   type PlayerMuteResponse,
   type PlayerUnmuteResponse,
 } from '@custom-tabletop/shared';
@@ -23,7 +24,7 @@ import { RoomView } from './three/RoomView.js';
 import { DIE_SIZE } from './three/DiceManager.js';
 import { PLACEHOLDER_ROOM_LAYOUT } from './three/RoomLayout.js';
 import { randomDiceSpawnPosition } from './diceSpawn.js';
-import { playSoundPreset } from './sounds.js';
+import { playSound } from './sounds.js';
 
 interface JoinIntent {
   playerName: string;
@@ -38,7 +39,16 @@ export function App() {
   // Set once a join succeeds; re-used to auto-rejoin after a reconnect
   // (dropped tab/network blip), not just on the user's first submit.
   const lastJoinRef = useRef<JoinIntent | null>(null);
+  // Mirrors `gameState` for the SoundPlay listener below, which is registered
+  // once inside the mount effect and would otherwise close over a stale
+  // (possibly null, possibly outdated) gameState when a sound:play broadcast
+  // arrives later — including for sounds uploaded after that closure formed.
+  const gameStateRef = useRef<GameState | null>(null);
   const [playerId] = useState(() => getOrCreatePlayerId(window.sessionStorage));
+
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
 
   const joinSession = useCallback(
     (socket: Socket, playerName: string, sessionId: string) => {
@@ -75,12 +85,18 @@ export function App() {
       setGameState((current) => (current?.sessionId === state.sessionId ? state : current));
     });
 
-    // Every client — including the host who triggered it — plays the tone
+    // Every client — including the host who triggered it — plays the sound
     // only once this broadcast arrives, rather than optimistically locally;
     // see docs/decisions.md (Milestone 7) for why sound:play doesn't follow
-    // drawing:*/player:move's local-prediction pattern.
+    // drawing:* / player:move's local-prediction pattern. Looks up the entry
+    // from live state (via the ref) rather than trusting the request payload
+    // alone, since an uploaded sound's url isn't known to this listener
+    // otherwise.
     socket.on(SocketEvent.SoundPlay, (request: SoundPlayRequest) => {
-      playSoundPreset(request.soundId);
+      const entry = gameStateRef.current?.soundboard.find((sound) => sound.id === request.soundId);
+      if (entry) {
+        playSound(entry);
+      }
     });
 
     socket.on('disconnect', () => setStatus('disconnected'));
@@ -210,6 +226,23 @@ export function App() {
     );
   }
 
+  function handleUploadSound(name: string, url: string) {
+    const socket = socketRef.current;
+    if (!socket || !gameState) {
+      return;
+    }
+
+    socket.emit(
+      SocketEvent.SoundUpload,
+      { sessionId: gameState.sessionId, playerId, soundId: crypto.randomUUID(), name, url },
+      (response: SoundUploadResponse) => {
+        if (!response.ok) {
+          console.error('Failed to upload sound:', response.error);
+        }
+      },
+    );
+  }
+
   function handleMutePlayer(targetPlayerId: string) {
     const socket = socketRef.current;
     if (!socket || !gameState) {
@@ -267,6 +300,7 @@ export function App() {
             onRollDie={handleRollDie}
             onRemoveDie={handleRemoveDie}
             onPlaySound={handlePlaySound}
+            onUploadSound={handleUploadSound}
             onMutePlayer={handleMutePlayer}
             onUnmutePlayer={handleUnmutePlayer}
           />

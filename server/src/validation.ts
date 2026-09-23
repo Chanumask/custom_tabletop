@@ -13,6 +13,7 @@ import type {
   DiceRollRequest,
   DiceRemoveRequest,
   SoundPlayRequest,
+  SoundUploadRequest,
   PlayerMuteRequest,
   PlayerUnmuteRequest,
   Vector3,
@@ -298,6 +299,31 @@ export function parseSoundPlayRequest(payload: unknown): SoundPlayRequest | null
   }
 
   return { sessionId: sessionId.trim(), playerId: playerId.trim(), soundId: soundId.trim() };
+}
+
+export function parseSoundUploadRequest(payload: unknown): SoundUploadRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, soundId, name, url } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    !isNonEmptyString(soundId) ||
+    !isNonEmptyString(name) ||
+    !isNonEmptyString(url)
+  ) {
+    return null;
+  }
+
+  return {
+    sessionId: sessionId.trim(),
+    playerId: playerId.trim(),
+    soundId: soundId.trim(),
+    name: name.trim(),
+    url: url.trim(),
+  };
 }
 
 export function parsePlayerMuteRequest(payload: unknown): PlayerMuteRequest | null {

@@ -31,3 +31,6 @@ Thumbs.db
 
 # Test / coverage
 coverage/
+
+# User-uploaded files (map images, soundboard audio) — server-local, not source
+server/uploads/

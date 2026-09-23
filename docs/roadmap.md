@@ -81,4 +81,9 @@ Version control, docs structure, and the Claude Code workflow.
 
 ---
 
-Later, out of scope for now: persistence/save-load, richer map tools, mobile support, real (non-placeholder) character models — revisit once M1–M10 are playable.
+Later, out of scope for now (revisit once M1–M10 are playable):
+
+- **Map presets & fitting**: a handful of standard/built-in map backgrounds to choose from (mirroring the soundboard's built-in presets, Milestone 7/8), plus an interactive resize/reposition step when a custom map image is uploaded so it's fitted to the circular table properly (crop/zoom/pan) rather than just auto-scaled to fill it. 2026-09-24 user request; a cheap non-interactive "cover" fit (preserve aspect ratio, crop to fill, no stretch) landed as part of Milestone 8's upload work as a stopgap — the interactive fit tool itself is still future work.
+- **Wall drawing + a pen tool**: extend drawing (Milestone 5) from the table surface to the room's walls, with a real tool-selection UI (a pen tool, implying others like an eraser later) rather than the current single click-drag-anywhere-on-the-table gesture. 2026-09-24 user request.
+- **Tabletop ("sit down") mode**: a camera mode switch from the first-person walkable room to a full-screen, top-down view of the table/map, for directly interacting with objects on it (dice, and future figures/character tokens) without needing to walk around and look down. 2026-09-24 user request.
+- Persistence/save-load, mobile support, real (non-placeholder) character models.

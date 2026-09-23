@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Point2D, Scene } from '@custom-tabletop/shared';
+import { computeCoverRect } from './imageFit.js';
 
 export const TABLE_CANVAS_SIZE = 1024;
 const BACKGROUND_COLOR = '#e8dcc0'; // blank parchment — a scene with no backgroundImage yet
@@ -65,7 +66,12 @@ export class TableCanvas {
         return; // superseded by a later redraw while the image was loading
       }
       if (image) {
-        this.ctx.drawImage(image, 0, 0, TABLE_CANVAS_SIZE, TABLE_CANVAS_SIZE);
+        // "Cover" fit (crop the longer dimension, no stretching) rather
+        // than stretching to the square canvas — a cheap stopgap for a
+        // real interactive resize/reposition tool, tracked in
+        // docs/roadmap.md (Milestone 8 user request).
+        const rect = computeCoverRect(image.naturalWidth, image.naturalHeight, TABLE_CANVAS_SIZE);
+        this.ctx.drawImage(image, rect.x, rect.y, rect.width, rect.height);
       }
     }
 
