@@ -1,4 +1,9 @@
-import type { SessionJoinRequest, SessionLeaveRequest } from '@custom-tabletop/shared';
+import type {
+  SessionJoinRequest,
+  SessionLeaveRequest,
+  PlayerMoveRequest,
+  Vector3,
+} from '@custom-tabletop/shared';
 
 /**
  * Runtime guards for socket payloads. TypeScript's types don't survive to
@@ -9,6 +14,18 @@ import type { SessionJoinRequest, SessionLeaveRequest } from '@custom-tabletop/s
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isVector3(value: unknown): value is Vector3 {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const { x, y, z } = value as Record<string, unknown>;
+  return isFiniteNumber(x) && isFiniteNumber(y) && isFiniteNumber(z);
 }
 
 export function parseSessionJoinRequest(payload: unknown): SessionJoinRequest | null {
@@ -39,4 +56,22 @@ export function parseSessionLeaveRequest(payload: unknown): SessionLeaveRequest 
   }
 
   return { sessionId: sessionId.trim(), playerId: playerId.trim() };
+}
+
+export function parsePlayerMoveRequest(payload: unknown): PlayerMoveRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, position, rotationY } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    !isVector3(position) ||
+    !isFiniteNumber(rotationY)
+  ) {
+    return null;
+  }
+
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), position, rotationY };
 }

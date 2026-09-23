@@ -103,6 +103,16 @@ export class FirstPersonController {
     object.position.z = resolved.z;
   }
 
+  /** Current facing direction (yaw only, radians) — derived from the
+   * camera's world direction rather than read off `camera.rotation.y`,
+   * which uses a different Euler order than PointerLockControls' internal
+   * pitch/yaw tracking and isn't reliable to read directly. */
+  getYaw(): number {
+    const forward = new THREE.Vector3();
+    this.controls.object.getWorldDirection(forward);
+    return Math.atan2(forward.x, forward.z);
+  }
+
   private anyPressed(codes: Set<string>): boolean {
     for (const code of this.pressedKeys) {
       if (codes.has(code)) {

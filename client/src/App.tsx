@@ -95,10 +95,15 @@ export function App() {
     );
   }
 
-  if (gameState) {
+  if (gameState && socketRef.current) {
     return (
       <main className="game-shell">
-        <RoomView />
+        <RoomView
+          socket={socketRef.current}
+          sessionId={gameState.sessionId}
+          playerId={playerId}
+          players={gameState.players}
+        />
         <div className="session-overlay">
           <SessionView state={gameState} playerId={playerId} onLeave={handleLeave} />
         </div>

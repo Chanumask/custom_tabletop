@@ -6,6 +6,39 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-23 (Milestone 4) — Player avatars: two+ players see each other walk around the room live
+
+**Asked** (user): "continue with the next milestones" — after Milestone 3 finished (real Blender room), picked up Milestone 4 per `docs/roadmap.md`: `player:move` driving real 3D position/orientation, server-validated, with other connected players rendered as placeholder avatars.
+
+### What landed
+
+- **`shared`**: `Player.rotationY` (yaw only, radians — see `docs/decisions.md` for why not full orientation); `PlayerMoveRequest` (`shared/src/player.ts`) for the `player:move` payload, used both directions (client → server send, server → other clients rebroadcast); `DEFAULT_SPAWN_POSITION`, a shared constant so the client's camera spawn point and the server's default `Player.position` can't drift apart.
+- **`server`**: `parsePlayerMoveRequest` (shape/finite-number validation, `validation.ts`); `SessionStore.move()` (updates a player's position/rotation in place, no-ops for an unknown session/player); a `player:move` socket handler (`server.ts`) that validates, applies, and rebroadcasts to everyone else in the session (`socket.to(sessionId).emit`, excluding the sender) — no ack, no full-state broadcast, matching the spec's "deltas, not full state" performance guidance.
+- **`client`**: `PlayerAvatars.ts` (placeholder capsule meshes, one per other connected player, colored deterministically per player id) with membership (`sync`, driven by `GameState.players`) and live movement (`updateOne`, driven by `player:move` broadcasts) deliberately kept as separate methods — see `docs/decisions.md`. `FirstPersonController.getYaw()` (derives yaw from the camera's world direction rather than reading `camera.rotation.y`, which is wrong once pitch is non-zero under `PointerLockControls`'s internal Euler order). `RoomView.tsx` now takes `socket`/`sessionId`/`playerId`/`players` props, throttles outgoing `player:move` sends to ~10Hz (only when position/yaw actually changed), and wires incoming broadcasts to `PlayerAvatars.updateOne`. `App.tsx` passes the new props through.
+- Branch `feat/player-avatars`, squash-merged into local `main`. **Not pushed.**
+
+### Checked
+
+- **The M4 exit-check test** (`server/src/playerMove.test.ts`): two real `socket.io-client`s — one moves, the other receives the broadcast live, the mover does *not* receive their own echo; a later joiner's initial `session:state` reflects an already-moved player's position; a malformed move is dropped without crashing the server. Break-round verified: removed the rebroadcast, watched the "sees it live" assertion time out and fail, restored it, watched it pass again.
+- `client/src/three/PlayerAvatars.test.ts` (6 tests): create/update/remove/dispose, all against real `THREE.Group`/`Mesh`/`Geometry` objects — no WebGL/DOM needed for that under Vitest's `node` environment.
+- Full `sanity-check` (lint/format/build/test, 68 tests across all 3 workspaces) clean, both mid-session and right before merge.
+- **Real browser verification** (two Chrome tabs via browser automation): both players joined the same session, saw each other in the player list, room rendered with no console errors. **Known gap, same limitation as Milestone 3:** couldn't drive WASD through the automated browser to visually confirm a *moving* remote avatar end-to-end — Chrome rejects the automation tool's synthetic clicks for Pointer Lock (confirmed directly: `document.pointerLockElement` stayed null after a synthetic click). The server integration test and client unit tests cover what the browser check couldn't reach.
+- Dev server processes confirmed stopped, ports 3001/5173 clear afterward.
+
+### Next session
+
+Milestone 4 is done. Paste-to-start prompt:
+
+> Start Milestone 5: tabletop map & drawing. `scene:create`/`scene:change`/`scene:update` (host-only, server-validated); the 2D canvas (background image + drawing) renders as a `THREE.CanvasTexture` applied to the table surface, not full-screen; freehand drawing synced via `drawing:start`/`drawing:update`/`drawing:end`/`drawing:delete`, stroke-delta-only over the wire. Exit check: host switches the map on the table and all players see it change; any player draws on the table and everyone sees the stroke live, from wherever they're standing in the room.
+
+- **Branch:** `main` — none open. `feat/player-avatars` merged and deleted.
+- **State:** M1–M4 all done. Players now see each other as colored capsule avatars walking around the real Blender room in real time.
+- **Do next:** Milestone 5 per [docs/roadmap.md](roadmap.md) — first milestone touching the 2D canvas/drawing layer and the table's `CanvasTexture`.
+- **Watch for:** the Chrome Pointer Lock automation restriction if UI-testing movement again in this environment — a real (non-automated) browser session doesn't hit it. The Blender MCP concurrent-session gotcha (`docs/decisions.md`, M3 part 2) if Blender work resumes for M5/table texture work. The PATH-after-install gotcha (`docs/engineering/tooling.md`) for `npm`/`node` in fresh Bash/PowerShell tool shells on this machine.
+- **Environment:** nothing running — no dev server, no Blender instance. Both ports confirmed clear at session end.
+
+---
+
 ## 2026-09-23 (Milestone 3, part 2) — Real Blender room built and swapped in; Milestone 3 done
 
 **Asked** (user): the standing next-session prompt — finish Milestone 3 by building the real room in Blender via the now-loaded `blender` MCP tools, exporting to `.glb`, and swapping it in via `RoomLoader.ts`'s `gltfUrl` option, replacing the procedural placeholder.

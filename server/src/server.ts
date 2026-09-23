@@ -9,7 +9,11 @@ import {
   type SessionLeaveResponse,
 } from '@custom-tabletop/shared';
 import { SessionStore } from './sessionStore.js';
-import { parseSessionJoinRequest, parseSessionLeaveRequest } from './validation.js';
+import {
+  parseSessionJoinRequest,
+  parseSessionLeaveRequest,
+  parsePlayerMoveRequest,
+} from './validation.js';
 
 export interface AppServer {
   http: HttpServer;
@@ -78,6 +82,27 @@ export function createAppServer(): AppServer {
         }
       },
     );
+
+    // No ack, no full-state broadcast: this fires many times a second while
+    // a player walks, so it's rebroadcast as the same lightweight delta to
+    // everyone else in the session (docs/engineering/architecture.md,
+    // "Performance") rather than round-tripped or folded into session:state.
+    socket.on(SocketEvent.PlayerMove, (payload: unknown) => {
+      const request = parsePlayerMoveRequest(payload);
+      if (!request) {
+        return;
+      }
+
+      const moved = sessions.move(
+        request.sessionId,
+        request.playerId,
+        request.position,
+        request.rotationY,
+      );
+      if (moved) {
+        socket.to(request.sessionId).emit(SocketEvent.PlayerMove, request);
+      }
+    });
 
     socket.on('disconnect', (reason) => {
       console.log(`[socket] disconnected: ${socket.id} (${reason})`);

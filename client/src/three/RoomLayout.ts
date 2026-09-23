@@ -1,3 +1,4 @@
+import { DEFAULT_SPAWN_POSITION } from '@custom-tabletop/shared';
 import type { RoomBounds, TableBounds } from './collision.js';
 
 export interface RoomLayout {
@@ -21,5 +22,5 @@ export const PLACEHOLDER_ROOM_LAYOUT: RoomLayout = {
   tableHeight: 0.75,
 };
 
-export const PLAYER_EYE_HEIGHT = 1.7;
+export const PLAYER_EYE_HEIGHT = DEFAULT_SPAWN_POSITION.y;
 export const PLAYER_RADIUS = 0.35;

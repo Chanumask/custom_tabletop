@@ -46,6 +46,9 @@ export interface Player {
   character: Character;
 
   position: Vector3;
+  /** Yaw only, radians. Enough to orient a placeholder avatar toward its
+   * facing direction — pitch/roll aren't tracked (Milestone 4). */
+  rotationY: number;
 
   muted: boolean;
 }
@@ -73,3 +76,12 @@ export interface GameState {
 
   soundboard: SoundState[];
 }
+
+/**
+ * Where a newly-joined player's camera starts, and what the server seeds a
+ * new `Player.position` as (Milestone 4) — kept in one shared place so a
+ * fresh join doesn't render that player's avatar at the wrong spot (e.g.
+ * underground at the origin) for the brief window before their first
+ * `player:move`.
+ */
+export const DEFAULT_SPAWN_POSITION: Vector3 = { x: 0, y: 1.7, z: 3 };

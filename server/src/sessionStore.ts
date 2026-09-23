@@ -1,4 +1,9 @@
-import type { GameState, Player } from '@custom-tabletop/shared';
+import {
+  DEFAULT_SPAWN_POSITION,
+  type GameState,
+  type Player,
+  type Vector3,
+} from '@custom-tabletop/shared';
 
 /**
  * The server-authoritative registry of live sessions. Trusts its inputs are
@@ -56,6 +61,22 @@ export class SessionStore {
   get(sessionId: string): GameState | undefined {
     return this.sessions.get(sessionId);
   }
+
+  /** Updates a player's position/rotation in place. Returns false (no-op)
+   * for an unknown session or a player not in it, rather than throwing —
+   * a late-arriving move for a session/player that's already gone is a
+   * normal race, not an error. */
+  move(sessionId: string, playerId: string, position: Vector3, rotationY: number): boolean {
+    const state = this.sessions.get(sessionId);
+    const player = state?.players.find((candidate) => candidate.id === playerId);
+    if (!player) {
+      return false;
+    }
+
+    player.position = position;
+    player.rotationY = rotationY;
+    return true;
+  }
 }
 
 function createEmptySession(sessionId: string, hostId: string): GameState {
@@ -76,7 +97,8 @@ function createPlayer(id: string, name: string): Player {
     id,
     name,
     character: { id, name }, // character customization isn't scoped yet; the player stands in for their own character for now
-    position: { x: 0, y: 0, z: 0 }, // real movement lands in Milestone 4
+    position: { ...DEFAULT_SPAWN_POSITION }, // overwritten by the client's first player:move once it joins (Milestone 4)
+    rotationY: 0,
     muted: false,
   };
 }

@@ -10,7 +10,7 @@ Scope is deliberately narrow at the start: get a host and a few players walking 
 
 ## Where it stands (2026-09-23)
 
-**Milestones 1-3 done.** The npm-workspace toolchain, sessions/connection (join, live player list, host role, reconnect), and the 3D room shell (a real Blender-built "cozy tabletop game room" with a round table, first-person WASD + mouse-look movement, wall/table collision) all work end to end — see [roadmap.md](roadmap.md) for exactly what each milestone covers and [changelog.md](changelog.md) for how they were built. No player avatars, tabletop map/drawing, or dice yet (Milestones 4+).
+**Milestones 1-4 done.** The npm-workspace toolchain, sessions/connection (join, live player list, host role, reconnect), the 3D room shell (a real Blender-built "cozy tabletop game room" with a round table, first-person WASD + mouse-look movement, wall/table collision), and player avatars (other connected players render as placeholder capsules and move live) all work end to end — see [roadmap.md](roadmap.md) for exactly what each milestone covers and [changelog.md](changelog.md) for how they were built. No tabletop map/drawing or dice yet (Milestones 5+).
 
 The player-experience direction — a walkable 3D room rather than a flat 2D map with 3D accents — was settled early (full reasoning in [decisions.md](decisions.md)) and everything since has built toward it.
 

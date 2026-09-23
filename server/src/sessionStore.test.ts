@@ -52,4 +52,28 @@ describe('SessionStore', () => {
     const store = new SessionStore();
     expect(store.leave('nope', 'p1')).toBeUndefined();
   });
+
+  it('move updates an existing player position and rotation in place', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+
+    const moved = store.move('abc', 'p1', { x: 1, y: 1.7, z: -2 }, 1.5);
+
+    expect(moved).toBe(true);
+    expect(store.get('abc')?.players[0]).toMatchObject({
+      position: { x: 1, y: 1.7, z: -2 },
+      rotationY: 1.5,
+    });
+  });
+
+  it('move on an unknown session is a no-op that returns false', () => {
+    const store = new SessionStore();
+    expect(store.move('nope', 'p1', { x: 0, y: 0, z: 0 }, 0)).toBe(false);
+  });
+
+  it('move for a player not in the session is a no-op that returns false', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    expect(store.move('abc', 'p2', { x: 0, y: 0, z: 0 }, 0)).toBe(false);
+  });
 });

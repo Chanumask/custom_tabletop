@@ -36,11 +36,11 @@ Version control, docs structure, and the Claude Code workflow.
 - Solo exploration only — no other players visible yet, no map/dice. **Done**, matches scope.
 - **Exit check:** a player joins a session and can walk around a 3D room and bump into the table/walls without clipping through them. **✅** — verified visually against the real Blender room via browser automation (geometry/materials/lighting render correctly); WASD movement itself rests on the unchanged, unit-tested collision suite rather than a fresh in-browser drive, since Chrome's Pointer Lock API rejects automated synthetic clicks (see `docs/decisions.md`).
 
-## M4 — Player avatars
+## M4 — Player avatars ✅
 
-- `player:move` drives real 3D position/orientation, server-validated.
-- Other connected players render and move as avatars in the room in real time (placeholder capsule/mesh is fine — real character models are a later art pass, not blocking).
-- **Exit check:** two+ players in the same session see each other walk around the room live.
+- `player:move` drives real 3D position/orientation (yaw only — see `docs/decisions.md`), server-validated (`server/src/validation.ts`'s `parsePlayerMoveRequest`), applied via `SessionStore.move()` and rebroadcast as a delta to everyone else in the session — no ack, no full-state broadcast.
+- Other connected players render and move as avatars in the room in real time — placeholder colored capsule meshes (`client/src/three/PlayerAvatars.ts`), not real character models (a later art pass, not blocking).
+- **Exit check:** two+ players in the same session see each other walk around the room live. **✅** — proven by `server/src/playerMove.test.ts` (two real sockets, break-round verified) and `client/src/three/PlayerAvatars.test.ts`; a live two-browser-tab check confirmed the join/render pipeline works with no console errors, though driving WASD itself through the automated browser to see a *moving* remote avatar end-to-end wasn't possible (Chrome blocks the automation tool's synthetic Pointer Lock clicks — same gap as M3).
 
 ## M5 — Tabletop map & drawing
 
