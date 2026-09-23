@@ -6,6 +6,14 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-23 — Milestone 3 split in two: movement engine now, real Blender room next session
+
+**Decided**, two related calls made kicking off Milestone 3.
+
+**1. Blender MCP reused from `extraction_project`, not reinstalled.** Blender 5.2, the "MCP for Blender" add-on, and `uvx` were already installed on this machine for that repo (a user-global install, not per-repo). Added this repo's own `.mcp.json` registering the same `blender` server (`mcp-for-blender@2.0.0` via `uvx`) rather than reinstalling anything — per the standing instruction to check `extraction_project` for reusable setup first. Full detail: [engineering/blender-workflow.md](engineering/blender-workflow.md). **Rules out:** a fresh Blender/add-on install, which wasn't needed.
+
+**2. M3 splits into "movement engine" (now) and "the real Blender room" (next session), because MCP servers only load at session startup.** The session that wrote `.mcp.json` doesn't have the `blender` tools yet — a fresh session is required before Blender can actually be driven over MCP. Rather than block all of M3 on that, the first-person camera/movement/collision system is built and tested now against a **procedural placeholder** (plain Three.js geometry, styled toward the "cozy tabletop game room" direction with color/lighting choices, but not the real asset), with the `GLTFLoader` integration path ready so swapping in the real Blender-exported room is a small change, not a rewrite. The actual Blender build (room + round table for 4-5 players, per the direction the user chose) happens in a subsequent session once the `blender` tools are available. **Rules out:** treating M3 as fully done once the procedural version passes its exit check — the roadmap entry stays open until the real Blender asset replaces the placeholder.
+
 ## 2026-09-23 — Milestone 2 design calls: implicit session creation, derived host role, disconnect ≠ leave, sessionStorage identity
 
 **Decided**, four related calls made implementing Milestone 2 (`docs/roadmap.md`), none pinned down by the original spec:
@@ -59,4 +67,4 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ## Table of Contents
 
-**2026-09-23** — Milestone 2: implicit session creation, derived host role, disconnect ≠ leave, sessionStorage identity; `.gitattributes` forces LF endings over this machine's `core.autocrlf`; TS project references dropped for `shared`; server/client ports and the infra-only ping/pong event pair; `npm audit` dev-tooling vulnerabilities accepted for now; player experience is a walkable 3D room, not a 2D map with 3D accents; repo workflow reused from `extraction_project`, trimmed to scope; documentation-only commits allowed to `main`; tech stack taken as given from the source spec
+**2026-09-23** — Milestone 3 split (movement now, real Blender room next session), Blender MCP reused from `extraction_project`; Milestone 2: implicit session creation, derived host role, disconnect ≠ leave, sessionStorage identity; `.gitattributes` forces LF endings over this machine's `core.autocrlf`; TS project references dropped for `shared`; server/client ports and the infra-only ping/pong event pair; `npm audit` dev-tooling vulnerabilities accepted for now; player experience is a walkable 3D room, not a 2D map with 3D accents; repo workflow reused from `extraction_project`, trimmed to scope; documentation-only commits allowed to `main`; tech stack taken as given from the source spec
