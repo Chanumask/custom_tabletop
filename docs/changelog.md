@@ -6,6 +6,42 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-23 (Milestone 3, part 1) — First-person movement engine, proven against a procedural room
+
+**Asked** (user): "push then go for m3. ask me if you need decisions regarding ui/ux game design visual stuff etc." Pushed Milestone 2 to `origin/main`, then asked two design questions before starting: room aesthetic (**"cozy tabletop game room"** chosen over plain gray-box) and table shape/size (**round, 4-5 players** chosen).
+
+### Setup, before implementation
+
+- Checked `extraction_project` for reusable Blender MCP setup (per the standing instruction to always check that repo first) — Blender 5.2, its MCP add-on, and `uvx` were already installed there. Registered the same `blender` server in this repo's own new `.mcp.json` rather than reinstalling anything. Wrote `docs/engineering/blender-workflow.md` explaining what's reusable (the MCP setup itself) versus not (the FBX→Unreal pipeline — this project targets glTF/GLB→Three.js instead).
+- **Realized MCP servers only load at session startup**, so this session doesn't have the `blender` tools yet — can't actually drive Blender. Split M3 into two parts rather than block on it (`docs/decisions.md`, "Milestone 3 split in two").
+
+### What landed (part 1: the movement engine)
+
+- **`client/src/three/collision.ts`**: pure `resolveMovement(position, delta, room, table, playerRadius)` — axis-separated wall/table collision with wall-sliding, plus an unconditional safety-net correction for an already-invalid starting position. 13 unit tests; two-stage break-round (partial disable, then a full passthrough gutting the function) confirmed the suite genuinely exercises the logic, not just the safety net — see `docs/decisions.md` for the nuance on why 3 of the 13 tests are correctly insensitive to the partial break (the safety net legitimately covers for it, which is the intended contract).
+- **`client/src/three/FirstPersonController.ts`**: wraps Three.js's `PointerLockControls` for WASD + mouse-look, re-resolving every frame's position delta through `resolveMovement` before committing it.
+- **`client/src/three/ProceduralRoom.ts`**: the placeholder room — walls, wood-toned floor, a round table (radius 1.1m, 4-5 players), a bookshelf/window blockout, warm point lighting. Built directly in Three.js, **not** the real Blender asset.
+- **`client/src/three/RoomLoader.ts`**: `loadRoom()` — returns the procedural room by default, or loads a real `.glb` via `GLTFLoader` if a `gltfUrl` is given. Nothing calls it with a URL yet; this is the seam Part 2 plugs into.
+- **`client/src/three/RoomView.tsx`** + **`App.tsx`**: joining a session now shows the full-viewport first-person room as the main view, with the session panel (code, player list, leave) as a small corner overlay — M2's functionality stays reachable, not replaced.
+- Branch `feat/room-movement-engine`, squash-merged into local `main`. **Not pushed.**
+
+### Checked
+
+Full `sanity-check` pass (lint, format, build, 43 tests across all 3 workspaces) clean before and after the merge. Manual pass: ran the real `npm run dev` pair, confirmed both HTTP-responded and every new `three/`-path module transformed through Vite without error (can't visually confirm the WebGL canvas in this environment — reasoned about correctness from the code and Vite's clean transform instead). **Found and cleaned up two full leftover `npm run dev` process trees from earlier work that were still listening on 3001/5173** (orphaned `tsx watch` children survive a plain `Stop-Process` on their parent — needed `taskkill /T` to actually kill the tree); confirmed both ports clear afterward.
+
+### Next session
+
+Paste-to-start prompt:
+
+> Finish Milestone 3: build the real room + round table (4-5 players, "cozy tabletop game room") in Blender, export to `.glb`, and swap it in via `client/src/three/RoomLoader.ts`'s `gltfUrl` option, replacing the procedural placeholder. Blender itself is already installed — this just needs a fresh session so the `blender` MCP tools (registered in `.mcp.json`) actually load; check with `ToolSearch` or by looking for `blender`-prefixed tools before assuming they're missing.
+
+- **Branch:** `main` — none open.
+- **State:** M1 and M2 done. M3 part 1 (movement engine) done and merged; M3 part 2 (real Blender room) not started. `main` is ahead of `origin/main` — this session's work hasn't been pushed.
+- **Do next:** the Blender room build above, per [docs/engineering/blender-workflow.md](engineering/blender-workflow.md) (which still has a "not yet built" status section to fill in once this actually happens) and [docs/roadmap.md](roadmap.md)'s M3 entry.
+- **Watch for:** the fresh-session requirement for MCP tools; re-verify collision/exit-check behavior once real room dimensions replace the placeholder's (10m×8m room, 1.1m table radius) in case they differ enough to matter.
+- **Environment:** nothing running; both dev-server ports confirmed clear at session end.
+
+---
+
 ## 2026-09-23 (Milestone 2) — Sessions, host role, and reconnect: two clients can join and see each other
 
 **Asked** (user): "continue with milestone 2 i will set up th remote in the mean time" — build sessions & connection per [docs/roadmap.md](roadmap.md).

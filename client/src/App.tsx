@@ -11,6 +11,7 @@ import { connectionStatusLabel, type ConnectionStatus } from './connectionStatus
 import { getOrCreatePlayerId } from './playerIdentity.js';
 import { JoinForm } from './JoinForm.js';
 import { SessionView } from './SessionView.js';
+import { RoomView } from './three/RoomView.js';
 
 interface JoinIntent {
   playerName: string;
@@ -94,15 +95,22 @@ export function App() {
     );
   }
 
+  if (gameState) {
+    return (
+      <main className="game-shell">
+        <RoomView />
+        <div className="session-overlay">
+          <SessionView state={gameState} playerId={playerId} onLeave={handleLeave} />
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <main>
+    <main className="pre-join">
       <h1>Custom Tabletop</h1>
       <p>{connectionStatusLabel(status)}</p>
-      {gameState ? (
-        <SessionView state={gameState} playerId={playerId} onLeave={handleLeave} />
-      ) : (
-        <JoinForm disabled={status !== 'connected'} error={joinError} onJoin={handleJoin} />
-      )}
+      <JoinForm disabled={status !== 'connected'} error={joinError} onJoin={handleJoin} />
     </main>
   );
 }
