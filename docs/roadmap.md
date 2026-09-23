@@ -42,12 +42,12 @@ Version control, docs structure, and the Claude Code workflow.
 - Other connected players render and move as avatars in the room in real time — placeholder colored capsule meshes (`client/src/three/PlayerAvatars.ts`), not real character models (a later art pass, not blocking).
 - **Exit check:** two+ players in the same session see each other walk around the room live. **✅** — proven by `server/src/playerMove.test.ts` (two real sockets, break-round verified) and `client/src/three/PlayerAvatars.test.ts`; a live two-browser-tab check confirmed the join/render pipeline works with no console errors, though driving WASD itself through the automated browser to see a *moving* remote avatar end-to-end wasn't possible (Chrome blocks the automation tool's synthetic Pointer Lock clicks — same gap as M3).
 
-## M5 — Tabletop map & drawing
+## M5 — Tabletop map & drawing ✅
 
-- `scene:create` / `scene:change` / `scene:update`, host-only, server-validated.
-- The 2D canvas (background image + drawing) renders as a `THREE.CanvasTexture` applied to the table surface, not full-screen.
-- Freehand drawing synced via `drawing:start` / `drawing:update` / `drawing:end` / `drawing:delete` — only the stroke delta goes over the wire.
-- **Exit check:** host switches the map on the table and all players see it change; any player draws on the table and everyone sees the stroke live, from wherever they're standing in the room.
+- `scene:create` / `scene:change` / `scene:update`, host-only, server-validated — **implemented and unit-tested**; only `scene:update` is wired to UI so far (a scope cut agreed with the user, see `docs/decisions.md` — every session seeds one default scene, and the host retargets its background image rather than managing multiple named scenes).
+- The 2D canvas (background image + drawing) renders as a `THREE.CanvasTexture` applied to the table surface, not full-screen — **done** (`client/src/three/TableCanvas.ts`), including a runtime UV remap (`tableTopUV.ts`) since Blender's default cylinder unwrap doesn't give the top face a clean 0..1 square.
+- Freehand drawing synced via `drawing:start` / `drawing:update` / `drawing:end` / `drawing:delete` — only the stroke delta goes over the wire. **Done**, drawn by raycasting pointer input against the table mesh while not pointer-locked (`TableDrawing.ts`) — a deliberate "physical surface" interaction model, agreed with the user, not a flat 2D overlay.
+- **Exit check:** host switches the map on the table and all players see it change; any player draws on the table and everyone sees the stroke live, from wherever they're standing in the room. **✅** — proven by `server/src/tabletopMap.test.ts` (break-round verified) and confirmed live in a real two-tab browser check (host's background swap and a non-host's drawn stroke each appeared on the other tab with no refresh).
 
 ## M6 — Dice
 

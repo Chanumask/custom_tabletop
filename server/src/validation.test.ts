@@ -3,6 +3,13 @@ import {
   parseSessionJoinRequest,
   parseSessionLeaveRequest,
   parsePlayerMoveRequest,
+  parseSceneCreateRequest,
+  parseSceneChangeRequest,
+  parseSceneUpdateRequest,
+  parseDrawingStartRequest,
+  parseDrawingUpdateRequest,
+  parseDrawingEndRequest,
+  parseDrawingDeleteRequest,
 } from './validation.js';
 
 describe('parseSessionJoinRequest', () => {
@@ -77,4 +84,168 @@ describe('parsePlayerMoveRequest', () => {
   ])('rejects malformed payload %#', (payload) => {
     expect(parsePlayerMoveRequest(payload)).toBeNull();
   });
+});
+
+describe('parseSceneCreateRequest', () => {
+  it('accepts a well-formed payload and trims whitespace', () => {
+    const result = parseSceneCreateRequest({
+      sessionId: ' abc ',
+      playerId: ' p1 ',
+      sceneId: ' scene-1 ',
+      name: ' Dungeon ',
+      backgroundImage: 'https://example/dungeon.png',
+    });
+    expect(result).toEqual({
+      sessionId: 'abc',
+      playerId: 'p1',
+      sceneId: 'scene-1',
+      name: 'Dungeon',
+      backgroundImage: 'https://example/dungeon.png',
+    });
+  });
+
+  it('accepts an empty backgroundImage', () => {
+    const result = parseSceneCreateRequest({
+      sessionId: 'abc',
+      playerId: 'p1',
+      sceneId: 'scene-1',
+      name: 'Dungeon',
+      backgroundImage: '',
+    });
+    expect(result).not.toBeNull();
+  });
+
+  it.each([
+    [null],
+    [{}],
+    [{ sessionId: 'abc', playerId: 'p1', sceneId: 's1', name: '', backgroundImage: '' }],
+    [{ sessionId: 'abc', playerId: 'p1', sceneId: 's1', name: 'Dungeon' }], // missing backgroundImage
+    [{ sessionId: 'abc', playerId: 'p1', name: 'Dungeon', backgroundImage: '' }], // missing sceneId
+  ])('rejects malformed payload %#', (payload) => {
+    expect(parseSceneCreateRequest(payload)).toBeNull();
+  });
+});
+
+describe('parseSceneChangeRequest', () => {
+  it('accepts a well-formed payload and trims whitespace', () => {
+    expect(
+      parseSceneChangeRequest({ sessionId: ' abc ', playerId: ' p1 ', sceneId: ' s1 ' }),
+    ).toEqual({ sessionId: 'abc', playerId: 'p1', sceneId: 's1' });
+  });
+
+  it.each([[null], [{ sessionId: 'abc', playerId: 'p1' }], [{ sceneId: 's1' }]])(
+    'rejects malformed payload %#',
+    (payload) => {
+      expect(parseSceneChangeRequest(payload)).toBeNull();
+    },
+  );
+});
+
+describe('parseSceneUpdateRequest', () => {
+  it('accepts a partial update (backgroundImage only)', () => {
+    const result = parseSceneUpdateRequest({
+      sessionId: 'abc',
+      playerId: 'p1',
+      sceneId: 's1',
+      backgroundImage: 'https://example/map.png',
+    });
+    expect(result).toEqual({
+      sessionId: 'abc',
+      playerId: 'p1',
+      sceneId: 's1',
+      name: undefined,
+      backgroundImage: 'https://example/map.png',
+    });
+  });
+
+  it('accepts a partial update (name only)', () => {
+    const result = parseSceneUpdateRequest({
+      sessionId: 'abc',
+      playerId: 'p1',
+      sceneId: 's1',
+      name: 'Renamed',
+    });
+    expect(result).not.toBeNull();
+  });
+
+  it.each([
+    [null],
+    [{ sessionId: 'abc', playerId: 'p1', sceneId: 's1' }], // nothing to update
+    [{ sessionId: 'abc', playerId: 'p1', sceneId: 's1', name: 42 }],
+  ])('rejects malformed payload %#', (payload) => {
+    expect(parseSceneUpdateRequest(payload)).toBeNull();
+  });
+});
+
+describe('parseDrawingStartRequest', () => {
+  it('accepts a well-formed payload', () => {
+    const result = parseDrawingStartRequest({
+      sessionId: 'abc',
+      playerId: 'p1',
+      sceneId: 's1',
+      drawingId: 'd1',
+      point: { x: 1, y: 2 },
+    });
+    expect(result).toEqual({
+      sessionId: 'abc',
+      playerId: 'p1',
+      sceneId: 's1',
+      drawingId: 'd1',
+      point: { x: 1, y: 2 },
+    });
+  });
+
+  it.each([
+    [null],
+    [{ sessionId: 'abc', playerId: 'p1', sceneId: 's1', drawingId: 'd1' }], // missing point
+    [{ sessionId: 'abc', playerId: 'p1', sceneId: 's1', drawingId: 'd1', point: { x: 1 } }],
+  ])('rejects malformed payload %#', (payload) => {
+    expect(parseDrawingStartRequest(payload)).toBeNull();
+  });
+});
+
+describe('parseDrawingUpdateRequest', () => {
+  it('accepts a well-formed payload', () => {
+    const result = parseDrawingUpdateRequest({
+      sessionId: 'abc',
+      drawingId: 'd1',
+      point: { x: 1, y: 2 },
+    });
+    expect(result).toEqual({ sessionId: 'abc', drawingId: 'd1', point: { x: 1, y: 2 } });
+  });
+
+  it.each([[null], [{ sessionId: 'abc', drawingId: 'd1' }]])(
+    'rejects malformed payload %#',
+    (payload) => {
+      expect(parseDrawingUpdateRequest(payload)).toBeNull();
+    },
+  );
+});
+
+describe('parseDrawingEndRequest', () => {
+  it('accepts a well-formed payload', () => {
+    expect(parseDrawingEndRequest({ sessionId: 'abc', drawingId: 'd1' })).toEqual({
+      sessionId: 'abc',
+      drawingId: 'd1',
+    });
+  });
+
+  it.each([[null], [{ sessionId: 'abc' }]])('rejects malformed payload %#', (payload) => {
+    expect(parseDrawingEndRequest(payload)).toBeNull();
+  });
+});
+
+describe('parseDrawingDeleteRequest', () => {
+  it('accepts a well-formed payload', () => {
+    expect(parseDrawingDeleteRequest({ sessionId: 'abc', sceneId: 's1', drawingId: 'd1' })).toEqual(
+      { sessionId: 'abc', sceneId: 's1', drawingId: 'd1' },
+    );
+  });
+
+  it.each([[null], [{ sessionId: 'abc', drawingId: 'd1' }]])(
+    'rejects malformed payload %#',
+    (payload) => {
+      expect(parseDrawingDeleteRequest(payload)).toBeNull();
+    },
+  );
 });

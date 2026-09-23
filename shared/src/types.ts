@@ -14,6 +14,15 @@ export interface Vector3 {
   z: number;
 }
 
+/** A point in a 2D canvas's own pixel space (the map/drawing surface),
+ * distinct from `Vector3` world positions. A drawing stroke lives on a flat
+ * canvas texture, not in 3D space — see docs/decisions.md (Milestone 5) for
+ * why this replaced the original spec's `Vector3[]` for `Drawing.points`. */
+export interface Point2D {
+  x: number;
+  y: number;
+}
+
 export interface Character {
   id: string;
   name: string;
@@ -23,7 +32,7 @@ export interface Drawing {
   id: string;
   sceneId: string;
   playerId: string;
-  points: Vector3[];
+  points: Point2D[];
 }
 
 export interface Dice {
@@ -69,8 +78,6 @@ export interface GameState {
   scenes: Scene[];
 
   players: Player[];
-
-  drawings: Drawing[];
 
   dice: Dice[];
 

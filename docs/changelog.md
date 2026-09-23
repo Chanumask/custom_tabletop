@@ -6,6 +6,39 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-24 (Milestone 5) — Tabletop map & drawing: the host swaps the map, players draw on the physical table, everyone sees it live
+
+**Asked** (user): "continue with the next milestones" — after Milestone 4 finished (player avatars), picked up Milestone 5 per `docs/roadmap.md`. Two scope questions asked and answered before implementation: drawing interaction model (raycast-on-the-table while pointer-lock is released, not a flat 2D overlay) and scene scope (one active scene per session with a swappable background URL, not a full multi-scene manager) — both logged in `docs/decisions.md`.
+
+### What landed
+
+- **`shared`**: new `Point2D` type (`Drawing.points` now uses it instead of the original spec's `Vector3[]` — a stroke lives on a flat canvas, not in 3D space); the redundant top-level `GameState.drawings` field (duplicate of `Scene.drawings`, never consumed) dropped; `scene.ts` (`SceneCreateRequest`/`SceneChangeRequest`/`SceneUpdateRequest`, ack'd + full-state-broadcast like `session:join`) and `drawing.ts` (`DrawingStartRequest`/`DrawingUpdateRequest`/`DrawingEndRequest`/`DrawingDeleteRequest`, fire-and-forget like `player:move`). Both spec deviations logged in `docs/decisions.md` and `docs/engineering/architecture.md` per that file's own "Changing this spec" instruction.
+- **`server`**: every session now seeds one default scene at creation (`createDefaultScene`, mirroring M2's implicit-session-creation pattern); `SessionStore.createScene/changeScene/updateScene` (host-gated) and `startDrawing/appendDrawingPoint/deleteDrawing` (not host-gated — any player can draw); matching validators in `validation.ts`; `scene:*` and `drawing:*` socket handlers in `server.ts` following the two existing sync patterns (ack + full broadcast for the infrequent host-gated scene events, fire-and-forget delta rebroadcast for the frequent drawing events, same as `player:move`).
+- **`client`**: `TableCanvas.ts` (an offscreen `<canvas>` → `THREE.CanvasTexture`, `flipY: false`, redraws the background + all accumulated strokes on scene change, extends a stroke incrementally on live drawing updates); `tableTopUV.ts` (recomputes the `Table_Top` mesh's UV from local X/Z at runtime, since Blender's default cylinder unwrap splits top/side/bottom into separate islands rather than one clean square); `tableCoordinates.ts` (the shared local-XZ-to-canvas-pixel formula both the UV remap and the raycast input use, so a stroke always lands exactly under the cursor); `TableDrawing.ts` (raycasts pointer input against the table mesh while not pointer-locked). `RoomView.tsx` wires all of it together plus `scene:*`/`drawing:*` socket listeners; `SessionView.tsx` gained a host-only "Map background URL" form. The "click to look around" prompt shrank from a full-screen button to a small bottom pill (`style.css`), freeing the rest of the viewport for direct table interaction.
+- Branch `feat/tabletop-map-drawing`, squash-merged into local `main`. **Not pushed.**
+
+### Checked
+
+- **The M5 exit-check test** (`server/src/tabletopMap.test.ts`, 5 tests): a host's map switch is seen live by another player and rejected for a non-host; a drawing stroke is seen live point-by-point (not just at the end) by another player; a later joiner's initial state already contains a fully-drawn stroke; `drawing:delete` is seen live. Break-round verified on both halves (scene broadcast and drawing broadcast disabled separately, each confirmed to fail the matching assertion, then restored).
+- `client/src/three/tableTopUV.test.ts` and `tableCoordinates.test.ts` cover the coordinate math powering both texture display and drawing input, in isolation.
+- Full `sanity-check` (lint/format/build/test, 120 tests across all 3 workspaces) clean, both mid-session and right before merge.
+- **Real two-tab browser verification**: drew directly on the table via click-drag (raycast hit exactly under the cursor); host set a background image and the second tab updated live with no refresh; the second (non-host) player's own drawn stroke appeared live on the host's tab, correctly layered over the background. Hit and worked around a real external-network/CORS restriction in the sandboxed test browser (a live Wikimedia image failed to load — confirmed via `fetch(...).ok === false`, not an app bug) by substituting a `data:` URI generated in-page, which loaded and displayed correctly.
+- Dev server processes confirmed stopped, ports 3001/5173 clear afterward.
+
+### Next session
+
+Milestone 5 is done. Paste-to-start prompt:
+
+> Start Milestone 6: dice. `dice:spawn`/`dice:roll`/`dice:remove`, server-authoritative; 3D dice rendered and animated on the table, visible to everyone in the room regardless of where they're standing/looking. Exit check: any player spawns and rolls a die on the table; the result and motion are visible to everyone.
+
+- **Branch:** `main` — none open. `feat/tabletop-map-drawing` merged and deleted.
+- **State:** M1–M5 all done. The table now carries a live, swappable map with real-time collaborative drawing, on top of M1–M4's toolchain/sessions/room/avatars.
+- **Do next:** Milestone 6 per [docs/roadmap.md](roadmap.md).
+- **Watch for:** `scene:create`/`scene:change` are implemented and unit-tested server-side but not wired to any UI yet (deliberate M5 scope cut, see `docs/decisions.md`) — a multi-scene/map-switcher UI is the natural place to finally exercise them, if that need comes up. The Chrome Pointer Lock automation restriction (M3/M4) and the Blender MCP concurrent-session gotcha (M3 part 2) still apply if either comes up again. The PATH-after-install gotcha (`docs/engineering/tooling.md`) for `npm`/`node` in fresh Bash/PowerShell tool shells on this machine.
+- **Environment:** nothing running — no dev server. Both ports confirmed clear at session end.
+
+---
+
 ## 2026-09-23 (Milestone 4) — Player avatars: two+ players see each other walk around the room live
 
 **Asked** (user): "continue with the next milestones" — after Milestone 3 finished (real Blender room), picked up Milestone 4 per `docs/roadmap.md`: `player:move` driving real 3D position/orientation, server-validated, with other connected players rendered as placeholder avatars.

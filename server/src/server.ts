@@ -7,12 +7,22 @@ import {
   SocketEvent,
   type SessionJoinResponse,
   type SessionLeaveResponse,
+  type SceneCreateResponse,
+  type SceneChangeResponse,
+  type SceneUpdateResponse,
 } from '@custom-tabletop/shared';
 import { SessionStore } from './sessionStore.js';
 import {
   parseSessionJoinRequest,
   parseSessionLeaveRequest,
   parsePlayerMoveRequest,
+  parseSceneCreateRequest,
+  parseSceneChangeRequest,
+  parseSceneUpdateRequest,
+  parseDrawingStartRequest,
+  parseDrawingUpdateRequest,
+  parseDrawingEndRequest,
+  parseDrawingDeleteRequest,
 } from './validation.js';
 
 export interface AppServer {
@@ -101,6 +111,130 @@ export function createAppServer(): AppServer {
       );
       if (moved) {
         socket.to(request.sessionId).emit(SocketEvent.PlayerMove, request);
+      }
+    });
+
+    // Infrequent, host-gated, full-state ack + broadcast — same pattern as
+    // session:join/leave (unlike player:move/drawing:*, which fire too
+    // often for either).
+    socket.on(
+      SocketEvent.SceneCreate,
+      (payload: unknown, ack?: (response: SceneCreateResponse) => void) => {
+        const request = parseSceneCreateRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, sceneId, and name are required.' });
+          return;
+        }
+
+        const result = sessions.createScene(
+          request.sessionId,
+          request.playerId,
+          request.sceneId,
+          request.name,
+          request.backgroundImage,
+        );
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+        }
+      },
+    );
+
+    socket.on(
+      SocketEvent.SceneChange,
+      (payload: unknown, ack?: (response: SceneChangeResponse) => void) => {
+        const request = parseSceneChangeRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and sceneId are required.' });
+          return;
+        }
+
+        const result = sessions.changeScene(request.sessionId, request.playerId, request.sceneId);
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+        }
+      },
+    );
+
+    socket.on(
+      SocketEvent.SceneUpdate,
+      (payload: unknown, ack?: (response: SceneUpdateResponse) => void) => {
+        const request = parseSceneUpdateRequest(payload);
+        if (!request) {
+          ack?.({
+            ok: false,
+            error: 'sessionId, playerId, sceneId, and at least one field to update are required.',
+          });
+          return;
+        }
+
+        const result = sessions.updateScene(request.sessionId, request.playerId, request.sceneId, {
+          name: request.name,
+          backgroundImage: request.backgroundImage,
+        });
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+        }
+      },
+    );
+
+    // Fire-and-forget, no ack, no full-state broadcast — same pattern as
+    // player:move and for the same reason (docs/engineering/architecture.md,
+    // "Performance"). Not host-gated: any player can draw.
+    socket.on(SocketEvent.DrawingStart, (payload: unknown) => {
+      const request = parseDrawingStartRequest(payload);
+      if (!request) {
+        return;
+      }
+
+      const started = sessions.startDrawing(
+        request.sessionId,
+        request.sceneId,
+        request.drawingId,
+        request.playerId,
+        request.point,
+      );
+      if (started) {
+        socket.to(request.sessionId).emit(SocketEvent.DrawingStart, request);
+      }
+    });
+
+    socket.on(SocketEvent.DrawingUpdate, (payload: unknown) => {
+      const request = parseDrawingUpdateRequest(payload);
+      if (!request) {
+        return;
+      }
+
+      const updated = sessions.appendDrawingPoint(
+        request.sessionId,
+        request.drawingId,
+        request.point,
+      );
+      if (updated) {
+        socket.to(request.sessionId).emit(SocketEvent.DrawingUpdate, request);
+      }
+    });
+
+    socket.on(SocketEvent.DrawingEnd, (payload: unknown) => {
+      const request = parseDrawingEndRequest(payload);
+      if (!request || !sessions.get(request.sessionId)) {
+        return;
+      }
+
+      socket.to(request.sessionId).emit(SocketEvent.DrawingEnd, request);
+    });
+
+    socket.on(SocketEvent.DrawingDelete, (payload: unknown) => {
+      const request = parseDrawingDeleteRequest(payload);
+      if (!request) {
+        return;
+      }
+
+      const deleted = sessions.deleteDrawing(request.sessionId, request.sceneId, request.drawingId);
+      if (deleted) {
+        socket.to(request.sessionId).emit(SocketEvent.DrawingDelete, request);
       }
     });
 

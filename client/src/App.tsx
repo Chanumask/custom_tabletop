@@ -5,6 +5,7 @@ import {
   type GameState,
   type SessionJoinResponse,
   type SessionLeaveResponse,
+  type SceneUpdateResponse,
 } from '@custom-tabletop/shared';
 import { createSocket } from './socket.js';
 import { connectionStatusLabel, type ConnectionStatus } from './connectionStatus.js';
@@ -95,7 +96,31 @@ export function App() {
     );
   }
 
-  if (gameState && socketRef.current) {
+  function handleSetMapBackground(backgroundImage: string) {
+    const socket = socketRef.current;
+    if (!socket || !gameState) {
+      return;
+    }
+
+    socket.emit(
+      SocketEvent.SceneUpdate,
+      {
+        sessionId: gameState.sessionId,
+        playerId,
+        sceneId: gameState.activeSceneId,
+        backgroundImage,
+      },
+      (response: SceneUpdateResponse) => {
+        if (!response.ok) {
+          console.error('Failed to update the map:', response.error);
+        }
+      },
+    );
+  }
+
+  const activeScene = gameState?.scenes.find((scene) => scene.id === gameState.activeSceneId);
+
+  if (gameState && socketRef.current && activeScene) {
     return (
       <main className="game-shell">
         <RoomView
@@ -103,9 +128,15 @@ export function App() {
           sessionId={gameState.sessionId}
           playerId={playerId}
           players={gameState.players}
+          activeScene={activeScene}
         />
         <div className="session-overlay">
-          <SessionView state={gameState} playerId={playerId} onLeave={handleLeave} />
+          <SessionView
+            state={gameState}
+            playerId={playerId}
+            onLeave={handleLeave}
+            onSetMapBackground={handleSetMapBackground}
+          />
         </div>
       </main>
     );

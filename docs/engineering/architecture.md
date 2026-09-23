@@ -172,6 +172,8 @@ interface GameState {
 }
 ```
 
+**Implementation deviation (Milestone 5, logged in [decisions.md](../decisions.md)):** the actual `GameState` has no top-level `drawings` field — it was redundant with `Scene.drawings` (both keyed by the same `sceneId`) and nothing ever consumed it. `Drawing.points` is also `Point2D[]` (a new 2D-canvas-pixel type), not `Vector3[]` — a drawing stroke lives on a flat canvas texture, not in 3D world space.
+
 ### Szene
 
 ```typescript

@@ -2,8 +2,14 @@ import {
   DEFAULT_SPAWN_POSITION,
   type GameState,
   type Player,
+  type Point2D,
+  type Scene,
   type Vector3,
 } from '@custom-tabletop/shared';
+
+const DEFAULT_SCENE_ID = 'default';
+
+export type SceneMutationResult = { ok: true; state: GameState } | { ok: false; error: string };
 
 /**
  * The server-authoritative registry of live sessions. Trusts its inputs are
@@ -77,19 +83,150 @@ export class SessionStore {
     player.rotationY = rotationY;
     return true;
   }
+
+  /** Host-only. Adds a new scene; does not switch to it (see `changeScene`) —
+   * separate operations because the spec lists them as separate events. */
+  createScene(
+    sessionId: string,
+    playerId: string,
+    sceneId: string,
+    name: string,
+    backgroundImage: string,
+  ): SceneMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    if (state.hostId !== playerId) {
+      return { ok: false, error: 'Only the host can create a scene.' };
+    }
+    if (state.scenes.some((scene) => scene.id === sceneId)) {
+      return { ok: false, error: 'A scene with that id already exists.' };
+    }
+
+    state.scenes.push({ id: sceneId, name, backgroundImage, drawings: [] });
+    return { ok: true, state };
+  }
+
+  /** Host-only. Switches which existing scene is active. */
+  changeScene(sessionId: string, playerId: string, sceneId: string): SceneMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    if (state.hostId !== playerId) {
+      return { ok: false, error: 'Only the host can change the active scene.' };
+    }
+    if (!state.scenes.some((scene) => scene.id === sceneId)) {
+      return { ok: false, error: 'Scene not found.' };
+    }
+
+    state.activeSceneId = sceneId;
+    return { ok: true, state };
+  }
+
+  /** Host-only. Patches a scene's name and/or background image in place —
+   * this is what "the host swaps the map" actually calls (docs/decisions.md,
+   * Milestone 5): updating the already-active default scene's
+   * `backgroundImage`, rather than creating and switching to a new scene. */
+  updateScene(
+    sessionId: string,
+    playerId: string,
+    sceneId: string,
+    patch: { name?: string; backgroundImage?: string },
+  ): SceneMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    if (state.hostId !== playerId) {
+      return { ok: false, error: 'Only the host can update a scene.' };
+    }
+    const scene = state.scenes.find((candidate) => candidate.id === sceneId);
+    if (!scene) {
+      return { ok: false, error: 'Scene not found.' };
+    }
+
+    if (patch.name !== undefined) {
+      scene.name = patch.name;
+    }
+    if (patch.backgroundImage !== undefined) {
+      scene.backgroundImage = patch.backgroundImage;
+    }
+    return { ok: true, state };
+  }
+
+  /** Not host-gated — any player can draw. Starts a new stroke with its
+   * first point. Returns false (no-op) for an unknown session/scene. */
+  startDrawing(
+    sessionId: string,
+    sceneId: string,
+    drawingId: string,
+    playerId: string,
+    point: Point2D,
+  ): boolean {
+    const scene = this.sessions
+      .get(sessionId)
+      ?.scenes.find((candidate) => candidate.id === sceneId);
+    if (!scene) {
+      return false;
+    }
+
+    scene.drawings.push({ id: drawingId, sceneId, playerId, points: [point] });
+    return true;
+  }
+
+  /** Appends a point to an in-progress stroke. Returns false (no-op) if the
+   * drawingId isn't found — a late point for an already-deleted stroke is a
+   * normal race, not an error. */
+  appendDrawingPoint(sessionId: string, drawingId: string, point: Point2D): boolean {
+    const state = this.sessions.get(sessionId);
+    const drawing = state?.scenes
+      .flatMap((scene) => scene.drawings)
+      .find((candidate) => candidate.id === drawingId);
+    if (!drawing) {
+      return false;
+    }
+
+    drawing.points.push(point);
+    return true;
+  }
+
+  deleteDrawing(sessionId: string, sceneId: string, drawingId: string): boolean {
+    const scene = this.sessions
+      .get(sessionId)
+      ?.scenes.find((candidate) => candidate.id === sceneId);
+    if (!scene) {
+      return false;
+    }
+
+    const before = scene.drawings.length;
+    scene.drawings = scene.drawings.filter((drawing) => drawing.id !== drawingId);
+    return scene.drawings.length < before;
+  }
 }
 
 function createEmptySession(sessionId: string, hostId: string): GameState {
   return {
     sessionId,
     hostId,
-    activeSceneId: '', // no scenes until Milestone 5
-    scenes: [],
+    activeSceneId: DEFAULT_SCENE_ID,
+    scenes: [createDefaultScene()],
     players: [],
-    drawings: [],
     dice: [],
     soundboard: [],
   };
+}
+
+/** Every session starts with one scene, auto-created the same way the
+ * session itself is (implicitly, on first join) — mirrors the M2 "implicit
+ * session creation" pattern so the host can set a background image or a
+ * player can draw immediately, without a separate "create your first scene"
+ * step. `scene:create` still exists for adding further scenes (Milestone 5
+ * scope note in docs/decisions.md: implemented and tested, not yet wired to
+ * a multi-scene UI). */
+function createDefaultScene(): Scene {
+  return { id: DEFAULT_SCENE_ID, name: 'Map', backgroundImage: '', drawings: [] };
 }
 
 function createPlayer(id: string, name: string): Player {

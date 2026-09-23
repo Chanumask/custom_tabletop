@@ -68,6 +68,10 @@ function addTable(group: THREE.Group, layout: RoomLayout): void {
     new THREE.CylinderGeometry(table.radius, table.radius, 0.08, 32),
     material,
   );
+  // Named to match the Blender-exported room's table mesh (Milestone 5) so
+  // the tabletop-map/drawing code can find "the table top" the same way
+  // regardless of which room source is active.
+  top.name = 'Table_Top';
   top.position.set(table.center.x, tableHeight, table.center.z);
   group.add(top);
 
