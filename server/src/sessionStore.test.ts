@@ -274,4 +274,74 @@ describe('SessionStore', () => {
     store.join('abc', 'p1', 'Alice');
     expect(store.removeDice('abc', 'nope')).toEqual({ ok: false, error: 'Die not found.' });
   });
+
+  it('isHost is true for the host and false for everyone else', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+
+    expect(store.isHost('abc', 'p1')).toBe(true);
+    expect(store.isHost('abc', 'p2')).toBe(false);
+    expect(store.isHost('nope', 'p1')).toBe(false);
+  });
+
+  it('setMuted lets a player mute themselves', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+
+    const result = store.setMuted('abc', 'p2', 'p2', true);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.players.find((p) => p.id === 'p2')?.muted).toBe(true);
+  });
+
+  it('setMuted lets the host mute another player', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+
+    const result = store.setMuted('abc', 'p1', 'p2', true);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.players.find((p) => p.id === 'p2')?.muted).toBe(true);
+  });
+
+  it('setMuted rejects a non-host muting someone else', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+    store.join('abc', 'p3', 'Carol');
+
+    const result = store.setMuted('abc', 'p2', 'p3', true);
+    expect(result).toEqual({ ok: false, error: 'Only the host can mute another player.' });
+  });
+
+  it('setMuted(false) unmutes', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.setMuted('abc', 'p1', 'p1', true);
+
+    const result = store.setMuted('abc', 'p1', 'p1', false);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.players[0]!.muted).toBe(false);
+  });
+
+  it('setMuted for an unknown player returns an error', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    expect(store.setMuted('abc', 'p1', 'nope', true)).toEqual({
+      ok: false,
+      error: 'Player not found.',
+    });
+  });
+
+  it('setMuted on an unknown session returns an error', () => {
+    const store = new SessionStore();
+    expect(store.setMuted('nope', 'p1', 'p1', true)).toEqual({
+      ok: false,
+      error: 'Session not found.',
+    });
+  });
 });

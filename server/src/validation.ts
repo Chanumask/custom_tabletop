@@ -12,6 +12,9 @@ import type {
   DiceSpawnRequest,
   DiceRollRequest,
   DiceRemoveRequest,
+  SoundPlayRequest,
+  PlayerMuteRequest,
+  PlayerUnmuteRequest,
   Vector3,
   Point2D,
 } from '@custom-tabletop/shared';
@@ -282,4 +285,59 @@ export function parseDiceRemoveRequest(payload: unknown): DiceRemoveRequest | nu
   }
 
   return { sessionId: sessionId.trim(), playerId: playerId.trim(), diceId: diceId.trim() };
+}
+
+export function parseSoundPlayRequest(payload: unknown): SoundPlayRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, soundId } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || !isNonEmptyString(soundId)) {
+    return null;
+  }
+
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), soundId: soundId.trim() };
+}
+
+export function parsePlayerMuteRequest(payload: unknown): PlayerMuteRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, targetPlayerId } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    !isNonEmptyString(targetPlayerId)
+  ) {
+    return null;
+  }
+
+  return {
+    sessionId: sessionId.trim(),
+    playerId: playerId.trim(),
+    targetPlayerId: targetPlayerId.trim(),
+  };
+}
+
+export function parsePlayerUnmuteRequest(payload: unknown): PlayerUnmuteRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, targetPlayerId } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    !isNonEmptyString(targetPlayerId)
+  ) {
+    return null;
+  }
+
+  return {
+    sessionId: sessionId.trim(),
+    playerId: playerId.trim(),
+    targetPlayerId: targetPlayerId.trim(),
+  };
 }

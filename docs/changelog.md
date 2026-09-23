@@ -6,6 +6,40 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-24 (Milestone 7) — Soundboard & mute: the host plays a sound everyone hears, a player's mute status is visible to the group
+
+**Asked** (user): "next milestones" — after Milestone 6 finished (dice), picked up Milestone 7 per `docs/roadmap.md`.
+
+### What landed
+
+- **`shared`**: `sound.ts` (`SoundPlayRequest`/`Response`, `PlayerMuteRequest`/`Response`, `PlayerUnmuteRequest`/`Response`) — `Player.muted` and `GameState.soundboard` were already in the shared types since Milestone 1's placeholders, unused until now.
+- **`server`**: `SessionStore.isHost` (a small reusable host check) and `SessionStore.setMuted` (self-service mute always allowed, host can additionally mute/unmute anyone); `sound:play`/`player:mute`/`player:unmute` socket handlers in `server.ts`. `sound:play` is host-only and broadcasts to the whole room *including the sender* (`io.to`, not `socket.to`) since there's no local-prediction reason to exclude them the way `player:move`/`drawing:*` do.
+- **`client`**: `sounds.ts` — a small fixed soundboard catalog (Bell/Drum/Alert) synthesized with the Web Audio API (`OscillatorNode`) rather than shipped as audio files, since no real sound assets exist in this project; a single lazily-created, reused `AudioContext` handles the browser autoplay policy. `SessionView.tsx` gained a host-only Soundboard panel, a Mute/Unmute button per player (shown for yourself always, for others only if you're the host), and a "(muted)" tag in the player list.
+- Branch `feat/soundboard-mute`, squash-merged into local `main`. **Not pushed.**
+
+### Checked
+
+- **The M7 exit-check test** (`server/src/soundAndMute.test.ts`, 5 tests): a host-played sound is received by every client including the host itself; a non-host is rejected; a self-mute and a host-initiated mute of another player are each seen live by everyone; a non-host is rejected from muting someone else while the host succeeds; malformed payloads don't crash the server. Break-round verified on both the sound and mute broadcasts separately.
+- **Caught and fixed a real test-timing bug while writing the mute break-round** (not a server bug): a `.once()` session:state listener registered right after two `session:join` calls could catch an already-in-flight "player joined" broadcast instead of the later mute broadcast. Fixed with a short drain delay before registering the listener — logged in `docs/decisions.md` as a pattern to reuse if it recurs.
+- `client/src/sounds.test.ts` covers the catalog shape and the unknown-id no-op path; actual tone playback (real `AudioContext`, unavailable under Vitest's `node` environment) is covered by the browser check below instead.
+- Full `sanity-check` (lint/format/build/test, 180 tests across all 3 workspaces) clean, both mid-session and right before merge.
+- **Real two-tab browser verification**: a non-host player's UI correctly hides the Soundboard/Map panels (host-only) while still showing a self-Mute button and the Dice panel; the host playing a sound produced no console errors on either tab; a self-mute and a host-initiated unmute of another player each appeared live on both tabs with no refresh.
+- Dev server processes confirmed stopped, ports 3001/5173 clear afterward.
+
+### Next session
+
+Milestone 7 is done. Paste-to-start prompt:
+
+> Start Milestone 8: room interactables. Additional 3D objects in the room beyond the table/dice that a player can approach and use (dice tray, shelf, etc.) — the first real use of the "future 3D tabletop objects" bucket from the original spec. New event(s) (e.g. `object:interact`), server-validated same as everything else. Exit check: a player walks up to an interactable and triggers it; the effect is visible to everyone in the session.
+
+- **Branch:** `main` — none open. `feat/soundboard-mute` merged and deleted.
+- **State:** M1–M7 all done. The room now has a full tabletop toolset (map, drawing, dice, soundboard, mute status) on top of the walkable 3D room and player avatars from earlier milestones.
+- **Do next:** Milestone 8 per [docs/roadmap.md](roadmap.md) — likely needs a proximity/interaction-range check (how close counts as "approaching" an interactable), a design call worth flagging to the user rather than assuming.
+- **Watch for:** the Chrome Pointer Lock automation restriction (M3+) and the Blender MCP concurrent-session gotcha (M3 part 2) if either comes up again. The PATH-after-install gotcha (`docs/engineering/tooling.md`) for `npm`/`node` in fresh Bash/PowerShell tool shells on this machine. The `.once()`-can-catch-a-stale-broadcast test-timing gotcha (this session, `docs/decisions.md`) if a new integration test needs to wait for a *specific* session:state broadcast following other recent ones.
+- **Environment:** nothing running — no dev server. Both ports confirmed clear at session end.
+
+---
+
 ## 2026-09-24 (Milestone 6) — Dice: any player spawns and rolls a die, the result is visible to everyone live
 
 **Asked** (user): "next milestone" — after Milestone 5 finished (tabletop map & drawing), picked up Milestone 6 per `docs/roadmap.md`.

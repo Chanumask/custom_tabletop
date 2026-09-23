@@ -5,3 +5,4 @@ export * from './player.js';
 export * from './scene.js';
 export * from './drawing.js';
 export * from './dice.js';
+export * from './sound.js';

@@ -55,11 +55,11 @@ Version control, docs structure, and the Claude Code workflow.
 - 3D dice rendered and animated on the table, visible to everyone in the room regardless of where they're standing/looking — a spinning placeholder cube (`client/src/three/DiceManager.ts`) plus a camera-facing sprite label showing the current result, deliberately decoupled from the cube's own rotation (see `docs/decisions.md` for why).
 - **Exit check:** any player spawns and rolls a die on the table; the result and motion are visible to everyone. **✅** — proven by `server/src/dice.test.ts` (break-round verified, including a non-owner/non-host roll and remove) and confirmed live in a real two-tab browser check (a second, non-host player's re-roll appeared on both tabs simultaneously with no refresh).
 
-## M7 — Soundboard & mute
+## M7 — Soundboard & mute ✅
 
-- `sound:play` (host-triggered, or per scope decided at the time).
-- `player:mute` / `player:unmute`.
-- **Exit check:** host plays a sound, all players hear it; a muted player's state is visible to the group.
+- `sound:play` (host-triggered — the roadmap's own default scope, kept as-is).
+- `player:mute` / `player:unmute` — not purely host-gated: a player can always mute/unmute themselves, and the host can additionally mute/unmute anyone (see `docs/decisions.md`). `muted` is a visible status flag only; this app has no voice chat to actually silence.
+- **Exit check:** host plays a sound, all players hear it; a muted player's state is visible to the group. **✅** — proven by `server/src/soundAndMute.test.ts` (break-round verified) and confirmed live in a real two-tab browser check (a self-mute and a host-initiated unmute of another player each appeared on both tabs with no refresh). Sounds are synthesized Web Audio tones (a small fixed catalog), not shipped audio files — no real sound assets exist in this project.
 
 ## M8 — Room interactables
 

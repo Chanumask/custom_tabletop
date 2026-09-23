@@ -13,6 +13,9 @@ import {
   type DiceSpawnResponse,
   type DiceRollResponse,
   type DiceRemoveResponse,
+  type SoundPlayResponse,
+  type PlayerMuteResponse,
+  type PlayerUnmuteResponse,
 } from '@custom-tabletop/shared';
 import { SessionStore } from './sessionStore.js';
 import {
@@ -29,6 +32,9 @@ import {
   parseDiceSpawnRequest,
   parseDiceRollRequest,
   parseDiceRemoveRequest,
+  parseSoundPlayRequest,
+  parsePlayerMuteRequest,
+  parsePlayerUnmuteRequest,
 } from './validation.js';
 
 export interface AppServer {
@@ -297,6 +303,80 @@ export function createAppServer(): AppServer {
         }
 
         const result = sessions.removeDice(request.sessionId, request.diceId);
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+        }
+      },
+    );
+
+    // Host-only. No persisted state to broadcast back (playing a sound
+    // doesn't change the session), so unlike scene:*/dice:* this just
+    // relays the same payload to everyone in the session, sender included —
+    // there's no local optimistic playback to avoid double-triggering, the
+    // way there is for drawing:*/player:move.
+    socket.on(
+      SocketEvent.SoundPlay,
+      (payload: unknown, ack?: (response: SoundPlayResponse) => void) => {
+        const request = parseSoundPlayRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and soundId are required.' });
+          return;
+        }
+        if (!sessions.get(request.sessionId)) {
+          ack?.({ ok: false, error: 'Session not found.' });
+          return;
+        }
+        if (!sessions.isHost(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: 'Only the host can play a sound.' });
+          return;
+        }
+
+        ack?.({ ok: true });
+        io.to(request.sessionId).emit(SocketEvent.SoundPlay, request);
+      },
+    );
+
+    // A player can always mute/unmute themselves; the host can additionally
+    // mute/unmute anyone (see SessionStore.setMuted). Infrequent, full-state
+    // ack + broadcast — same pattern as scene:*/dice:*.
+    socket.on(
+      SocketEvent.PlayerMute,
+      (payload: unknown, ack?: (response: PlayerMuteResponse) => void) => {
+        const request = parsePlayerMuteRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and targetPlayerId are required.' });
+          return;
+        }
+
+        const result = sessions.setMuted(
+          request.sessionId,
+          request.playerId,
+          request.targetPlayerId,
+          true,
+        );
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+        }
+      },
+    );
+
+    socket.on(
+      SocketEvent.PlayerUnmute,
+      (payload: unknown, ack?: (response: PlayerUnmuteResponse) => void) => {
+        const request = parsePlayerUnmuteRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and targetPlayerId are required.' });
+          return;
+        }
+
+        const result = sessions.setMuted(
+          request.sessionId,
+          request.playerId,
+          request.targetPlayerId,
+          false,
+        );
         ack?.(result);
         if (result.ok) {
           io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);

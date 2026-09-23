@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import type { GameState } from '@custom-tabletop/shared';
+import { SOUND_PRESETS } from './sounds.js';
 
 export interface SessionViewProps {
   state: GameState;
@@ -9,6 +10,9 @@ export interface SessionViewProps {
   onSpawnDie: () => void;
   onRollDie: (diceId: string) => void;
   onRemoveDie: (diceId: string) => void;
+  onPlaySound: (soundId: string) => void;
+  onMutePlayer: (targetPlayerId: string) => void;
+  onUnmutePlayer: (targetPlayerId: string) => void;
 }
 
 export function SessionView({
@@ -19,6 +23,9 @@ export function SessionView({
   onSpawnDie,
   onRollDie,
   onRemoveDie,
+  onPlaySound,
+  onMutePlayer,
+  onUnmutePlayer,
 }: SessionViewProps) {
   const isHost = playerId === state.hostId;
   const activeScene = state.scenes.find((scene) => scene.id === state.activeSceneId);
@@ -35,13 +42,30 @@ export function SessionView({
         Session <strong>{state.sessionId}</strong>
       </p>
       <ul>
-        {state.players.map((player) => (
-          <li key={player.id}>
-            {player.name}
-            {player.id === state.hostId && ' (host)'}
-            {player.id === playerId && ' (you)'}
-          </li>
-        ))}
+        {state.players.map((player) => {
+          const canModerate = player.id === playerId || isHost;
+          return (
+            <li key={player.id}>
+              {player.name}
+              {player.id === state.hostId && ' (host)'}
+              {player.id === playerId && ' (you)'}
+              {player.muted && ' (muted)'}
+              {canModerate && (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      player.muted ? onUnmutePlayer(player.id) : onMutePlayer(player.id)
+                    }
+                  >
+                    {player.muted ? 'Unmute' : 'Mute'}
+                  </button>
+                </>
+              )}
+            </li>
+          );
+        })}
       </ul>
       {isHost && (
         <form onSubmit={handleSetMap}>
@@ -75,6 +99,16 @@ export function SessionView({
           ))}
         </ul>
       </div>
+      {isHost && (
+        <div>
+          <p>Soundboard</p>
+          {SOUND_PRESETS.map((preset) => (
+            <button key={preset.id} type="button" onClick={() => onPlaySound(preset.id)}>
+              {preset.name}
+            </button>
+          ))}
+        </div>
+      )}
       <button onClick={onLeave}>Leave session</button>
     </div>
   );

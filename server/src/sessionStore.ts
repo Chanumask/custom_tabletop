@@ -73,6 +73,10 @@ export class SessionStore {
     return this.sessions.get(sessionId);
   }
 
+  isHost(sessionId: string, playerId: string): boolean {
+    return this.sessions.get(sessionId)?.hostId === playerId;
+  }
+
   /** Updates a player's position/rotation in place. Returns false (no-op)
    * for an unknown session or a player not in it, rather than throwing —
    * a late-arriving move for a session/player that's already gone is a
@@ -260,6 +264,32 @@ export class SessionStore {
       return { ok: false, error: 'Die not found.' };
     }
 
+    return { ok: true, state };
+  }
+
+  /** A player can always mute/unmute *themselves* (self-service — like
+   * muting your own mic); the host can additionally mute/unmute anyone
+   * (moderation). `muted` is a visible status flag only — this app has no
+   * voice chat to actually silence (docs/decisions.md, Milestone 7). */
+  setMuted(
+    sessionId: string,
+    actorId: string,
+    targetPlayerId: string,
+    muted: boolean,
+  ): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    if (actorId !== targetPlayerId && state.hostId !== actorId) {
+      return { ok: false, error: 'Only the host can mute another player.' };
+    }
+    const target = state.players.find((player) => player.id === targetPlayerId);
+    if (!target) {
+      return { ok: false, error: 'Player not found.' };
+    }
+
+    target.muted = muted;
     return { ok: true, state };
   }
 }

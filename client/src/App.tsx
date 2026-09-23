@@ -9,6 +9,10 @@ import {
   type DiceSpawnResponse,
   type DiceRollResponse,
   type DiceRemoveResponse,
+  type SoundPlayRequest,
+  type SoundPlayResponse,
+  type PlayerMuteResponse,
+  type PlayerUnmuteResponse,
 } from '@custom-tabletop/shared';
 import { createSocket } from './socket.js';
 import { connectionStatusLabel, type ConnectionStatus } from './connectionStatus.js';
@@ -19,6 +23,7 @@ import { RoomView } from './three/RoomView.js';
 import { DIE_SIZE } from './three/DiceManager.js';
 import { PLACEHOLDER_ROOM_LAYOUT } from './three/RoomLayout.js';
 import { randomDiceSpawnPosition } from './diceSpawn.js';
+import { playSoundPreset } from './sounds.js';
 
 interface JoinIntent {
   playerName: string;
@@ -68,6 +73,14 @@ export function App() {
 
     socket.on(SocketEvent.SessionState, (state: GameState) => {
       setGameState((current) => (current?.sessionId === state.sessionId ? state : current));
+    });
+
+    // Every client — including the host who triggered it — plays the tone
+    // only once this broadcast arrives, rather than optimistically locally;
+    // see docs/decisions.md (Milestone 7) for why sound:play doesn't follow
+    // drawing:*/player:move's local-prediction pattern.
+    socket.on(SocketEvent.SoundPlay, (request: SoundPlayRequest) => {
+      playSoundPreset(request.soundId);
     });
 
     socket.on('disconnect', () => setStatus('disconnected'));
@@ -180,6 +193,57 @@ export function App() {
     );
   }
 
+  function handlePlaySound(soundId: string) {
+    const socket = socketRef.current;
+    if (!socket || !gameState) {
+      return;
+    }
+
+    socket.emit(
+      SocketEvent.SoundPlay,
+      { sessionId: gameState.sessionId, playerId, soundId },
+      (response: SoundPlayResponse) => {
+        if (!response.ok) {
+          console.error('Failed to play sound:', response.error);
+        }
+      },
+    );
+  }
+
+  function handleMutePlayer(targetPlayerId: string) {
+    const socket = socketRef.current;
+    if (!socket || !gameState) {
+      return;
+    }
+
+    socket.emit(
+      SocketEvent.PlayerMute,
+      { sessionId: gameState.sessionId, playerId, targetPlayerId },
+      (response: PlayerMuteResponse) => {
+        if (!response.ok) {
+          console.error('Failed to mute player:', response.error);
+        }
+      },
+    );
+  }
+
+  function handleUnmutePlayer(targetPlayerId: string) {
+    const socket = socketRef.current;
+    if (!socket || !gameState) {
+      return;
+    }
+
+    socket.emit(
+      SocketEvent.PlayerUnmute,
+      { sessionId: gameState.sessionId, playerId, targetPlayerId },
+      (response: PlayerUnmuteResponse) => {
+        if (!response.ok) {
+          console.error('Failed to unmute player:', response.error);
+        }
+      },
+    );
+  }
+
   const activeScene = gameState?.scenes.find((scene) => scene.id === gameState.activeSceneId);
 
   if (gameState && socketRef.current && activeScene) {
@@ -202,6 +266,9 @@ export function App() {
             onSpawnDie={handleSpawnDie}
             onRollDie={handleRollDie}
             onRemoveDie={handleRemoveDie}
+            onPlaySound={handlePlaySound}
+            onMutePlayer={handleMutePlayer}
+            onUnmutePlayer={handleUnmutePlayer}
           />
         </div>
       </main>

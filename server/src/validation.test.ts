@@ -13,6 +13,9 @@ import {
   parseDiceSpawnRequest,
   parseDiceRollRequest,
   parseDiceRemoveRequest,
+  parseSoundPlayRequest,
+  parsePlayerMuteRequest,
+  parsePlayerUnmuteRequest,
 } from './validation.js';
 
 describe('parseSessionJoinRequest', () => {
@@ -307,6 +310,51 @@ describe('parseDiceRemoveRequest', () => {
     'rejects malformed payload %#',
     (payload) => {
       expect(parseDiceRemoveRequest(payload)).toBeNull();
+    },
+  );
+});
+
+describe('parseSoundPlayRequest', () => {
+  it('accepts a well-formed payload and trims whitespace', () => {
+    expect(
+      parseSoundPlayRequest({ sessionId: ' abc ', playerId: ' p1 ', soundId: ' bell ' }),
+    ).toEqual({ sessionId: 'abc', playerId: 'p1', soundId: 'bell' });
+  });
+
+  it.each([[null], [{ sessionId: 'abc', playerId: 'p1' }], [{ soundId: 'bell' }]])(
+    'rejects malformed payload %#',
+    (payload) => {
+      expect(parseSoundPlayRequest(payload)).toBeNull();
+    },
+  );
+});
+
+describe('parsePlayerMuteRequest', () => {
+  it('accepts a well-formed payload and trims whitespace', () => {
+    expect(
+      parsePlayerMuteRequest({ sessionId: ' abc ', playerId: ' p1 ', targetPlayerId: ' p2 ' }),
+    ).toEqual({ sessionId: 'abc', playerId: 'p1', targetPlayerId: 'p2' });
+  });
+
+  it.each([[null], [{ sessionId: 'abc', playerId: 'p1' }], [{ targetPlayerId: 'p2' }]])(
+    'rejects malformed payload %#',
+    (payload) => {
+      expect(parsePlayerMuteRequest(payload)).toBeNull();
+    },
+  );
+});
+
+describe('parsePlayerUnmuteRequest', () => {
+  it('accepts a well-formed payload and trims whitespace', () => {
+    expect(
+      parsePlayerUnmuteRequest({ sessionId: ' abc ', playerId: ' p1 ', targetPlayerId: ' p2 ' }),
+    ).toEqual({ sessionId: 'abc', playerId: 'p1', targetPlayerId: 'p2' });
+  });
+
+  it.each([[null], [{ sessionId: 'abc', playerId: 'p1' }], [{ targetPlayerId: 'p2' }]])(
+    'rejects malformed payload %#',
+    (payload) => {
+      expect(parsePlayerUnmuteRequest(payload)).toBeNull();
     },
   );
 });
