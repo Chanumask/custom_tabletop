@@ -4,9 +4,11 @@
 
 Milestones for building Custom Tabletop, in order. Each is meant to land as one or more feature branches, merged and tagged before moving to the next — a milestone is "done" when it's playable/testable end to end, not just compiling. Scope, order, and even milestone boundaries can shift as we learn more; update this file (and log why in [decisions.md](decisions.md)) when they do.
 
+Reordered 2026-09-23 around the walkable-3D-room decision — see [engineering/architecture.md](engineering/architecture.md#extension-a-walkable-3d-room-not-a-2d-map-with-3d-accents). The room and first-person movement now come *before* the tabletop map/drawing feature, since the room is the primary view, not an overlay on top of a 2D map.
+
 ## M0 — Repository & workflow setup ✅
 
-Version control, docs structure, and the Claude Code workflow (this session). No application code.
+Version control, docs structure, and the Claude Code workflow.
 
 ## M1 — Toolchain & project scaffolding
 
@@ -14,7 +16,7 @@ Version control, docs structure, and the Claude Code workflow (this session). No
 - npm workspaces: `client/`, `server/`, `shared/`, each with its own `package.json` and `tsconfig.json`.
 - `client`: Vite + React + TypeScript, empty app shell.
 - `server`: Node + TypeScript + Express (REST) + Socket.IO, empty server that starts and accepts a connection.
-- `shared`: TypeScript types/event contracts, imported by both (per the structure in [architecture.md](engineering/architecture.md)).
+- `shared`: TypeScript types/event contracts, imported by both.
 - ESLint + Prettier across the workspace; a test runner (Vitest) wired up with one smoke test per package.
 - **Exit check:** client connects to server over a WebSocket, server logs the connection, one round-trip event works end to end.
 
@@ -22,42 +24,55 @@ Version control, docs structure, and the Claude Code workflow (this session). No
 
 - `session:join` / `session:leave`, server-side session registry.
 - Host vs. player role, assigned on join.
-- Server-authoritative `GameState` shell (per the interfaces in [architecture.md](engineering/architecture.md)), broadcast to a session's clients on change.
+- Server-authoritative `GameState` shell, broadcast to a session's clients on change.
 - Basic reconnect handling (a dropped client can rejoin the same session).
-- **Exit check:** two+ browser tabs join the same session and see each other in a player list.
+- **Exit check:** two+ browser tabs join the same session and see each other in a player list. Still no visuals beyond a plain page — the room comes next.
 
-## M3 — Scenes & 2D drawing
+## M3 — 3D room shell & first-person movement
+
+- Placeholder Blender room + table, exported as glTF/GLB, loaded via `GLTFLoader`.
+- First-person camera, WASD + mouse-look movement, collision against walls/table.
+- Solo exploration only — no other players visible yet, no map/dice.
+- **Exit check:** a player joins a session and can walk around a 3D room and bump into the table/walls without clipping through them.
+
+## M4 — Player avatars
+
+- `player:move` drives real 3D position/orientation, server-validated.
+- Other connected players render and move as avatars in the room in real time (placeholder capsule/mesh is fine — real character models are a later art pass, not blocking).
+- **Exit check:** two+ players in the same session see each other walk around the room live.
+
+## M5 — Tabletop map & drawing
 
 - `scene:create` / `scene:change` / `scene:update`, host-only, server-validated.
-- 2D canvas layer renders the active scene's background image.
-- Freehand drawing synced via `drawing:start` / `drawing:update` / `drawing:end` / `drawing:delete` — only the stroke delta goes over the wire, not the whole canvas (per the Performance section of [architecture.md](engineering/architecture.md)).
-- **Exit check:** host switches scenes and all players see it change; any player draws and everyone sees the stroke live.
+- The 2D canvas (background image + drawing) renders as a `THREE.CanvasTexture` applied to the table surface, not full-screen.
+- Freehand drawing synced via `drawing:start` / `drawing:update` / `drawing:end` / `drawing:delete` — only the stroke delta goes over the wire.
+- **Exit check:** host switches the map on the table and all players see it change; any player draws on the table and everyone sees the stroke live, from wherever they're standing in the room.
 
-## M4 — 3D layer & player tokens
-
-- WebGL/Three.js layer, rendered independently on top of the 2D/UI layers.
-- Player tokens in 3D space, position synced via `player:move`, server-validated.
-- **Exit check:** players see each other's tokens move in the 3D layer in real time, positioned correctly relative to the 2D scene underneath.
-
-## M5 — Dice
+## M6 — Dice
 
 - `dice:spawn` / `dice:roll` / `dice:remove`, server-authoritative.
-- 3D dice rendered and animated in the WebGL layer, visible to all players in the session.
-- **Exit check:** any player spawns and rolls a die; the result and motion are visible to everyone.
+- 3D dice rendered and animated on the table, visible to everyone in the room regardless of where they're standing/looking.
+- **Exit check:** any player spawns and rolls a die on the table; the result and motion are visible to everyone.
 
-## M6 — Soundboard & mute
+## M7 — Soundboard & mute
 
 - `sound:play` (host-triggered, or per scope decided at the time).
 - `player:mute` / `player:unmute`.
 - **Exit check:** host plays a sound, all players hear it; a muted player's state is visible to the group.
 
-## M7 — Host authority hardening
+## M8 — Room interactables
 
-- Server-side validation for every host-gated action from the spec: scene create/change/delete, dice spawn/remove, player mute, player positions, join/leave — a client can't do any of these by local manipulation alone.
+- Additional 3D objects in the room beyond the table/dice that a player can approach and use (dice tray, shelf, etc.) — first real use of the "future 3D tabletop objects" bucket from the original spec.
+- New event(s) (e.g. `object:interact`), server-validated same as everything else.
+- **Exit check:** a player walks up to an interactable and triggers it; the effect is visible to everyone in the session.
+
+## M9 — Host authority hardening
+
+- Server-side validation for every host-gated action from the spec: scene create/change/delete, dice spawn/remove, player mute, player positions, join/leave, and any interactables added in M8 — a client can't do any of these by local manipulation alone.
 - Cross-browser pass: Chrome, Edge, Firefox required; Safari best-effort.
 - **Exit check:** a manually-forged client event for a host-only action is rejected by the server and has no effect.
 
-## M8 — Performance & polish
+## M10 — Performance & polish
 
 - Confirm delta-only updates hold under real drawing/movement load (no full-state re-broadcast).
 - Basic error/disconnect UX, session cleanup on empty session.
@@ -65,4 +80,4 @@ Version control, docs structure, and the Claude Code workflow (this session). No
 
 ---
 
-Later, out of scope for now: persistence/save-load, richer map tools, mobile support — revisit once M1–M8 are playable.
+Later, out of scope for now: persistence/save-load, richer map tools, mobile support, real (non-placeholder) character models — revisit once M1–M10 are playable.

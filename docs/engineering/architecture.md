@@ -2,7 +2,28 @@
 
 ← [CLAUDE.md](../../CLAUDE.md) · [engineering index](README.md)
 
-This is the original design specification handed over at project start, lightly reformatted into the docs hierarchy. It's the default plan, not a locked spec — see [decisions.md](../decisions.md) for why it's taken as given rather than re-litigated, and the note at the bottom of this file for how to change it once real implementation surfaces reasons to.
+This is the original design specification handed over at project start, lightly reformatted into the docs hierarchy, **plus one deliberate extension decided 2026-09-23** (see the section right below and [decisions.md](../decisions.md)). It's the default plan, not a locked spec — the note at the bottom of this file says how to change it once real implementation surfaces reasons to.
+
+## Extension: a walkable 3D room, not a 2D map with 3D accents
+
+The spec below (as originally written) describes a **2D-canvas-first VTT**: a top-down map fills the screen, and Three.js/WebGL supplies an accent layer on top of it — 3D dice, 3D player figures, floating independently over the 2D canvas/UI. That's the Roll20/Foundry model.
+
+**The actual product vision is different and takes priority where the two conflict:** the player is placed in a **fully 3D, Blender-built room** — walls, a big physical table, and interactable furniture — and moves through it in **free first-person** (WASD + mouse-look, collision against walls/table/furniture). The map and drawing layer aren't a full-screen 2D canvas; they're a **physical surface on the table inside that room**.
+
+This does *not* invalidate the rest of the spec — it changes where a few pieces render, not the event model, sync strategy, or server authority:
+
+- **The 2D `<canvas>` still exists and drawing still works exactly as specified** (`drawing:start/update/end/delete`, same delta-only payloads) — it's just never shown full-screen. Its pixels feed a `THREE.CanvasTexture` applied to a plane/mesh on the tabletop, so a stroke drawn on the map appears on the table surface inside the room, live, for everyone. This is a standard, well-supported Three.js technique, not a research problem.
+- **`Player.position` (`x, y, z`) already anticipated a 3D position** in the original spec's `GameState` shape — that field now drives a walking first-person avatar instead of a token on a flat map. No shared-type change needed, just what consumes it.
+- **Dice and "future 3D tabletop objects" were already scoped for Three.js** in the original spec — a room, a table, and interactable furniture (dice tray, shelves, etc.) are more of exactly that bucket, not new territory.
+- **Server authority, session/scene events, and the performance approach (deltas, not full state) are unchanged.**
+
+What's genuinely new, not implied by the original spec:
+
+- **Asset pipeline:** room/furniture/table modeled in **Blender**, exported as **glTF/GLB**, loaded client-side with Three.js's `GLTFLoader`. This is the standard free pipeline for this stack — no new dependency category, just a workflow to set up (export settings, draco/meshopt compression once assets get heavier).
+- **Movement & collision:** first-person camera controls and collision against room geometry (walls, table, furniture) — real added scope the flat-map version wouldn't have needed.
+- **Interactables:** objects in the room beyond the map/dice that a player can approach and use (dice tray, shelf, etc.) — will need their own event(s) (e.g. `object:interact`) and server validation, following the same host/player-authority pattern as everything else in the spec.
+
+See [roadmap.md](../roadmap.md) for how this reorders the build (room + movement now come before the tabletop map/drawing feature, since the room is the primary view, not an overlay on it).
 
 ## Technischer Stack
 
