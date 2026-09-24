@@ -318,6 +318,9 @@ export function App() {
   const handleRemoveSound = (soundId: string) =>
     sendAction(SocketEvent.SoundRemove, { soundId }, 'Failed to remove the sound');
 
+  const handleWriteWhiteboard = (lines: (string | null)[]) =>
+    sendAction(SocketEvent.WhiteboardWrite, { lines }, 'Failed to write on the whiteboard');
+
   const handleObjectInteract = (objectId: string) =>
     sendAction(SocketEvent.ObjectInteract, { objectId }, 'Failed to interact');
 
@@ -355,6 +358,8 @@ export function App() {
           onUploadSound={handleUploadSound}
           onAssignSlot={handleAssignSlot}
           onNotify={toast}
+          whiteboard={gameState.whiteboard}
+          onWriteWhiteboard={handleWriteWhiteboard}
         />
         <SessionView
           state={gameState}

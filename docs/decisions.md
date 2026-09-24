@@ -6,6 +6,38 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-25 — Whiteboard: six synced text lines, each in its writer's color, edits sent per line so concurrent writers never collide
+
+**Decided** (change request #5).
+
+1. **Fixed layout: 6 lines, up to 42 characters each** (`shared/src/whiteboard.ts`). Six fits a scene's notes, an initiative order or a riddle, and still reads from across the room. Longer lines shrink to fit rather than wrapping, so a line on the board is always one row of the editor. Control characters become spaces server-side, so a pasted tab or newline can't break the one-row-per-line layout.
+2. **Per-line authorship, stored as `{text, authorId, color}`.** A line keeps the color of whoever last changed its text. Clients draw it in the author's *current* color while they're present (recoloring re-inks your lines live) and fall back to the stored color once they've left. Clearing a line clears its author.
+3. **`whiteboard:write` sends `(string | null)[]`, where `null` means "I didn't touch this line", not the whole board.** The first version sent every line and re-attributed any that differed. Live-testing exposed a lost update: if Alice opened the editor, Bob saved line 3, and then Alice saved, her stale empty line 3 wiped Bob's text. Sending only edited lines makes concurrent saves merge line by line. Two people editing the *same* line is last-save-wins, which is fine for a shared scratch board. The editor also keeps untouched lines live, so someone else's save shows up in your open editor.
+4. **Interaction = aim + E, like the wall soundboard** (a raycast from the screen center, ≤ 3.2 m, walking only). It opens a DOM modal rather than an in-world text cursor. Typing into a 3D surface would need its own caret, selection and IME handling; a modal gets all of that from the browser for free and stays accessible.
+5. **Ink is made legible, not used raw.** Yellow (#e9c33b) on a white board is ~1.7:1 contrast. `legibleInk` darkens a player color toward black, keeping its hue, only as far as needed for ≥ 3.5:1 against the board. Red, blue and purple pass unchanged; yellow becomes a dark gold. The editor previews the same ink.
+6. **Rendering:** a 2048-px `CanvasTexture` on the model's `Whiteboard_Surface`, marker-style system font, faint ruled lines, and `roughness 0.7`. At 0.35 the lamp's highlight washed out the middle of the text. **Gotcha:** the board keeps its exported glTF UVs, whose `v` runs top-down, so the texture needs `flipY = false` like every GLTFLoader texture. With three's default the text rendered upside down, which unit tests can't catch; the live render did.
+
+**Verified:** `server/src/whiteboard.test.ts` (13 tests):
+- store attribution and clearing;
+- null lines left alone;
+- parser cleaning, null passthrough and rejections;
+- 3-client socket sync;
+- simultaneous saves of different lines both landing;
+- forged writer and over-long line refused.
+
+`whiteboardInk.test.ts` (8 tests): author/fallback/default ink, WCAG contrast, every player color legible, hue kept.
+
+Live (Chrome, 3 tabs plus a 4th socket-client player):
+- The aim prompt appears only when facing the board within range.
+- E opens the editor, focused on the first empty line; Esc discards.
+- A save showed in the other two tabs' board canvases in the writer's color.
+- A recolor re-inked the writer's lines everywhere.
+- Dave's save appeared live in Cara's open editor and survived Cara's save.
+
+400 tests; lint, format and build clean.
+
+---
+
 ## 2026-09-24 — Player characters: six Quaternius models built by script, interpolated and animated, seated on chairs, emotes, name tags
 
 **Decided** (change request #3; ideas #1 name tags and #5 emotes).
@@ -297,6 +329,8 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ## Table of Contents
 
-**2026-09-24** — Milestone 9: host authority hardening, an audit pass (not a new feature), the roadmap's stale "host-gated" list corrected, two real socket-level coverage gaps closed (scene:create, scene:change), player:unmute given its first test coverage, cross-browser pass logged as unverified (Chrome-only tooling); Milestone 8: room interactables, one generic object:interact event, proximity+E over raycast/click, table sit-down mode as a pure camera takeover, seated status visible via avatar squash, a soundboard console reusing sound:play, a real prompt-text bug caught live, a square full-screen seated table view, a seated drawing toolbar (per-stroke color/width, an eraser reusing drawing:delete), a latent drawing:delete remote-redraw bug caught and fixed, a React-controlled-input automation-testing gotcha, a real user-reported eraser bug (local drawing state never updated in real time) caught and fixed; File uploads (M5/M7 extension): REST upload + socket-register two-step, soundboard becomes real shared state, cover-fit stopgap for map images, three related asks captured as roadmap entries instead of implemented; Milestone 7: soundboard & mute, synthesized tones, self-mute plus host moderation, sender included in the sound broadcast; Milestone 6: dice, server-authoritative roll result, motion decoupled from result label, `Dice.sceneId` dropped, client-picked spawn position; Milestone 5: tabletop map & drawing, draw-on-the-table interaction, runtime UV remap, single-scene scope cut, `Point2D` spec deviation
+**2026-09-25** — Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
+
+**2026-09-24** — Player characters: six Quaternius models built by a glTF-Transform script, interpolation, chair sitting, emotes, name tags, Blender MCP read_homefile crash gotcha, frame-delta cap; map crop/preview dialog, uploads named by validated type; room rework: square table, furnished Blender room, geometry read from the model, true-color table surface; soundboard links validated, YouTube as a visible clip, board management; player colors, pre-join peek, live profile edits, invite links, toasts; identity binding, reconnect grace period, host handover, resume-only rejoin; wall soundboard rework (4x4 aim-and-E grid, `sound:play` opened to everyone); session menu rework (tabs, client-only settings, rebindable interact key, no YouTube downloader); Milestone 9: host authority hardening, an audit pass (not a new feature), the roadmap's stale "host-gated" list corrected, two real socket-level coverage gaps closed (scene:create, scene:change), player:unmute given its first test coverage, cross-browser pass logged as unverified (Chrome-only tooling); Milestone 8: room interactables, one generic object:interact event, proximity+E over raycast/click, table sit-down mode as a pure camera takeover, seated status visible via avatar squash, a soundboard console reusing sound:play, a real prompt-text bug caught live, a square full-screen seated table view, a seated drawing toolbar (per-stroke color/width, an eraser reusing drawing:delete), a latent drawing:delete remote-redraw bug caught and fixed, a React-controlled-input automation-testing gotcha, a real user-reported eraser bug (local drawing state never updated in real time) caught and fixed; File uploads (M5/M7 extension): REST upload + socket-register two-step, soundboard becomes real shared state, cover-fit stopgap for map images, three related asks captured as roadmap entries instead of implemented; Milestone 7: soundboard & mute, synthesized tones, self-mute plus host moderation, sender included in the sound broadcast; Milestone 6: dice, server-authoritative roll result, motion decoupled from result label, `Dice.sceneId` dropped, client-picked spawn position; Milestone 5: tabletop map & drawing, draw-on-the-table interaction, runtime UV remap, single-scene scope cut, `Point2D` spec deviation
 
 **2026-09-23** — Milestone 4: player avatars, yaw-only rotation, delta-only `player:move`, membership vs. live-movement split, shared spawn-position constant; Milestone 3 part 2: real Blender room built and swapped in, lighting driven client-side not baked into the glb, Blender MCP concurrent-session gotcha; Milestone 3 part 1: axis-separated collision, `PointerLockControls`, room/table sizing; Milestone 3 split (movement now, real Blender room next session), Blender MCP reused from `extraction_project`; Milestone 2: implicit session creation, derived host role, disconnect ≠ leave, sessionStorage identity; `.gitattributes` forces LF endings over this machine's `core.autocrlf`; TS project references dropped for `shared`; server/client ports and the infra-only ping/pong event pair; `npm audit` dev-tooling vulnerabilities accepted for now; player experience is a walkable 3D room, not a 2D map with 3D accents; repo workflow reused from `extraction_project`, trimmed to scope; documentation-only commits allowed to `main`; tech stack taken as given from the source spec

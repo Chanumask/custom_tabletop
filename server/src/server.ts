@@ -26,6 +26,9 @@ import {
   type PlayerMuteResponse,
   type PlayerUnmuteResponse,
   type ObjectInteractResponse,
+  type WhiteboardWriteResponse,
+  WHITEBOARD_LINE_COUNT,
+  WHITEBOARD_MAX_LINE_LENGTH,
 } from '@custom-tabletop/shared';
 import { SessionStore } from './sessionStore.js';
 import {
@@ -53,6 +56,7 @@ import {
   parsePlayerMuteRequest,
   parsePlayerUnmuteRequest,
   parseObjectInteractRequest,
+  parseWhiteboardWriteRequest,
 } from './validation.js';
 import { registerUploadRoutes } from './uploads.js';
 
@@ -803,6 +807,31 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
             result = { ok: false, error: 'Unknown interactable.' };
         }
 
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+        }
+      },
+    );
+
+    // Open to every player. Ack + full-state broadcast (infrequent).
+    socket.on(
+      SocketEvent.WhiteboardWrite,
+      (payload: unknown, ack?: (response: WhiteboardWriteResponse) => void) => {
+        const request = parseWhiteboardWriteRequest(payload);
+        if (!request) {
+          ack?.({
+            ok: false,
+            error: `The whiteboard takes ${WHITEBOARD_LINE_COUNT} lines of up to ${WHITEBOARD_MAX_LINE_LENGTH} characters.`,
+          });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+
+        const result = sessions.writeWhiteboard(request.sessionId, request.playerId, request.lines);
         ack?.(result);
         if (result.ok) {
           io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);

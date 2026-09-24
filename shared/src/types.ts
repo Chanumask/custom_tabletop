@@ -8,6 +8,7 @@
  * milestone that actually uses them lands (see docs/roadmap.md).
  */
 import type { PlayerColorId } from './player.js';
+import type { WhiteboardLine } from './whiteboard.js';
 
 export interface Vector3 {
   x: number;
@@ -152,6 +153,9 @@ export interface GameState {
    * "light") — a session-wide flag, not per-player: whoever flips it changes
    * the room for everyone, the same way a real light switch would. */
   lightOn: boolean;
+
+  /** The north wall's whiteboard — `WHITEBOARD_LINE_COUNT` lines (whiteboard.ts). */
+  whiteboard: WhiteboardLine[];
 }
 
 /**

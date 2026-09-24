@@ -4,6 +4,7 @@ import {
   MAX_PLAYERS_PER_SESSION,
   PLAYER_COLORS,
   SOUNDBOARD_SLOT_COUNT,
+  emptyWhiteboard,
   type Dice,
   type GameState,
   type Player,
@@ -463,6 +464,35 @@ export class SessionStore {
     return { ok: true, state };
   }
 
+  /** Any player: saves the whiteboard. `null` entries (lines the writer
+   * didn't touch) are left alone; a line whose text changed is re-attributed
+   * to the writer (and takes on their color); clearing a line clears its
+   * author too. `lines` is pre-validated (right count and lengths). */
+  writeWhiteboard(
+    sessionId: string,
+    actorId: string,
+    lines: (string | null)[],
+  ): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const writer = state.players.find((player) => player.id === actorId);
+    if (!writer) {
+      return { ok: false, error: 'Player not found.' };
+    }
+    state.whiteboard = state.whiteboard.map((line, index) => {
+      const text = lines[index] ?? null;
+      if (text === null || text === line.text) {
+        return line;
+      }
+      return text
+        ? { text, authorId: writer.id, color: writer.color }
+        : { text: '', authorId: null, color: null };
+    });
+    return { ok: true, state };
+  }
+
   /** Not host-gated — toggling the room light affects every player equally,
    * no per-player authority question to gate (Milestone 8). */
   toggleLight(sessionId: string): GameStateMutationResult {
@@ -588,6 +618,7 @@ function createEmptySession(sessionId: string, hostId: string): GameState {
       ...Array<null>(SOUNDBOARD_SLOT_COUNT - BUILTIN_SOUND_PRESETS.length).fill(null),
     ],
     lightOn: true,
+    whiteboard: emptyWhiteboard(),
   };
 }
 
