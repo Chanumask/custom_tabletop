@@ -1,27 +1,14 @@
 import * as THREE from 'three';
-import type { Player, Vector3 } from '@custom-tabletop/shared';
+import { playerColorHex, type Player, type Vector3 } from '@custom-tabletop/shared';
 import { PLAYER_EYE_HEIGHT, PLAYER_RADIUS } from './RoomLayout.js';
 
 const AVATAR_HEIGHT = PLAYER_EYE_HEIGHT; // a rough "person-sized" placeholder, not a real character model
 const AVATAR_RADIUS = PLAYER_RADIUS;
 const CAPSULE_LENGTH = Math.max(AVATAR_HEIGHT - AVATAR_RADIUS * 2, 0.01);
 
-/** Deterministic per-player color so avatars are at least distinguishable
- * from each other without needing real character models yet. */
-function colorForPlayer(playerId: string): number {
-  let hash = 0;
-  for (let i = 0; i < playerId.length; i += 1) {
-    hash = (hash * 31 + playerId.charCodeAt(i)) >>> 0;
-  }
-  return new THREE.Color().setHSL((hash % 360) / 360, 0.55, 0.55).getHex();
-}
-
 function createAvatarMesh(playerId: string): THREE.Mesh {
   const geometry = new THREE.CapsuleGeometry(AVATAR_RADIUS, CAPSULE_LENGTH, 4, 12);
-  const material = new THREE.MeshStandardMaterial({
-    color: colorForPlayer(playerId),
-    roughness: 0.7,
-  });
+  const material = new THREE.MeshStandardMaterial({ roughness: 0.7 });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = `avatar-${playerId}`;
   return mesh;
@@ -103,6 +90,7 @@ export class PlayerAvatars {
       }
       applyTransform(mesh, player.position, player.rotationY, player.seated);
       applyPresence(mesh, player.connected);
+      (mesh.material as THREE.MeshStandardMaterial).color.set(playerColorHex(player.color));
     }
 
     for (const [playerId, mesh] of this.meshes) {

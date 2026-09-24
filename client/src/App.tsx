@@ -4,17 +4,23 @@ import {
   SESSION_ENDED_ERROR,
   SocketEvent,
   type GameState,
+  type PlayerColorId,
   type SessionJoinResponse,
   type SessionLeaveResponse,
+  type SessionPeekResponse,
   type SoundPlayRequest,
 } from '@custom-tabletop/shared';
+import { Toasts } from './Toasts.js';
+import { useToasts } from './useToasts.js';
 import { createSocket } from './socket.js';
 import { connectionStatusLabel, type ConnectionStatus } from './connectionStatus.js';
 import { getOrCreatePlayerId, getOrCreatePlayerToken } from './playerIdentity.js';
 import {
   clearLastJoin,
   loadLastJoin,
+  loadRememberedColor,
   loadRememberedName,
+  rememberColor,
   rememberName,
   saveLastJoin,
   type JoinIntent,
@@ -29,6 +35,29 @@ import { playSound, setMasterVolume } from './sounds.js';
 import { useSettings } from './useSettings.js';
 
 type AckResponse = { ok: true } | { ok: false; error: string };
+
+const PEEK_TIMEOUT_MS = 3000;
+const NO_SESSION: SessionPeekResponse = {
+  exists: false,
+  playerCount: 0,
+  hostName: null,
+  takenColors: [],
+};
+
+/** An invite link is the app URL with `?join=CODE` (copied from the session
+ * menu) — it opens the join screen with the code pre-filled. */
+function readInviteCode(): string | null {
+  const code = new URLSearchParams(window.location.search).get('join');
+  return code ? code.trim().toUpperCase() : null;
+}
+
+function clearInviteFromUrl(): void {
+  const url = new URL(window.location.href);
+  if (url.searchParams.has('join')) {
+    url.searchParams.delete('join');
+    window.history.replaceState(null, '', url);
+  }
+}
 
 export function App() {
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
@@ -49,7 +78,9 @@ export function App() {
   const gameStateRef = useRef<GameState | null>(null);
   const [playerId] = useState(() => getOrCreatePlayerId(window.sessionStorage));
   const [playerToken] = useState(() => getOrCreatePlayerToken(window.sessionStorage));
+  const [inviteCode] = useState(readInviteCode);
   const { settings } = useSettings();
+  const { toasts, toast, dismiss } = useToasts();
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -73,18 +104,24 @@ export function App() {
   /** `resume`: an automatic rejoin (reload/reconnect) — must not recreate a
    * session that has since ended (see SessionJoinRequest.resume). */
   const joinSession = useCallback(
-    (socket: Socket, playerName: string, sessionId: string, resume: boolean) => {
+    (
+      socket: Socket,
+      playerName: string,
+      sessionId: string,
+      resume: boolean,
+      color?: PlayerColorId,
+    ) => {
       setJoinError(null);
       socket.emit(
         SocketEvent.SessionJoin,
-        { sessionId, playerId, playerName, playerToken, resume },
+        { sessionId, playerId, playerName, playerToken, resume, color },
         (response: SessionJoinResponse) => {
           setRejoining(false);
           if (response.ok) {
             const intent = { playerName, sessionId };
             lastJoinRef.current = intent;
             saveLastJoin(window.sessionStorage, intent);
-            rememberName(window.localStorage, playerName);
+            clearInviteFromUrl();
             setGameState(response.state);
           } else if (resume) {
             forgetSession(
@@ -146,8 +183,19 @@ export function App() {
     };
   }, [joinSession, forgetSession]);
 
-  /** Emits a session-scoped action (sessionId + playerId filled in) and logs
-   * a rejection — the shared shape of every ack'd request below. */
+  // Keep the join screen's remembered name/color in step with whatever this
+  // player currently is — including mid-session profile changes.
+  const self = gameState?.players.find((player) => player.id === playerId);
+  useEffect(() => {
+    if (self) {
+      rememberName(window.localStorage, self.name);
+      rememberColor(window.localStorage, self.color);
+    }
+  }, [self?.name, self?.color]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Emits a session-scoped action (sessionId + playerId filled in); a
+   * rejection surfaces as a toast so the player learns *why* nothing
+   * happened — the shared shape of every ack'd request below. */
   function sendAction(event: string, fields: Record<string, unknown>, failure: string) {
     const socket = socketRef.current;
     if (!socket || !gameState) {
@@ -159,16 +207,40 @@ export function App() {
       (response: AckResponse) => {
         if (!response.ok) {
           console.error(`${failure}:`, response.error);
+          toast(response.error, 'error');
         }
       },
     );
   }
 
-  function handleJoin(playerName: string, sessionId: string) {
+  const handlePeek = useCallback(
+    (sessionId: string) =>
+      new Promise<SessionPeekResponse>((resolve) => {
+        const socket = socketRef.current;
+        if (!socket) {
+          resolve(NO_SESSION);
+          return;
+        }
+        socket
+          .timeout(PEEK_TIMEOUT_MS)
+          .emit(
+            SocketEvent.SessionPeek,
+            { sessionId },
+            (err: Error | null, response: SessionPeekResponse) =>
+              resolve(err ? NO_SESSION : response),
+          );
+      }),
+    [],
+  );
+
+  function handleJoin(playerName: string, sessionId: string, color: PlayerColorId) {
     if (socketRef.current) {
-      joinSession(socketRef.current, playerName, sessionId, false);
+      joinSession(socketRef.current, playerName, sessionId, false, color);
     }
   }
+
+  const handleUpdateProfile = (patch: { name?: string; color?: PlayerColorId }) =>
+    sendAction(SocketEvent.PlayerUpdate, patch, 'Failed to update your profile');
 
   function handleLeave() {
     const socket = socketRef.current;
@@ -270,12 +342,15 @@ export function App() {
           onMutePlayer={handleMutePlayer}
           onUnmutePlayer={handleUnmutePlayer}
           onTransferHost={handleTransferHost}
+          onUpdateProfile={handleUpdateProfile}
+          onNotify={toast}
         />
         {status !== 'connected' && (
           <div className="connection-banner" role="status">
             Connection lost — reconnecting…
           </div>
         )}
+        <Toasts toasts={toasts} onDismiss={dismiss} />
       </main>
     );
   }
@@ -298,9 +373,13 @@ export function App() {
           disabled={status !== 'connected'}
           error={joinError}
           initialName={loadRememberedName(window.localStorage)}
+          initialColor={loadRememberedColor(window.localStorage)}
+          inviteCode={inviteCode}
+          onPeek={handlePeek}
           onJoin={handleJoin}
         />
       )}
+      <Toasts toasts={toasts} onDismiss={dismiss} />
     </main>
   );
 }

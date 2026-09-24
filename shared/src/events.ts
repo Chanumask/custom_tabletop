@@ -13,6 +13,8 @@ export const SocketEvent = {
    * state actually reaches clients) — added in Milestone 2.
    */
   SessionState: 'session:state',
+  /** Read-only look at a session before joining (join screen). */
+  SessionPeek: 'session:peek',
   /** Host-only: hand the host role to another player. */
   SessionTransferHost: 'session:transfer-host',
   /**
@@ -33,6 +35,8 @@ export const SocketEvent = {
   DrawingDelete: 'drawing:delete',
 
   PlayerMove: 'player:move',
+  /** A player changes their own name/color mid-session. */
+  PlayerUpdate: 'player:update',
 
   DiceSpawn: 'dice:spawn',
   DiceRoll: 'dice:roll',

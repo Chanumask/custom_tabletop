@@ -1,3 +1,4 @@
+import { PLAYER_COLORS, isPlayerColorId, type PlayerColorId } from '@custom-tabletop/shared';
 import type { IdStorage } from './playerIdentity.js';
 
 export interface JoinIntent {
@@ -7,6 +8,7 @@ export interface JoinIntent {
 
 const LAST_JOIN_KEY = 'customTabletop.lastJoin';
 const NAME_KEY = 'customTabletop.playerName';
+const COLOR_KEY = 'customTabletop.playerColor';
 
 function isJoinIntent(value: unknown): value is JoinIntent {
   if (typeof value !== 'object' || value === null) {
@@ -61,6 +63,25 @@ export function loadRememberedName(storage: IdStorage): string {
 export function rememberName(storage: IdStorage, name: string): void {
   try {
     storage.setItem(NAME_KEY, name);
+  } catch {
+    // Best-effort.
+  }
+}
+
+/** The color this browser last played as (localStorage), pre-selected on the
+ * join screen — falls back to the first color. */
+export function loadRememberedColor(storage: IdStorage): PlayerColorId {
+  try {
+    const stored = storage.getItem(COLOR_KEY);
+    return isPlayerColorId(stored) ? stored : PLAYER_COLORS[0].id;
+  } catch {
+    return PLAYER_COLORS[0].id;
+  }
+}
+
+export function rememberColor(storage: IdStorage, color: PlayerColorId): void {
+  try {
+    storage.setItem(COLOR_KEY, color);
   } catch {
     // Best-effort.
   }

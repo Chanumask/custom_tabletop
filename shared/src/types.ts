@@ -7,6 +7,7 @@
  * left undefined; these are placeholder shapes, expected to grow when the
  * milestone that actually uses them lands (see docs/roadmap.md).
  */
+import type { PlayerColorId } from './player.js';
 
 export interface Vector3 {
   x: number;
@@ -82,6 +83,10 @@ export const BUILTIN_SOUND_PRESETS: SoundState[] = [
 export interface Player {
   id: string;
   name: string;
+
+  /** One of PLAYER_COLORS (player.ts), unique within the session — decides
+   * this player's character model/shirt, name tag, whiteboard ink, etc. */
+  color: PlayerColorId;
 
   character: Character;
 

@@ -6,6 +6,21 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-24 — Player colors: six unique colors per session, pre-join peek, live profile edits, invite links, toasts
+
+**Decided** (change request #3 prerequisite + user answer "players should be able to change their colors"). The change request assumed the join screen already had a 6-color picker — it didn't (avatar colors were a hash of the player id), so this built it.
+
+1. **`Player.color` is one of six `PLAYER_COLORS` (`shared/src/player.ts`), unique within a session** — the requested "each of the 6 models corresponds to one color" means two players sharing a color would look identical, so uniqueness is enforced server-side (`pickColor`: preferred if free, else first free; a returning player keeps theirs). **Consequence, accepted:** a session holds at most six players (`MAX_PLAYERS_PER_SESSION`), matching the table; a seventh is turned away with a clear message.
+2. **`session:peek` is deliberately open to any socket (no join)** — the join screen needs to show who's in a session and grey out taken colors *before* joining, and knowing the session code is already the only access control this app has. Returns only count/host name/taken colors.
+3. **`player:update` lets a player change their own name/color mid-session** (ack + full broadcast; a color someone else wears is refused). The color picker component (`ColorPicker.tsx`) is shared by the join screen and the in-session profile editor.
+4. **The join screen has two explicit flows** — host (generated, editable code; refuses a code already in use) and join (code must exist; shows "N players · hosted by X"; refuses a full session) — rather than the old single form where joining a mistyped code silently created a new empty session.
+5. **Invite links** (`?join=CODE`, "Copy invite link" in the session menu) open the join screen with the code filled in; the param is stripped from the URL after joining.
+6. **Rejected actions surface as toasts** (`useToasts.ts`) instead of only `console.error` — every `sendAction` failure shows the server's own error text, so e.g. picking a color someone grabbed a moment earlier says why nothing happened.
+
+**Verified:** `server/src/profile.test.ts` (5 socket tests: preferred/fallback color, peek without joining, 7th player refused + returning player admitted, live rename/recolor seen by others + taken color refused, can't edit someone else's profile); `sessionStore.test.ts` (color assignment, rejoin keeps color, capacity, peek, updateProfile); `validation.test.ts` (join color/name limits, peek/update parsers); `shared/src/index.test.ts` (six distinct colors); `joinMemory.test.ts` (remembered color). Live two-tab check: host in purple → invite link opens join mode with the code, "1 player · hosted by Alice", purple disabled and pre-selection moved to a free color → joined as blue → switched to green + renamed "Robert" → the host's roster updated live (name and dot color). 308 tests, lint/format/build clean.
+
+---
+
 ## 2026-09-24 — Identity binding, presence with a reconnect grace period, host handover, resume-only rejoin
 
 **Decided**, as groundwork for the second change-request batch (player colors/models, whiteboard, 3-player sync). A code-reading pass found that Milestone 9's "host authority" was only half true: the server trusted the `playerId` inside every payload, and every client can read the host's id straight out of `GameState.hostId`, so any player could perform any host action by pasting the host's id into a forged event. M9's tests only proved "a non-host using *their own* id is rejected."

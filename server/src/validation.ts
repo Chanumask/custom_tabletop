@@ -1,7 +1,11 @@
 import {
+  MAX_PLAYER_NAME_LENGTH,
   SOUNDBOARD_SLOT_COUNT,
+  isPlayerColorId,
+  type PlayerUpdateRequest,
   type SessionJoinRequest,
   type SessionLeaveRequest,
+  type SessionPeekRequest,
   type SessionTransferHostRequest,
   type PlayerMoveRequest,
   type SceneCreateRequest,
@@ -77,17 +81,18 @@ export function parseSessionJoinRequest(payload: unknown): SessionJoinRequest | 
     return null;
   }
 
-  const { sessionId, playerId, playerName, playerToken, resume } = payload as Record<
+  const { sessionId, playerId, playerName, playerToken, resume, color } = payload as Record<
     string,
     unknown
   >;
   if (
     !isNonEmptyString(sessionId) ||
     !isNonEmptyString(playerId) ||
-    !isNonEmptyString(playerName) ||
+    !isPlayerName(playerName) ||
     !isNonEmptyString(playerToken) ||
     playerToken.length > MAX_TOKEN_LENGTH ||
-    (resume !== undefined && typeof resume !== 'boolean')
+    (resume !== undefined && typeof resume !== 'boolean') ||
+    (color !== undefined && !isPlayerColorId(color))
   ) {
     return null;
   }
@@ -98,6 +103,43 @@ export function parseSessionJoinRequest(payload: unknown): SessionJoinRequest | 
     playerName: playerName.trim(),
     playerToken,
     ...(resume === undefined ? {} : { resume }),
+    ...(color === undefined ? {} : { color }),
+  };
+}
+
+function isPlayerName(value: unknown): value is string {
+  return isNonEmptyString(value) && value.trim().length <= MAX_PLAYER_NAME_LENGTH;
+}
+
+export function parseSessionPeekRequest(payload: unknown): SessionPeekRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+  const { sessionId } = payload as Record<string, unknown>;
+  return isNonEmptyString(sessionId) ? { sessionId: sessionId.trim() } : null;
+}
+
+export function parsePlayerUpdateRequest(payload: unknown): PlayerUpdateRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, name, color } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    (name !== undefined && !isPlayerName(name)) ||
+    (color !== undefined && !isPlayerColorId(color)) ||
+    (name === undefined && color === undefined)
+  ) {
+    return null;
+  }
+
+  return {
+    sessionId: sessionId.trim(),
+    playerId: playerId.trim(),
+    ...(name === undefined ? {} : { name: name.trim() }),
+    ...(color === undefined ? {} : { color }),
   };
 }
 

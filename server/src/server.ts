@@ -4,8 +4,12 @@ import { createServer, type Server as HttpServer } from 'node:http';
 import { Server as SocketIoServer, type Socket } from 'socket.io';
 import {
   ConnectionEvent,
+  MAX_PLAYER_NAME_LENGTH,
+  MAX_PLAYERS_PER_SESSION,
   SESSION_ENDED_ERROR,
   SocketEvent,
+  type PlayerUpdateResponse,
+  type SessionPeekResponse,
   type SessionJoinResponse,
   type SessionLeaveResponse,
   type SessionTransferHostResponse,
@@ -26,6 +30,8 @@ import {
   parseSessionJoinRequest,
   parseSessionLeaveRequest,
   parseSessionTransferHostRequest,
+  parseSessionPeekRequest,
+  parsePlayerUpdateRequest,
   parsePlayerMoveRequest,
   parseSceneCreateRequest,
   parseSceneChangeRequest,
@@ -203,6 +209,13 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           ack?.({ ok: false, error: 'That player identity belongs to someone else.' });
           return;
         }
+        if (!sessions.canAdmit(request.sessionId, request.playerId)) {
+          ack?.({
+            ok: false,
+            error: `That session is full (${MAX_PLAYERS_PER_SESSION} players max).`,
+          });
+          return;
+        }
 
         // Switching sessions (or re-sending join on the same socket) —
         // release whatever this socket spoke for before.
@@ -231,6 +244,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           request.playerId,
           request.playerName,
           request.playerToken,
+          request.color,
         );
         identities.set(socket.id, { sessionId: request.sessionId, playerId: request.playerId });
         activeSocketByPlayer.set(key, socket.id);
@@ -261,6 +275,48 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
 
         if (state) {
           io.to(request.sessionId).emit(SocketEvent.SessionState, state);
+        }
+      },
+    );
+
+    // Read-only and deliberately open to any socket (no join needed) — the
+    // join screen uses it to show who's in a session and grey out colors
+    // that are already taken. Knowing a session's code is what grants this.
+    socket.on(
+      SocketEvent.SessionPeek,
+      (payload: unknown, ack?: (response: SessionPeekResponse) => void) => {
+        const request = parseSessionPeekRequest(payload);
+        ack?.(
+          request
+            ? sessions.peek(request.sessionId)
+            : { exists: false, playerCount: 0, hostName: null, takenColors: [] },
+        );
+      },
+    );
+
+    socket.on(
+      SocketEvent.PlayerUpdate,
+      (payload: unknown, ack?: (response: PlayerUpdateResponse) => void) => {
+        const request = parsePlayerUpdateRequest(payload);
+        if (!request) {
+          ack?.({
+            ok: false,
+            error: `A name (1-${MAX_PLAYER_NAME_LENGTH} characters) and/or a valid color is required.`,
+          });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+
+        const result = sessions.updateProfile(request.sessionId, request.playerId, {
+          name: request.name,
+          color: request.color,
+        });
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
         }
       },
     );

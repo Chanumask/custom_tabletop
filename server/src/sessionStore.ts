@@ -1,10 +1,14 @@
 import {
   BUILTIN_SOUND_PRESETS,
   DEFAULT_SPAWN_POSITION,
+  MAX_PLAYERS_PER_SESSION,
+  PLAYER_COLORS,
   SOUNDBOARD_SLOT_COUNT,
   type Dice,
   type GameState,
   type Player,
+  type PlayerColorId,
+  type SessionPeekResponse,
   type Point2D,
   type Scene,
   type Vector3,
@@ -54,7 +58,39 @@ export class SessionStore {
     return known === undefined || known === credential;
   }
 
-  join(sessionId: string, playerId: string, playerName: string, credential?: string): GameState {
+  /** Whether `playerId` can be admitted: a returning player always can; a
+   * new one only while the session has a free color (six players max). */
+  canAdmit(sessionId: string, playerId: string): boolean {
+    const state = this.sessions.get(sessionId);
+    if (!state || state.players.some((player) => player.id === playerId)) {
+      return true;
+    }
+    return state.players.length < MAX_PLAYERS_PER_SESSION;
+  }
+
+  /** A read-only look at a session for the join screen (`session:peek`). */
+  peek(sessionId: string): SessionPeekResponse {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { exists: false, playerCount: 0, hostName: null, takenColors: [] };
+    }
+    return {
+      exists: true,
+      playerCount: state.players.length,
+      hostName: state.players.find((player) => player.id === state.hostId)?.name ?? null,
+      takenColors: state.players.map((player) => player.color),
+    };
+  }
+
+  /** Callers check `canAdmit` first — joining a full session as a new
+   * player is a caller bug, and throws rather than silently exceeding six. */
+  join(
+    sessionId: string,
+    playerId: string,
+    playerName: string,
+    credential?: string,
+    preferredColor?: PlayerColorId,
+  ): GameState {
     let state = this.sessions.get(sessionId);
 
     if (!state) {
@@ -66,7 +102,11 @@ export class SessionStore {
     if (existing) {
       existing.connected = true;
     } else {
-      state.players.push(createPlayer(playerId, playerName));
+      const color = pickColor(state, preferredColor);
+      if (!color) {
+        throw new Error(`session ${sessionId} is full`);
+      }
+      state.players.push(createPlayer(playerId, playerName, color));
     }
     // Rejoining with the same playerId intentionally doesn't rename the
     // existing Player record — renaming is its own explicit action.
@@ -136,6 +176,38 @@ export class SessionStore {
       return { removed: false, state: this.sessions.get(sessionId) };
     }
     return { removed: true, state: this.leave(sessionId, playerId) };
+  }
+
+  /** A player changes their own name and/or color. Rejects a color someone
+   * else is already wearing. (Inputs are pre-validated — trimmed, in range.) */
+  updateProfile(
+    sessionId: string,
+    playerId: string,
+    patch: { name?: string; color?: PlayerColorId },
+  ): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const player = state.players.find((candidate) => candidate.id === playerId);
+    if (!player) {
+      return { ok: false, error: 'Player not found.' };
+    }
+    if (
+      patch.color !== undefined &&
+      state.players.some((other) => other.id !== playerId && other.color === patch.color)
+    ) {
+      return { ok: false, error: 'That color is already taken.' };
+    }
+
+    if (patch.name !== undefined) {
+      player.name = patch.name;
+      player.character.name = patch.name;
+    }
+    if (patch.color !== undefined) {
+      player.color = patch.color;
+    }
+    return { ok: true, state };
   }
 
   /** Host-only: hands the host role to another player in the session. */
@@ -490,10 +562,21 @@ function createDefaultScene(): Scene {
   return { id: DEFAULT_SCENE_ID, name: 'Map', backgroundImage: '', drawings: [] };
 }
 
-function createPlayer(id: string, name: string): Player {
+/** The preferred color if nobody in the session wears it yet, otherwise the
+ * first free one in PLAYER_COLORS order — or null if all six are taken. */
+function pickColor(state: GameState, preferred?: PlayerColorId): PlayerColorId | null {
+  const taken = new Set(state.players.map((player) => player.color));
+  if (preferred && !taken.has(preferred)) {
+    return preferred;
+  }
+  return PLAYER_COLORS.find((color) => !taken.has(color.id))?.id ?? null;
+}
+
+function createPlayer(id: string, name: string, color: PlayerColorId): Player {
   return {
     id,
     name,
+    color,
     character: { id, name }, // character customization isn't scoped yet; the player stands in for their own character for now
     position: { ...DEFAULT_SPAWN_POSITION }, // overwritten by the client's first player:move once it joins (Milestone 4)
     rotationY: 0,

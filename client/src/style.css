@@ -191,7 +191,186 @@ body {
 
 .session-overlay-header {
   margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.invite-button {
+  padding: 0.2rem 0.55rem;
+  border: 1px solid rgba(243, 230, 211, 0.35);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.invite-button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* Player color swatches (ColorPicker.tsx) — join screen and profile editor. */
+.color-picker {
+  display: flex;
+  gap: 0.45rem;
+  justify-content: center;
+}
+
+.color-swatch {
+  position: relative;
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  background: var(--swatch);
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.color-swatch:hover:not(:disabled) {
+  transform: scale(1.1);
+}
+
+.color-swatch.selected {
+  border-color: #fff8ec;
+  box-shadow:
+    0 0 0 3px rgba(0, 0, 0, 0.35),
+    0 0 12px var(--swatch);
+}
+
+.color-swatch.taken {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+
+.color-swatch.taken::after {
+  content: '';
+  position: absolute;
+  inset: 45% -8% auto;
+  height: 2px;
+  background: #fff8ec;
+  transform: rotate(-45deg);
+}
+
+.player-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.player-dot {
+  flex: none;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
+.profile-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid rgba(243, 230, 211, 0.15);
+}
+
+.tab-panel form.profile-name {
+  flex-direction: row;
+}
+
+.profile-name input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Rejected-action notices (useToasts.ts) — bottom-center, click to dismiss. */
+.toasts {
+  position: fixed;
+  left: 50%;
+  bottom: 8.5rem;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  z-index: 20;
+}
+
+.toast {
+  max-width: 26rem;
+  padding: 0.55rem 1rem;
+  border: none;
+  border-radius: 8px;
+  background: rgba(20, 14, 10, 0.92);
+  color: #f3e6d3;
+  font: inherit;
+  font-size: 0.9rem;
   text-align: center;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  animation: toast-in 160ms ease-out;
+}
+
+.toast-error {
+  background: rgba(130, 34, 26, 0.95);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Join form (JoinForm.tsx) — functional layout; the full login-screen
+ * visual treatment builds on these classes. */
+.join-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.join-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.join-mode-switch button.active {
+  font-weight: 700;
+}
+
+.join-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.code-row {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.code-input {
+  flex: 1;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+}
+
+.join-status {
+  margin: 0;
+}
+
+.join-status.warn,
+.join-error {
+  margin: 0;
+  color: #b3402f;
 }
 
 .tab-bar {

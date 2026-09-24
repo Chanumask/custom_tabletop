@@ -16,6 +16,8 @@ import {
   parseSoundPlayRequest,
   parsePlayerMuteRequest,
   parsePlayerUnmuteRequest,
+  parsePlayerUpdateRequest,
+  parseSessionPeekRequest,
 } from './validation.js';
 
 describe('parseSessionJoinRequest', () => {
@@ -403,4 +405,53 @@ describe('parsePlayerUnmuteRequest', () => {
       expect(parsePlayerUnmuteRequest(payload)).toBeNull();
     },
   );
+});
+
+describe('session:join color and name limits', () => {
+  const base = { sessionId: 'abc', playerId: 'p1', playerName: 'Alice', playerToken: 't' };
+
+  it('accepts a valid preferred color', () => {
+    expect(parseSessionJoinRequest({ ...base, color: 'green' })?.color).toBe('green');
+  });
+
+  it.each([[{ ...base, color: 'magenta' }], [{ ...base, playerName: 'x'.repeat(25) }]])(
+    'rejects %o',
+    (payload) => {
+      expect(parseSessionJoinRequest(payload)).toBeNull();
+    },
+  );
+});
+
+describe('parseSessionPeekRequest', () => {
+  it('accepts a session id', () => {
+    expect(parseSessionPeekRequest({ sessionId: ' abc ' })).toEqual({ sessionId: 'abc' });
+  });
+
+  it.each([[null], [{}], [{ sessionId: '' }]])('rejects malformed payload %#', (payload) => {
+    expect(parseSessionPeekRequest(payload)).toBeNull();
+  });
+});
+
+describe('parsePlayerUpdateRequest', () => {
+  it('accepts a name and/or a color', () => {
+    expect(parsePlayerUpdateRequest({ sessionId: 'a', playerId: 'p', name: ' Bo ' })).toEqual({
+      sessionId: 'a',
+      playerId: 'p',
+      name: 'Bo',
+    });
+    expect(parsePlayerUpdateRequest({ sessionId: 'a', playerId: 'p', color: 'red' })).toEqual({
+      sessionId: 'a',
+      playerId: 'p',
+      color: 'red',
+    });
+  });
+
+  it.each([
+    [{ sessionId: 'a', playerId: 'p' }],
+    [{ sessionId: 'a', playerId: 'p', name: '   ' }],
+    [{ sessionId: 'a', playerId: 'p', name: 'x'.repeat(25) }],
+    [{ sessionId: 'a', playerId: 'p', color: 'teal' }],
+  ])('rejects malformed payload %#', (payload) => {
+    expect(parsePlayerUpdateRequest(payload)).toBeNull();
+  });
 });

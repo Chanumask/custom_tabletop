@@ -53,6 +53,71 @@ describe('SessionStore', () => {
     expect(store.leave('nope', 'p1')).toBeUndefined();
   });
 
+  it('gives a joiner their preferred color if free, otherwise the first free one', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice', undefined, 'green');
+    store.join('abc', 'p2', 'Bob', undefined, 'green'); // taken -> first free
+    const state = store.join('abc', 'p3', 'Carol'); // no preference -> first free
+
+    expect(state.players.map((player) => player.color)).toEqual(['green', 'red', 'blue']);
+  });
+
+  it('a rejoining player keeps their color regardless of preference', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice', undefined, 'purple');
+    const state = store.join('abc', 'p1', 'Alice', undefined, 'orange');
+    expect(state.players[0]?.color).toBe('purple');
+  });
+
+  it('admits at most six players, but always admits a returning one', () => {
+    const store = new SessionStore();
+    for (let i = 1; i <= 6; i += 1) {
+      store.join('abc', `p${i}`, `Player ${i}`);
+    }
+    expect(store.canAdmit('abc', 'p7')).toBe(false);
+    expect(store.canAdmit('abc', 'p3')).toBe(true);
+    expect(store.canAdmit('fresh', 'anyone')).toBe(true);
+    expect(() => store.join('abc', 'p7', 'Too many')).toThrow();
+  });
+
+  it('peek summarizes a session without joining it', () => {
+    const store = new SessionStore();
+    expect(store.peek('abc')).toEqual({
+      exists: false,
+      playerCount: 0,
+      hostName: null,
+      takenColors: [],
+    });
+
+    store.join('abc', 'p1', 'Alice', undefined, 'yellow');
+    store.join('abc', 'p2', 'Bob', undefined, 'blue');
+    expect(store.peek('abc')).toEqual({
+      exists: true,
+      playerCount: 2,
+      hostName: 'Alice',
+      takenColors: ['yellow', 'blue'],
+    });
+  });
+
+  it('updateProfile renames and recolors, but refuses a color someone else wears', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice', undefined, 'red');
+    store.join('abc', 'p2', 'Bob', undefined, 'blue');
+
+    expect(store.updateProfile('abc', 'p2', { color: 'red' })).toEqual({
+      ok: false,
+      error: 'That color is already taken.',
+    });
+
+    const result = store.updateProfile('abc', 'p2', { name: 'Robert', color: 'orange' });
+    expect(result.ok).toBe(true);
+    const bob = store.get('abc')?.players.find((player) => player.id === 'p2');
+    expect(bob).toMatchObject({ name: 'Robert', color: 'orange' });
+
+    // Re-selecting your own current color is not a conflict.
+    expect(store.updateProfile('abc', 'p1', { color: 'red' }).ok).toBe(true);
+  });
+
   it('a new player starts connected', () => {
     const store = new SessionStore();
     const state = store.join('abc', 'p1', 'Alice');

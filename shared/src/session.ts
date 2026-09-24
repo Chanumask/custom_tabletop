@@ -5,6 +5,7 @@
  * domain types in types.ts.
  */
 import type { GameState } from './types.js';
+import type { PlayerColorId } from './player.js';
 
 export interface SessionJoinRequest {
   sessionId: string;
@@ -23,6 +24,11 @@ export interface SessionJoinRequest {
    * in-memory state) would silently create a brand-new empty session with
    * this player as host. */
   resume?: boolean;
+  /** The color picked on the join screen. Honored if still free in the
+   * session; otherwise the first free color is assigned (the join screen
+   * greys out taken ones via `session:peek`, so this only matters in a
+   * race). Ignored on a rejoin — a returning player keeps their color. */
+  color?: PlayerColorId;
 }
 
 export type SessionJoinResponse = { ok: true; state: GameState } | { ok: false; error: string };
@@ -37,6 +43,19 @@ export interface SessionLeaveRequest {
 }
 
 export type SessionLeaveResponse = { ok: true } | { ok: false; error: string };
+
+/** session:peek — a look at a session *before* joining it, for the join
+ * screen: whether it exists, who's there, and which colors are taken. */
+export interface SessionPeekRequest {
+  sessionId: string;
+}
+
+export interface SessionPeekResponse {
+  exists: boolean;
+  playerCount: number;
+  hostName: string | null;
+  takenColors: PlayerColorId[];
+}
 
 /** Host-only: hands the host role to another player in the session. */
 export interface SessionTransferHostRequest {

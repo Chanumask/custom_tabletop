@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   clearLastJoin,
   loadLastJoin,
+  loadRememberedColor,
   loadRememberedName,
+  rememberColor,
   rememberName,
   saveLastJoin,
 } from './joinMemory.js';
@@ -41,6 +43,15 @@ describe('joinMemory', () => {
     expect(loadRememberedName(storage)).toBe('');
     rememberName(storage, 'Bob');
     expect(loadRememberedName(storage)).toBe('Bob');
+  });
+
+  it('remembers the player color, ignoring anything that is not a real color', () => {
+    const storage = fakeStorage();
+    expect(loadRememberedColor(storage)).toBe('red');
+    rememberColor(storage, 'purple');
+    expect(loadRememberedColor(storage)).toBe('purple');
+    storage.setItem('customTabletop.playerColor', 'magenta');
+    expect(loadRememberedColor(storage)).toBe('red');
   });
 
   it('never throws when storage itself throws (blocked/disabled storage)', () => {

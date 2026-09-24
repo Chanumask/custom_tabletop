@@ -13,6 +13,7 @@ function makePlayer(
   return {
     id,
     name: id,
+    color: 'red',
     character: { id, name: id },
     position,
     rotationY,

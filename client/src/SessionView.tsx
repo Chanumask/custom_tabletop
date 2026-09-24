@@ -1,5 +1,13 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import type { GameState } from '@custom-tabletop/shared';
+import {
+  MAX_PLAYER_NAME_LENGTH,
+  playerColorHex,
+  type GameState,
+  type Player,
+  type PlayerColorId,
+} from '@custom-tabletop/shared';
+import { ColorPicker } from './ColorPicker.js';
+import type { ToastKind } from './useToasts.js';
 import { uploadImage, uploadSound } from './uploads.js';
 import { useSettings } from './useSettings.js';
 import { deriveNameFromUrl } from './soundName.js';
@@ -20,6 +28,8 @@ export interface SessionViewProps {
   onMutePlayer: (targetPlayerId: string) => void;
   onUnmutePlayer: (targetPlayerId: string) => void;
   onTransferHost: (targetPlayerId: string) => void;
+  onUpdateProfile: (patch: { name?: string; color?: PlayerColorId }) => void;
+  onNotify: (text: string, kind?: ToastKind) => void;
 }
 
 type TabId = 'players' | 'map' | 'dice' | 'soundboard' | 'settings';
@@ -51,15 +61,32 @@ export function SessionView({
   onMutePlayer,
   onUnmutePlayer,
   onTransferHost,
+  onUpdateProfile,
+  onNotify,
 }: SessionViewProps) {
   const isHost = playerId === state.hostId;
   const [activeTab, setActiveTab] = useState<TabId>('players');
 
+  function copyInviteLink() {
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.searchParams.set('join', state.sessionId);
+    navigator.clipboard.writeText(url.toString()).then(
+      () => onNotify('Invite link copied — send it to your players.'),
+      () => onNotify(`Couldn't copy automatically. Share this code: ${state.sessionId}`, 'error'),
+    );
+  }
+
   return (
     <div className="session-overlay">
-      <p className="session-overlay-header">
-        Session <strong>{state.sessionId}</strong>
-      </p>
+      <div className="session-overlay-header">
+        <span>
+          Session <strong>{state.sessionId}</strong>
+        </span>
+        <button type="button" className="invite-button" onClick={copyInviteLink}>
+          Copy invite link
+        </button>
+      </div>
 
       <div className="tab-bar" role="tablist">
         {TABS.map((tab) => {
@@ -89,6 +116,7 @@ export function SessionView({
             onMutePlayer={onMutePlayer}
             onUnmutePlayer={onUnmutePlayer}
             onTransferHost={onTransferHost}
+            onUpdateProfile={onUpdateProfile}
           />
         )}
         {activeTab === 'map' && (
@@ -122,6 +150,7 @@ function PlayersTab({
   onMutePlayer,
   onUnmutePlayer,
   onTransferHost,
+  onUpdateProfile,
 }: {
   state: GameState;
   playerId: string;
@@ -129,43 +158,108 @@ function PlayersTab({
   onMutePlayer: (targetPlayerId: string) => void;
   onUnmutePlayer: (targetPlayerId: string) => void;
   onTransferHost: (targetPlayerId: string) => void;
+  onUpdateProfile: (patch: { name?: string; color?: PlayerColorId }) => void;
 }) {
+  const self = state.players.find((player) => player.id === playerId);
   return (
-    <ul className="player-list">
-      {state.players.map((player) => {
-        const isSelf = player.id === playerId;
-        const canModerate = isSelf || isHost;
-        const canPromote = isHost && !isSelf && player.connected;
-        return (
-          <li key={player.id} className={player.connected ? undefined : 'player-away'}>
-            <span>
-              {player.name}
-              {player.id === state.hostId && ' (host)'}
-              {isSelf && ' (you)'}
-              {player.muted && ' (muted)'}
-              {!player.connected && ' (reconnecting…)'}
-            </span>
-            <span className="player-actions">
-              {canPromote && (
-                <button type="button" onClick={() => onTransferHost(player.id)}>
-                  Make host
-                </button>
-              )}
-              {canModerate && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    player.muted ? onUnmutePlayer(player.id) : onMutePlayer(player.id)
-                  }
-                >
-                  {player.muted ? 'Unmute' : 'Mute'}
-                </button>
-              )}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
+    <>
+      {self && <ProfileEditor state={state} self={self} onUpdateProfile={onUpdateProfile} />}
+      <ul className="player-list">
+        {state.players.map((player) => {
+          const isSelf = player.id === playerId;
+          const canModerate = isSelf || isHost;
+          const canPromote = isHost && !isSelf && player.connected;
+          return (
+            <li key={player.id} className={player.connected ? undefined : 'player-away'}>
+              <span className="player-name">
+                <span
+                  className="player-dot"
+                  style={{ background: playerColorHex(player.color) }}
+                  aria-hidden="true"
+                />
+                {player.name}
+                {player.id === state.hostId && ' (host)'}
+                {isSelf && ' (you)'}
+                {player.muted && ' (muted)'}
+                {!player.connected && ' (reconnecting…)'}
+              </span>
+              <span className="player-actions">
+                {canPromote && (
+                  <button type="button" onClick={() => onTransferHost(player.id)}>
+                    Make host
+                  </button>
+                )}
+                {canModerate && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      player.muted ? onUnmutePlayer(player.id) : onMutePlayer(player.id)
+                    }
+                  >
+                    {player.muted ? 'Unmute' : 'Mute'}
+                  </button>
+                )}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
+/** "You" — change your own name/color mid-session. A color change applies
+ * immediately (and is refused by the server if someone else grabbed that
+ * color first); a rename applies on Save/Enter. */
+function ProfileEditor({
+  state,
+  self,
+  onUpdateProfile,
+}: {
+  state: GameState;
+  self: Player;
+  onUpdateProfile: (patch: { name?: string; color?: PlayerColorId }) => void;
+}) {
+  const [name, setName] = useState(self.name);
+  const taken = new Set(
+    state.players.filter((player) => player.id !== self.id).map((player) => player.color),
+  );
+  const trimmed = name.trim();
+  const renamed = trimmed.length > 0 && trimmed !== self.name;
+
+  // Adopt a server-side name change (e.g. from another tab) when not mid-edit.
+  useEffect(() => {
+    setName(self.name);
+  }, [self.name]);
+
+  function handleRename(event: FormEvent) {
+    event.preventDefault();
+    if (renamed) {
+      onUpdateProfile({ name: trimmed });
+    }
+  }
+
+  return (
+    <div className="profile-editor">
+      <p className="tab-section-label">You</p>
+      <form className="profile-name" onSubmit={handleRename}>
+        <input
+          value={name}
+          maxLength={MAX_PLAYER_NAME_LENGTH}
+          aria-label="Your name"
+          onChange={(event) => setName(event.target.value)}
+        />
+        <button type="submit" disabled={!renamed}>
+          Save
+        </button>
+      </form>
+      <ColorPicker
+        value={self.color}
+        taken={taken}
+        onChange={(color) => color !== self.color && onUpdateProfile({ color })}
+        label="Your color"
+      />
+    </div>
   );
 }
 
