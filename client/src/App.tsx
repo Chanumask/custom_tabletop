@@ -287,7 +287,7 @@ export function App() {
       SocketEvent.DiceSpawn,
       {
         diceId: crypto.randomUUID(),
-        position: randomDiceSpawnPosition(PLACEHOLDER_ROOM_LAYOUT, DIE_SIZE),
+        position: randomDiceSpawnPosition(PLACEHOLDER_ROOM_LAYOUT.table, DIE_SIZE),
       },
       'Failed to spawn a die',
     );

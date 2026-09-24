@@ -40,3 +40,6 @@ server/uploads/
 # blender/*.blend (editable source) and client/public/models/*.glb (runtime).
 blender/source-assets/*
 !blender/source-assets/README.md
+
+# Blender auto-backups
+*.blend1

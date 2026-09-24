@@ -5,45 +5,56 @@ import type { RoomLayout } from './RoomLayout.js';
  * so the room stays navigable rather than turning into a black void. */
 const LIGHTS_OFF_SCALE = 0.08;
 
+/** Where the chandelier's lantern hangs (its bulb), in metres above the
+ * floor — the main light sits there so it visibly comes *from* the fixture
+ * (blender/room.blend's `Chandelier`, hung from the middle ceiling beam). */
+const CHANDELIER_BULB_HEIGHT = 2.35;
+
 export interface RoomLights {
-  hemi: THREE.HemisphereLight;
-  overTable: THREE.PointLight;
-  fill: THREE.PointLight;
-  /** Each light's intensity when the room light is "on" — captured at
-   * creation so `setRoomLightsOn` can scale relative to it without the two
-   * functions needing to agree on the same magic numbers twice. */
-  baseIntensity: { hemi: number; overTable: number; fill: number };
+  /** Every room light with the intensity it has when the room light is "on"
+   * — `setRoomLightsOn` scales relative to these, so the two functions never
+   * have to agree on magic numbers twice. */
+  entries: { light: THREE.Light; baseIntensity: number }[];
 }
 
 /**
- * Scene-level lighting for the room view, independent of whichever room
- * asset is loaded (procedural or the real Blender `.glb`). Deliberately not
- * baked into the Blender export: Blender's Watt-based point lights convert
- * to glTF `KHR_lights_punctual` candela values (~600W -> ~30000cd) that
- * wildly overexpose Three's physically-correct renderer at room scale
- * (verified in-browser — the floor blew out to flat white). Tuned instead
- * directly in Three's photometric units against `renderer.toneMapping`.
+ * Scene-level lighting for the room, added in Three's own photometric units
+ * rather than exported from Blender: Blender's Watt-based lights convert to
+ * glTF candela values that wildly overexpose Three's physically-correct
+ * renderer at room scale (docs/decisions.md, Milestone 3). Layout:
+ *
+ * - a warm key light inside the chandelier over the table,
+ * - four soft fills near the corners, so walls and furniture aren't lit
+ *   only from the middle of the room (and the ceiling right above the key
+ *   light doesn't blow out),
+ * - a hemisphere light whose "ground" color is a warm bounce, so surfaces
+ *   facing down (beam undersides, the ceiling) aren't pitch black.
  */
 export function addRoomLighting(scene: THREE.Scene, layout: RoomLayout): RoomLights {
-  const { table, wallHeight } = layout;
-
-  const hemi = new THREE.HemisphereLight(0xfff3e0, 0x1a1410, 0.4);
-  scene.add(hemi);
-
-  const overTable = new THREE.PointLight(0xffc98a, 140, 14, 2);
-  overTable.position.set(table.center.x, wallHeight - 0.15, table.center.z);
-  scene.add(overTable);
-
-  const fill = new THREE.PointLight(0xfff0da, 60, 18, 2);
-  fill.position.set(table.center.x, wallHeight - 0.05, table.center.z);
-  scene.add(fill);
-
-  return {
-    hemi,
-    overTable,
-    fill,
-    baseIntensity: { hemi: hemi.intensity, overTable: overTable.intensity, fill: fill.intensity },
+  const { table, bounds } = layout;
+  const entries: RoomLights['entries'] = [];
+  const add = (light: THREE.Light) => {
+    scene.add(light);
+    entries.push({ light, baseIntensity: light.intensity });
   };
+
+  add(new THREE.HemisphereLight(0xfff1dc, 0x5a4330, 0.75));
+
+  const key = new THREE.PointLight(0xffc27a, 55, 12, 2);
+  key.position.set(table.center.x, CHANDELIER_BULB_HEIGHT, table.center.z);
+  add(key);
+
+  const insetX = 1.6;
+  const insetZ = 1.4;
+  for (const x of [bounds.minX + insetX, bounds.maxX - insetX]) {
+    for (const z of [bounds.minZ + insetZ, bounds.maxZ - insetZ]) {
+      const fill = new THREE.PointLight(0xffe2bd, 9, 9, 2);
+      fill.position.set(x, 2.4, z);
+      add(fill);
+    }
+  }
+
+  return { entries };
 }
 
 /** Toggles the room's lighting between its normal warm level and a dim
@@ -52,14 +63,14 @@ export function addRoomLighting(scene: THREE.Scene, layout: RoomLayout): RoomLig
  * walkable/visible even with the light off. */
 export function setRoomLightsOn(lights: RoomLights, on: boolean): void {
   const scale = on ? 1 : LIGHTS_OFF_SCALE;
-  lights.hemi.intensity = lights.baseIntensity.hemi * scale;
-  lights.overTable.intensity = lights.baseIntensity.overTable * scale;
-  lights.fill.intensity = lights.baseIntensity.fill * scale;
+  for (const { light, baseIntensity } of lights.entries) {
+    light.intensity = baseIntensity * scale;
+  }
 }
 
-/** Tone mapping tuned to keep the photometric point lights above from
- * clipping to flat white — see `addRoomLighting`. */
+/** Filmic tone mapping keeps the photometric lights above from clipping to
+ * flat white. (The table's map surface opts out of it — see RoomView.) */
 export function configureRoomToneMapping(renderer: THREE.WebGLRenderer): void {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.85;
+  renderer.toneMappingExposure = 1.0;
 }

@@ -51,7 +51,10 @@ const MOVE_POSITION_EPSILON = 0.01;
 const MOVE_ROTATION_EPSILON = 0.01;
 // How far past the table's own edge still counts as "approaching" it for
 // the sit-down interactable (Milestone 8).
-const TABLE_APPROACH_MARGIN = 1.0;
+const TABLE_APPROACH_MARGIN = 1.3;
+// The table surface is unlit (it shows the map image in its true colors);
+// with the room light off it's dimmed to this instead, so it doesn't glow.
+const TABLE_DIMMED_BRIGHTNESS = 0.18;
 // Canvas-pixel click tolerance for the eraser tool — the table canvas is
 // TABLE_CANVAS_SIZE px across the table's full 2*radius diameter, so this is
 // a generous few centimetres on the real table surface.
@@ -189,6 +192,7 @@ export function RoomView({
   const roomLightsRef = useRef<RoomLights | null>(null);
   const lampRef = useRef<RoomLamp | null>(null);
   const lightOnRef = useRef<boolean>(lightOn);
+  const tableMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
   const soundboardRef = useRef<SoundState[]>(soundboard);
   const soundboardSlotsRef = useRef<(string | null)[]>(soundboardSlots);
   const soundboardWallRef = useRef<SoundboardWall | null>(null);
@@ -288,7 +292,7 @@ export function RoomView({
     const signature = `${activeScene.id}|${activeScene.backgroundImage}`;
     if (signature !== lastRedrawnSignatureRef.current) {
       lastRedrawnSignatureRef.current = signature;
-      void tableCanvasRef.current?.redraw(activeScene);
+      void tableCanvasRef.current?.redraw(activeScene, () => activeSceneRef.current.drawings);
     }
   }, [activeScene]);
 
@@ -312,6 +316,7 @@ export function RoomView({
     if (lampRef.current) {
       setLampOn(lampRef.current, lightOn);
     }
+    tableMaterialRef.current?.color.setScalar(lightOn ? 1 : TABLE_DIMMED_BRIGHTNESS);
   }, [lightOn]);
 
   // The wall board (Milestone 8 follow-up) is presentation only — it just
@@ -349,7 +354,8 @@ export function RoomView({
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    // Capped: past 2x the extra pixels cost a lot of GPU for no visible gain.
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     configureRoomToneMapping(renderer);
     container.appendChild(renderer.domElement);
 
@@ -423,7 +429,7 @@ export function RoomView({
         drawings: activeSceneRef.current.drawings.filter((d) => d.id !== request.drawingId),
       };
       activeSceneRef.current = withoutDeleted;
-      void tableCanvasRef.current?.redraw(withoutDeleted);
+      void tableCanvasRef.current?.redraw(withoutDeleted, currentDrawings);
     };
     socket.on(SocketEvent.DrawingStart, handleDrawingStart);
     socket.on(SocketEvent.DrawingUpdate, handleDrawingUpdate);
@@ -431,13 +437,29 @@ export function RoomView({
     socket.on(SocketEvent.DrawingDelete, handleDrawingDelete);
 
     let tableDrawing: TableDrawing | null = null;
+    let chandelier: THREE.Object3D | null = null;
+    // Everything a full table redraw should paint, read at paint time (see
+    // TableCanvas.redraw) so strokes drawn while a map image loads survive.
+    const currentDrawings = () => activeSceneRef.current.drawings;
+
+    /** Switches between the standing view and the seated, top-down one:
+     * square viewport, and the chandelier hidden (it hangs exactly where the
+     * seated camera looks down from). */
+    const applySeatedView = (seatedNow: boolean) => {
+      applyViewportSize(camera, renderer, container, seatedNow);
+      if (chandelier) {
+        chandelier.visible = !seatedNow;
+      }
+      setSeated(seatedNow);
+    };
     let handleInteractKey: ((event: KeyboardEvent) => void) | null = null;
 
-    void loadRoom({ gltfUrl: ROOM_GLTF_URL }).then((room) => {
+    void loadRoom(ROOM_GLTF_URL).then((room) => {
       if (disposed) {
         return;
       }
       scene.add(room.object3D);
+      chandelier = room.chandelier;
       const lights = addRoomLighting(scene, room.layout);
       setRoomLightsOn(lights, lightOnRef.current);
       roomLightsRef.current = lights;
@@ -455,7 +477,9 @@ export function RoomView({
         {
           id: 'table',
           position: { x: room.layout.table.center.x, z: room.layout.table.center.z },
-          range: room.layout.table.radius + TABLE_APPROACH_MARGIN,
+          range:
+            Math.max(room.layout.table.halfWidth, room.layout.table.halfDepth) +
+            TABLE_APPROACH_MARGIN,
         },
       ];
 
@@ -471,6 +495,7 @@ export function RoomView({
         camera,
         domElement: renderer.domElement,
         room: room.layout.bounds,
+        obstacles: room.layout.obstacles,
         table: room.layout.table,
       });
       controller.connect();
@@ -499,21 +524,27 @@ export function RoomView({
       // standing instead of sitting the rejoined player down.
       if (playersRef.current.find((candidate) => candidate.id === playerId)?.seated) {
         controller.sit();
-        applyViewportSize(camera, renderer, container, true);
       }
-      setSeated(controller.isSeated);
+      applySeatedView(controller.isSeated);
 
-      const tableTopMesh = room.object3D.getObjectByName('Table_Top');
-      if (tableTopMesh instanceof THREE.Mesh) {
-        remapTableTopUV(tableTopMesh, room.layout.table.radius);
+      const tableTopMesh = room.tableTop;
+      if (tableTopMesh) {
+        remapTableTopUV(tableTopMesh, room.layout.table);
 
         const tableCanvas = new TableCanvas();
-        tableTopMesh.material = new THREE.MeshStandardMaterial({
+        tableCanvas.texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        // Unlit and outside tone mapping on purpose: the map image shows in
+        // exactly its own colors, instead of being tinted by the warm lamps
+        // and compressed by the filmic tone curve like every lit surface.
+        const tableMaterial = new THREE.MeshBasicMaterial({
           map: tableCanvas.texture,
-          roughness: 0.7,
+          toneMapped: false,
         });
+        tableMaterial.color.setScalar(lightOnRef.current ? 1 : TABLE_DIMMED_BRIGHTNESS);
+        tableTopMesh.material = tableMaterial;
+        tableMaterialRef.current = tableMaterial;
         lastRedrawnSignatureRef.current = `${activeSceneRef.current.id}|${activeSceneRef.current.backgroundImage}`;
-        void tableCanvas.redraw(activeSceneRef.current);
+        void tableCanvas.redraw(activeSceneRef.current, currentDrawings);
         tableCanvasRef.current = tableCanvas;
 
         let currentDrawingId: string | null = null;
@@ -604,7 +635,7 @@ export function RoomView({
               drawings: activeSceneRef.current.drawings.filter((d) => d.id !== hitId),
             };
             activeSceneRef.current = withoutErased;
-            void tableCanvas.redraw(withoutErased);
+            void tableCanvas.redraw(withoutErased, currentDrawings);
             socket.emit(SocketEvent.DrawingDelete, {
               sessionId,
               sceneId: activeSceneRef.current.id,
@@ -631,8 +662,7 @@ export function RoomView({
         }
         if (controller.isSeated) {
           controller.stand();
-          applyViewportSize(camera, renderer, container, false);
-          setSeated(false);
+          applySeatedView(false);
           onObjectInteractRef.current('table');
           return;
         }
@@ -653,8 +683,7 @@ export function RoomView({
           onObjectInteractRef.current('light');
         } else if (nearestId === 'table') {
           controller.sit();
-          applyViewportSize(camera, renderer, container, true);
-          setSeated(true);
+          applySeatedView(true);
           onObjectInteractRef.current('table');
         }
       };

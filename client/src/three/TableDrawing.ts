@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Point2D } from '@custom-tabletop/shared';
-import type { TableBounds } from './collision.js';
+import type { TableSurface } from './RoomLayout.js';
 import { tableLocalToCanvas } from './tableCoordinates.js';
 import { TABLE_CANVAS_SIZE } from './TableCanvas.js';
 
@@ -8,7 +8,7 @@ export interface TableDrawingOptions {
   camera: THREE.Camera;
   domElement: HTMLElement;
   tableTopMesh: THREE.Object3D;
-  table: TableBounds;
+  table: TableSurface;
   /** Drawing only makes sense while the player isn't looking around
    * (pointer-locked) — the same mouse drives both, and letting a drag
    * during mouse-look accidentally draw would be surprising. */
@@ -115,6 +115,7 @@ export class TableDrawing {
 
     const localX = hit.point.x - this.options.table.center.x;
     const localZ = hit.point.z - this.options.table.center.z;
-    return tableLocalToCanvas(localX, localZ, this.options.table.radius, TABLE_CANVAS_SIZE);
+    const { halfWidth, halfDepth } = this.options.table;
+    return tableLocalToCanvas(localX, localZ, halfWidth, halfDepth, TABLE_CANVAS_SIZE);
   }
 }

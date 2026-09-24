@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import { resolveMovement, type RoomBounds, type TableBounds } from './collision.js';
-import { PLAYER_RADIUS } from './RoomLayout.js';
+import { resolveMovement, type Obstacle, type RoomBounds } from './collision.js';
+import { PLAYER_RADIUS, seatedCameraHeight, type TableSurface } from './RoomLayout.js';
 import { isTypingTarget } from '../keyboard.js';
 
 const MOVE_SPEED = 3; // metres/second, walking pace
@@ -20,7 +20,10 @@ export interface FirstPersonControllerOptions {
   camera: THREE.PerspectiveCamera;
   domElement: HTMLElement;
   room: RoomBounds;
-  table: TableBounds;
+  /** Solid furniture footprints (from the room model's COL_* boxes). */
+  obstacles: Obstacle[];
+  /** The play surface — where sitting down looks. */
+  table: TableSurface;
   playerRadius?: number;
   moveSpeed?: number;
 }
@@ -34,17 +37,12 @@ export interface FirstPersonControllerOptions {
  * class captures the position delta it produces each frame and re-resolves
  * it against the room/table before committing it.
  */
-/** How high above the table the camera hovers while "seated" (Milestone
- * 8's table interactable), looking straight down at it. Tuned so the table
- * (radius 1.1m) fills a *square* viewport (RoomView.tsx switches to one
- * while seated, at this same fixed 70° vertical FOV) with a small margin,
- * rather than floating in the middle of a mostly-empty square frame. */
-const SEATED_HEIGHT_ABOVE_TABLE = 1.65;
-
 export class FirstPersonController {
   readonly controls: PointerLockControls;
   private readonly room: RoomBounds;
-  private readonly table: TableBounds;
+  private readonly obstacles: Obstacle[];
+  private readonly table: TableSurface;
+  private readonly camera: THREE.PerspectiveCamera;
   private readonly playerRadius: number;
   private readonly moveSpeed: number;
   private readonly pressedKeys = new Set<string>();
@@ -72,7 +70,9 @@ export class FirstPersonController {
   constructor(options: FirstPersonControllerOptions) {
     this.controls = new PointerLockControls(options.camera, options.domElement);
     this.room = options.room;
+    this.obstacles = options.obstacles;
     this.table = options.table;
+    this.camera = options.camera;
     this.playerRadius = options.playerRadius ?? PLAYER_RADIUS;
     this.moveSpeed = options.moveSpeed ?? MOVE_SPEED;
   }
@@ -127,7 +127,7 @@ export class FirstPersonController {
     const after = { x: object.position.x, z: object.position.z };
     const delta = { x: after.x - before.x, z: after.z - before.z };
 
-    const resolved = resolveMovement(before, delta, this.room, this.table, this.playerRadius);
+    const resolved = resolveMovement(before, delta, this.room, this.obstacles, this.playerRadius);
     object.position.x = resolved.x;
     object.position.z = resolved.z;
   }
@@ -136,9 +136,11 @@ export class FirstPersonController {
    * existing raycast-driven table interactions — drawing, dice, the
    * soundboard console — work immediately without a separate click) and
    * takes the camera over directly, hovering it above the table looking
-   * straight down. `update()`'s movement already no-ops while unlocked, so
-   * WASD is disabled for free as a side effect, without a separate seated
-   * flag to check. A no-op if already seated. */
+   * straight down — high enough that the whole play surface fills the
+   * (square, while seated) frame (`seatedCameraHeight`). `update()`'s
+   * movement already no-ops while unlocked, so WASD is disabled for free as
+   * a side effect, without a separate seated flag to check. A no-op if
+   * already seated. */
   sit(): void {
     if (this.standingState) {
       return;
@@ -149,7 +151,11 @@ export class FirstPersonController {
       quaternion: object.quaternion.clone(),
     };
     this.controls.unlock();
-    object.position.set(this.table.center.x, SEATED_HEIGHT_ABOVE_TABLE, this.table.center.z);
+    object.position.set(
+      this.table.center.x,
+      seatedCameraHeight(this.table, this.camera.fov),
+      this.table.center.z,
+    );
     object.lookAt(this.table.center.x, 0, this.table.center.z);
   }
 

@@ -1,8 +1,15 @@
 import * as THREE from 'three';
-import type { Point2D, Scene } from '@custom-tabletop/shared';
+import type { Drawing, Point2D, Scene } from '@custom-tabletop/shared';
 import { computeCoverRect } from './imageFit.js';
 
+/** The canvas's *logical* size — the coordinate space every stroke point
+ * (and the server's stroke-width bounds) is expressed in. Unchanged since
+ * Milestone 5, so stored drawings and the wire format are unaffected. */
 export const TABLE_CANVAS_SIZE = 1024;
+/** Actual backing pixels per logical unit: the texture is rendered at 2x so
+ * an uploaded map stays crisp on a 2m table viewed full-screen, not just the
+ * strokes on top of it. */
+const RESOLUTION_SCALE = 2;
 const BACKGROUND_COLOR = '#e8dcc0'; // blank parchment — a scene with no backgroundImage yet
 
 export interface StrokeStyle {
@@ -43,48 +50,52 @@ export class TableCanvas {
 
   constructor() {
     this.canvas = document.createElement('canvas');
-    this.canvas.width = TABLE_CANVAS_SIZE;
-    this.canvas.height = TABLE_CANVAS_SIZE;
+    this.canvas.width = TABLE_CANVAS_SIZE * RESOLUTION_SCALE;
+    this.canvas.height = TABLE_CANVAS_SIZE * RESOLUTION_SCALE;
     const ctx = this.canvas.getContext('2d');
     if (!ctx) {
       throw new Error('2D canvas context unavailable');
     }
     this.ctx = ctx;
+    // Everything below draws in logical (TABLE_CANVAS_SIZE) units.
+    this.ctx.setTransform(RESOLUTION_SCALE, 0, 0, RESOLUTION_SCALE, 0, 0);
+    this.ctx.imageSmoothingQuality = 'high';
 
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.flipY = false;
     this.texture.colorSpace = THREE.SRGBColorSpace;
   }
 
-  /** Full redraw from a GameState snapshot — background image (or the
-   * parchment fallback) plus every accumulated stroke. Used on join and
-   * whenever the active scene changes or its background is updated;
-   * point-by-point drawing updates use `extendStroke` instead. Guards
-   * against an image load from a stale/superseded scene finishing after a
-   * newer `redraw` already started. */
-  async redraw(scene: Scene): Promise<void> {
+  /** Full redraw — background image (or the parchment fallback) plus every
+   * stroke. Used on join and whenever the active scene or its background
+   * changes; point-by-point drawing uses `extendStroke` instead.
+   *
+   * `currentDrawings`, when given, is read *after* the background image has
+   * loaded rather than snapshotting `scene.drawings` up front — strokes
+   * drawn (by anyone) while a new map image was still downloading would
+   * otherwise be painted over and lost from view. A redraw superseded by a
+   * newer one while its image loads does nothing. */
+  async redraw(scene: Scene, currentDrawings?: () => Drawing[]): Promise<void> {
     const token = ++this.loadToken;
-    this.lastPoint.clear();
-
-    this.ctx.fillStyle = BACKGROUND_COLOR;
-    this.ctx.fillRect(0, 0, TABLE_CANVAS_SIZE, TABLE_CANVAS_SIZE);
-
-    if (scene.backgroundImage) {
-      const image = await loadImage(scene.backgroundImage).catch(() => null);
-      if (token !== this.loadToken) {
-        return; // superseded by a later redraw while the image was loading
-      }
-      if (image) {
-        // "Cover" fit (crop the longer dimension, no stretching) rather
-        // than stretching to the square canvas — a cheap stopgap for a
-        // real interactive resize/reposition tool, tracked in
-        // docs/roadmap.md (Milestone 8 user request).
-        const rect = computeCoverRect(image.naturalWidth, image.naturalHeight, TABLE_CANVAS_SIZE);
-        this.ctx.drawImage(image, rect.x, rect.y, rect.width, rect.height);
-      }
+    const image = scene.backgroundImage
+      ? await loadImage(scene.backgroundImage).catch(() => null)
+      : null;
+    if (token !== this.loadToken) {
+      return; // superseded by a later redraw while the image was loading
     }
 
-    for (const drawing of scene.drawings) {
+    this.lastPoint.clear();
+    this.ctx.fillStyle = BACKGROUND_COLOR;
+    this.ctx.fillRect(0, 0, TABLE_CANVAS_SIZE, TABLE_CANVAS_SIZE);
+    if (image) {
+      // The crop dialog (MapCropDialog.tsx) already produces a square image
+      // framed exactly as intended, so this is a 1:1 draw for those; any
+      // other image is "cover"-fitted (no stretching) as a fallback.
+      const rect = computeCoverRect(image.naturalWidth, image.naturalHeight, TABLE_CANVAS_SIZE);
+      this.ctx.drawImage(image, rect.x, rect.y, rect.width, rect.height);
+    }
+
+    for (const drawing of currentDrawings?.() ?? scene.drawings) {
       this.paintStroke(drawing.points, { color: drawing.color, width: drawing.width });
     }
     this.texture.needsUpdate = true;

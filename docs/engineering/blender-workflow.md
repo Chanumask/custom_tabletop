@@ -26,9 +26,29 @@ That repo's `docs/engineering/blender-workflow.md` (a sibling repo, not part of 
 - **Import: Three.js `GLTFLoader`** client-side (`client/src/` — the room-loading code lands in Milestone 3), not an engine-side MCP import call. Once a `.glb` is exported to disk, getting it into the running app is a normal client asset-loading concern, not something MCP does.
 - **No Unreal-specific material/collision/Nanite concerns.** Materials are whatever glTF/Three.js materials the export carries over; collision is handled in the Three.js physics/collision layer the client builds, not an engine collision-complexity flag.
 
+## Setup on the current machine (2026-09-24)
+
+The machine the project moved to had none of the above: install `uv` (`winget install --id=astral-sh.uv -e`), then `uvx mcp-for-blender@2.0.4 install-addon`, enable "MCP for Blender" in Blender's add-on preferences (it auto-starts its socket server on launch), and restart the Claude app. `.mcp.json` pins `mcp-for-blender@2.0.4` with `DISABLE_TELEMETRY=true`. The package is ahujasid's renamed `blender-mcp`; its **Poly Haven** integration (CC0 textures/models, no key) is what dressed the room. Poly Haven is a *per-scene* toggle (`scene.blendermcp_use_polyhaven = True`) — reopening a .blend resets it. If the MCP server version and the add-on's protocol disagree, some wrapper tools break (seen: `search_polyhaven_assets` passing `categories` vs. `category`) — the public API (`https://api.polyhaven.com/assets?t=models`) plus `download_polyhaven_asset` still work.
+
+## Room conventions the client depends on (2026-09-24 rework)
+
+The client reads gameplay geometry **out of the exported model by object name** (`client/src/three/RoomLoader.ts`'s `describeRoom`) — keep these names when editing the room:
+
+| Object | Meaning in the game |
+|---|---|
+| `COL_*` | Invisible collision footprint (its XZ bounding box becomes an obstacle; hidden at load). Add one for every piece of furniture a player shouldn't walk through. |
+| `Table_Top` | The play surface. Its bounding box *is* the map/drawing area (center, half-width/depth, height) — the canvas texture, UVs, drawing raycasts, dice spawns and the seated camera all derive from it. |
+| `Whiteboard_Surface` | The whiteboard's writable quad (UV 0..1 across it, facing into the room). |
+| `Chandelier` | Hidden while a player is seated (it hangs where the top-down camera sits). |
+| `Floor` / `Ceiling` | Walkable bounds / wall height. |
+
+**Texture pipeline:** materials are plain Principled BSDFs wired UV → image textures (no Mapping/Displacement nodes — glTF can't carry them); tiling is done with world-scale box-projected UVs (`set_box_uv` in the build scripts). Packed textures are stored as ≤1024px JPEG (512px for small props) so `room.blend` stays ~15 MB; export uses `export_image_format='JPEG'`, quality 85 (`room.glb` ~13 MB, ~130k triangles). Watch for: Poly Haven props sometimes carry Subdivision modifiers (the candlestick shipped at level 3 = 213k triangles) and "glass" materials built from an Add Shader, which glTF exports as an opaque dark sheet (removed from the picture frames).
+
+**Poly Haven assets used (all CC0, https://polyhaven.com):** textures `herringbone_parquet`, `wooden_panels`, `beige_wall_001`, `quatrefoil_jacquard_fabric`, `floral_jacquard`, `dark_wood`, `rough_pine_door`; models `gallinera_chair`, `wooden_bookshelf_worn`, `ArmChair_01`, `side_table_01`, `treasure_chest` (decimated to 20%), `vintage_grandfather_clock_01` (rig removed), `lantern_chandelier_01`, `hanging_picture_frame_01`/`02`, `potted_plant_04`, `wooden_candlestick`.
+
 ## Status
 
-**Built** (2026-09-23, M3 part 2). The room is modeled entirely by driving Blender's Python API over MCP (`execute_blender_code`) — no manual work in the Blender UI — matching `PLACEHOLDER_ROOM_LAYOUT`'s dimensions exactly so it's a pure asset swap. Source at `blender/room.blend` (repo root, not under `client/public/` — it isn't a web asset). Export at `client/public/models/room.glb`, loaded via `RoomLoader.ts`'s `gltfUrl` option (now the default in `RoomView.tsx`).
+**Reworked** (2026-09-24): square game table with rail, textured floor/walls/ceiling, wainscoting and trim, ceiling beams, door, furnished with the Poly Haven assets above, window removed, colliders authored as `COL_*` boxes. **Originally built** (2026-09-23, M3 part 2). The room is modeled entirely by driving Blender's Python API over MCP (`execute_blender_code`) — no manual work in the Blender UI — matching `PLACEHOLDER_ROOM_LAYOUT`'s dimensions exactly so it's a pure asset swap. Source at `blender/room.blend` (repo root, not under `client/public/` — it isn't a web asset). Export at `client/public/models/room.glb`, loaded via `RoomLoader.ts`'s `gltfUrl` option (now the default in `RoomView.tsx`).
 
 ### The round trip
 

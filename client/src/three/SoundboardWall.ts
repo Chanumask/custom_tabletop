@@ -8,7 +8,7 @@ import { soundboardSlotOffset } from './soundboardLayout.js';
  * wall-mounted board) — known clear of the bookshelf/lamp, which are on the
  * opposite (west) wall. Exact placement is eyeballed against the real
  * Blender room in a browser check, same approach as RoomLamp.ts. */
-export const SOUNDBOARD_WALL_POSITION = { x: 4.9, z: -3.0 };
+export const SOUNDBOARD_WALL_POSITION = { x: 4.93, z: -3.0 };
 /** Raycast max distance for "aiming" at a button (SoundboardWall.raycastFromCamera)
  * — doubles as the proximity requirement, since a ray that far only resolves
  * to a hit if the player is standing close enough to the wall to begin with. */

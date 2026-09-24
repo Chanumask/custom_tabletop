@@ -16,7 +16,11 @@ const LAMP_OFF_COLOR = 0x4a4030;
 export interface RoomLamp {
   group: THREE.Group;
   bulb: THREE.Mesh;
+  /** A small warm light the lamp actually casts on its corner of the room. */
+  glow: THREE.PointLight;
 }
+
+const GLOW_INTENSITY = 4;
 
 /**
  * A small standing lamp prop — the physical, walk-up-to-able object behind
@@ -56,10 +60,14 @@ export function createLamp(scene: THREE.Scene, floorY: number): RoomLamp {
   bulb.position.y = 1.18;
   group.add(bulb);
 
+  const glow = new THREE.PointLight(LAMP_ON_COLOR, GLOW_INTENSITY, 4, 2);
+  glow.position.y = 1.18;
+  group.add(glow);
+
   group.position.set(LAMP_POSITION.x, floorY, LAMP_POSITION.z);
   scene.add(group);
 
-  return { group, bulb };
+  return { group, bulb, glow };
 }
 
 export function setLampOn(lamp: RoomLamp, on: boolean): void {
@@ -67,6 +75,7 @@ export function setLampOn(lamp: RoomLamp, on: boolean): void {
   material.color.setHex(on ? LAMP_ON_COLOR : LAMP_OFF_COLOR);
   material.emissive.setHex(on ? LAMP_ON_COLOR : LAMP_OFF_EMISSIVE);
   material.emissiveIntensity = on ? 1.2 : 0;
+  lamp.glow.intensity = on ? GLOW_INTENSITY : 0;
 }
 
 export function disposeLamp(lamp: RoomLamp): void {
