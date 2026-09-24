@@ -1448,3 +1448,117 @@ button.primary {
   align-self: center;
   margin-top: 0.2rem;
 }
+
+/* Dice tab (SessionView.tsx's DiceTab): a die picker, pool actions, and
+ * the list of dice on the table, each in its owner's color. */
+.dice-section-title,
+.dice-hint,
+.dice-empty,
+.dice-total {
+  margin: 0;
+  text-align: center;
+  font-size: 0.8rem;
+}
+
+.dice-section-title {
+  font-weight: 600;
+}
+
+.dice-hint,
+.dice-empty {
+  color: rgba(243, 230, 211, 0.6);
+}
+
+.dice-total strong {
+  font-size: 1rem;
+}
+
+.die-picker {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.3rem;
+}
+
+.die-picker button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.35rem 0.1rem;
+  border: 1px solid rgba(243, 230, 211, 0.18);
+  border-radius: 8px;
+  background: rgba(243, 230, 211, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    transform 120ms ease;
+}
+
+.die-picker button:hover {
+  background: rgba(243, 230, 211, 0.14);
+  transform: translateY(-1px);
+}
+
+.die-glyph {
+  width: 1.3rem;
+  height: 1.3rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}
+
+.dice-actions {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.dice-list li {
+  justify-content: flex-start;
+}
+
+.dice-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  width: 3.2rem;
+  font-weight: 700;
+}
+
+.dice-kind .die-glyph {
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 2.2;
+}
+
+.dice-owner {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+.dice-result {
+  min-width: 1.8rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.dice-result.critical {
+  color: #f3c55b;
+  text-shadow: 0 0 8px rgba(243, 197, 91, 0.6);
+}
+
+.dice-result.fumble {
+  color: #f07a64;
+}

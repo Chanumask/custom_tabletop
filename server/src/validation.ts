@@ -1,5 +1,7 @@
 import {
+  MAX_DICE_PER_ROLL,
   MAX_PLAYER_NAME_LENGTH,
+  isDieKind,
   MAX_SOUND_NAME_LENGTH,
   SOUNDBOARD_SLOT_COUNT,
   WHITEBOARD_LINE_COUNT,
@@ -364,12 +366,13 @@ export function parseDiceSpawnRequest(payload: unknown): DiceSpawnRequest | null
     return null;
   }
 
-  const { sessionId, playerId, diceId, position } = payload as Record<string, unknown>;
+  const { sessionId, playerId, diceId, position, kind } = payload as Record<string, unknown>;
   if (
     !isNonEmptyString(sessionId) ||
     !isNonEmptyString(playerId) ||
     !isNonEmptyString(diceId) ||
-    !isVector3(position)
+    !isVector3(position) ||
+    (kind !== undefined && !isDieKind(kind))
   ) {
     return null;
   }
@@ -379,6 +382,7 @@ export function parseDiceSpawnRequest(payload: unknown): DiceSpawnRequest | null
     playerId: playerId.trim(),
     diceId: diceId.trim(),
     position,
+    kind: kind ?? 'd6',
   };
 }
 
@@ -387,12 +391,23 @@ export function parseDiceRollRequest(payload: unknown): DiceRollRequest | null {
     return null;
   }
 
-  const { sessionId, playerId, diceId } = payload as Record<string, unknown>;
-  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || !isNonEmptyString(diceId)) {
+  const { sessionId, playerId, diceIds } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    !Array.isArray(diceIds) ||
+    diceIds.length === 0 ||
+    diceIds.length > MAX_DICE_PER_ROLL ||
+    !diceIds.every(isNonEmptyString)
+  ) {
     return null;
   }
 
-  return { sessionId: sessionId.trim(), playerId: playerId.trim(), diceId: diceId.trim() };
+  return {
+    sessionId: sessionId.trim(),
+    playerId: playerId.trim(),
+    diceIds: (diceIds as string[]).map((id) => id.trim()),
+  };
 }
 
 export function parseDiceRemoveRequest(payload: unknown): DiceRemoveRequest | null {

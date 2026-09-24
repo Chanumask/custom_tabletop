@@ -2,7 +2,9 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   EMOTES,
   MAX_PLAYER_NAME_LENGTH,
+  DIE_KINDS,
   playerColorHex,
+  type DieKind,
   type GameState,
   type Player,
   type PlayerColorId,
@@ -23,8 +25,8 @@ export interface SessionViewProps {
   playerId: string;
   onLeave: () => void;
   onSetMapBackground: (url: string) => void;
-  onSpawnDie: () => void;
-  onRollDie: (diceId: string) => void;
+  onSpawnDie: (kind: DieKind) => void;
+  onRollDice: (diceIds: string[]) => void;
   onRemoveDie: (diceId: string) => void;
   onPlaySound: (soundId: string) => void;
   onUploadSound: (name: string, url: string) => void;
@@ -59,7 +61,7 @@ export function SessionView({
   onLeave,
   onSetMapBackground,
   onSpawnDie,
-  onRollDie,
+  onRollDice,
   onRemoveDie,
   onPlaySound,
   onUploadSound,
@@ -132,8 +134,9 @@ export function SessionView({
         {activeTab === 'dice' && (
           <DiceTab
             state={state}
+            playerId={playerId}
             onSpawnDie={onSpawnDie}
-            onRollDie={onRollDie}
+            onRollDice={onRollDice}
             onRemoveDie={onRemoveDie}
           />
         )}
@@ -357,39 +360,115 @@ function MapTab({
   );
 }
 
+/** Outline of each die kind, for the Dice tab's buttons and list. */
+function DieGlyph({ kind }: { kind: DieKind }) {
+  const shapes: Record<DieKind, string> = {
+    d4: 'M12 3 21 19H3Z',
+    d6: 'M5 5h14v14H5Z',
+    d8: 'M12 2 20 12 12 22 4 12Z',
+    d10: 'M12 2 20 10 12 22 4 10Z',
+    d12: 'M12 2.5 21 9l-3.4 10.5H6.4L3 9Z',
+    d20: 'M12 2 20.5 7v10L12 22l-8.5-5V7Z',
+  };
+  return (
+    <svg className="die-glyph" viewBox="0 0 24 24" aria-hidden="true">
+      <path d={shapes[kind]} />
+    </svg>
+  );
+}
+
 function DiceTab({
   state,
+  playerId,
   onSpawnDie,
-  onRollDie,
+  onRollDice,
   onRemoveDie,
 }: {
   state: GameState;
-  onSpawnDie: () => void;
-  onRollDie: (diceId: string) => void;
+  playerId: string;
+  onSpawnDie: (kind: DieKind) => void;
+  onRollDice: (diceIds: string[]) => void;
   onRemoveDie: (diceId: string) => void;
 }) {
+  const mine = state.dice.filter((die) => die.ownerId === playerId);
+  const rolledMine = mine.filter((die) => die.result !== null);
+  const total = rolledMine.reduce((sum, die) => sum + (die.result ?? 0), 0);
+  const owner = (id: string) => state.players.find((player) => player.id === id);
+
   return (
-    <div>
-      <button type="button" onClick={onSpawnDie}>
-        Spawn die
-      </button>
-      <ul className="dice-list">
-        {state.dice.map((die) => (
-          <li key={die.id}>
-            <span>
-              {die.id.slice(0, 6)}: {die.result ?? 'unrolled'}
-            </span>
-            <span>
-              <button type="button" onClick={() => onRollDie(die.id)}>
-                Roll
-              </button>
-              <button type="button" onClick={() => onRemoveDie(die.id)}>
-                Remove
-              </button>
-            </span>
-          </li>
+    <div className="dice-tab">
+      <p className="dice-section-title">Add a die to the table</p>
+      <div className="die-picker">
+        {DIE_KINDS.map((kind) => (
+          <button key={kind} type="button" onClick={() => onSpawnDie(kind)} title={`Add a ${kind}`}>
+            <DieGlyph kind={kind} />
+            <span>{kind}</span>
+          </button>
         ))}
-      </ul>
+      </div>
+
+      <div className="dice-actions">
+        <button
+          type="button"
+          className="primary"
+          disabled={mine.length === 0}
+          onClick={() => onRollDice(mine.map((die) => die.id))}
+        >
+          Roll my dice{mine.length > 0 ? ` (${mine.length})` : ''}
+        </button>
+        <button
+          type="button"
+          disabled={mine.length === 0}
+          onClick={() => mine.forEach((die) => onRemoveDie(die.id))}
+        >
+          Clear mine
+        </button>
+      </div>
+      {rolledMine.length > 1 && (
+        <p className="dice-total">
+          Your dice: {rolledMine.map((die) => die.result).join(' + ')} = <strong>{total}</strong>
+        </p>
+      )}
+
+      {state.dice.length === 0 ? (
+        <p className="dice-empty">No dice on the table yet.</p>
+      ) : (
+        <ul className="dice-list">
+          {state.dice.map((die) => {
+            const dieOwner = owner(die.ownerId);
+            const color = dieOwner ? playerColorHex(dieOwner.color) : '#efe6d4';
+            const critical = die.kind === 'd20' && die.result === 20;
+            const fumble = die.kind === 'd20' && die.result === 1;
+            return (
+              <li key={die.id}>
+                <span className="dice-kind" style={{ color }}>
+                  <DieGlyph kind={die.kind} />
+                  {die.kind}
+                </span>
+                <span className="dice-owner">{dieOwner?.name ?? 'Nobody'}</span>
+                <span
+                  className={`dice-result${critical ? ' critical' : ''}${fumble ? ' fumble' : ''}`}
+                  title={die.rollCount > 0 ? `Rolled ${die.rollCount}×` : 'Not rolled yet'}
+                >
+                  {die.result ?? '–'}
+                </span>
+                <button type="button" onClick={() => onRollDice([die.id])}>
+                  Roll
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label={`Remove this ${die.kind}`}
+                  onClick={() => onRemoveDie(die.id)}
+                >
+                  ×
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p className="dice-hint">Aim at a die and press E to roll it — or click it at the table.</p>
     </div>
   );
 }

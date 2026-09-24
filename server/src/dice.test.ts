@@ -76,14 +76,22 @@ describe('Dice (Milestone 6 exit check)', () => {
 
     const spawnBroadcast = await bobSeesSpawn;
     expect(spawnBroadcast.dice).toEqual([
-      { id: 'd1', ownerId: 'alice-id', position: { x: 0.1, y: 0.8, z: -0.3 }, result: null },
+      {
+        id: 'd1',
+        ownerId: 'alice-id',
+        kind: 'd6',
+        position: { x: 0.1, y: 0.8, z: -0.3 },
+        result: null,
+        rollCount: 0,
+        rolledBy: null,
+      },
     ]);
 
     const bobSeesRoll = waitForSessionState(bob);
     const rollResult = await diceRollAck(alice, {
       sessionId: 'table-1',
       playerId: 'alice-id',
-      diceId: 'd1',
+      diceIds: ['d1'],
     });
     expect(rollResult.ok).toBe(true);
     if (!rollResult.ok) return;
@@ -92,7 +100,11 @@ describe('Dice (Milestone 6 exit check)', () => {
     expect(resolvedResult).toBeLessThanOrEqual(6);
 
     const rollBroadcast = await bobSeesRoll;
-    expect(rollBroadcast.dice[0]!.result).toBe(resolvedResult);
+    expect(rollBroadcast.dice[0]).toMatchObject({
+      result: resolvedResult,
+      rollCount: 1,
+      rolledBy: 'alice-id',
+    });
   });
 
   it('a die spawned by one player can be rolled and removed by another (not owner-gated)', async () => {
@@ -113,7 +125,7 @@ describe('Dice (Milestone 6 exit check)', () => {
     const bobRolled = await diceRollAck(bob, {
       sessionId: 'table-2',
       playerId: 'bob-id',
-      diceId: 'd1',
+      diceIds: ['d1'],
     });
     expect(bobRolled.ok).toBe(true);
 
@@ -138,7 +150,7 @@ describe('Dice (Milestone 6 exit check)', () => {
       diceId: 'd1',
       position: { x: 0, y: 0.8, z: 0 },
     });
-    await diceRollAck(alice, { sessionId: 'table-3', playerId: 'alice-id', diceId: 'd1' });
+    await diceRollAck(alice, { sessionId: 'table-3', playerId: 'alice-id', diceIds: ['d1'] });
 
     const bob = await connect(url);
     clients.push(bob);
@@ -162,6 +174,20 @@ describe('Dice (Milestone 6 exit check)', () => {
 
     const badRoll = await diceRollAck(alice, { sessionId: 'table-4', playerId: 'alice-id' });
     expect(badRoll.ok).toBe(false);
+    const badKind = await diceSpawnAck(alice, {
+      sessionId: 'table-4',
+      playerId: 'alice-id',
+      diceId: 'd9',
+      position: { x: 0, y: 0.8, z: 0 },
+      kind: 'd7',
+    });
+    expect(badKind.ok).toBe(false);
+    const emptyRoll = await diceRollAck(alice, {
+      sessionId: 'table-4',
+      playerId: 'alice-id',
+      diceIds: [],
+    });
+    expect(emptyRoll.ok).toBe(false);
 
     // The server must still be alive and answering normal requests afterward.
     const followUp = await diceSpawnAck(alice, {

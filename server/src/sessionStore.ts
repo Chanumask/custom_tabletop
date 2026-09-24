@@ -13,10 +13,12 @@ import {
   type Point2D,
   type Scene,
   type Vector3,
+  DIE_FACES,
+  MAX_DICE_PER_SESSION,
+  type DieKind,
 } from '@custom-tabletop/shared';
 
 const DEFAULT_SCENE_ID = 'default';
-const DIE_FACES = 6;
 
 /** Shared by every mutation that's infrequent/authorized enough to ack with
  * the full new GameState rather than a fire-and-forget delta (scene:* and
@@ -391,6 +393,7 @@ export class SessionStore {
     playerId: string,
     diceId: string,
     position: Vector3,
+    kind: DieKind = 'd6',
   ): GameStateMutationResult {
     const state = this.sessions.get(sessionId);
     if (!state) {
@@ -399,27 +402,53 @@ export class SessionStore {
     if (state.dice.some((die) => die.id === diceId)) {
       return { ok: false, error: 'A die with that id already exists.' };
     }
+    if (state.dice.length >= MAX_DICE_PER_SESSION) {
+      return {
+        ok: false,
+        error: `The table holds at most ${MAX_DICE_PER_SESSION} dice — clear some first.`,
+      };
+    }
 
-    const die: Dice = { id: diceId, ownerId: playerId, position, result: null };
+    const die: Dice = {
+      id: diceId,
+      ownerId: playerId,
+      kind,
+      position,
+      result: null,
+      rollCount: 0,
+      rolledBy: null,
+    };
     state.dice.push(die);
     return { ok: true, state };
   }
 
-  /** Not host-gated. The result is decided here, server-side, with
-   * `Math.random()` — never trusted from the client, so a roll can't be
-   * faked (docs/engineering/architecture.md's "Autorität und
-   * Synchronisierung" lists dice as needing server validation). */
-  rollDice(sessionId: string, diceId: string): GameStateMutationResult {
+  /** Not host-gated. Rolls every listed die together (all or nothing). The
+   * results are decided here, server-side, with `Math.random()` — never
+   * trusted from the client, so a roll can't be faked
+   * (docs/engineering/architecture.md's "Autorität und Synchronisierung"
+   * lists dice as needing server validation). */
+  rollDice(
+    sessionId: string,
+    diceIds: string[],
+    rolledBy: string | null = null,
+    random: () => number = Math.random,
+  ): GameStateMutationResult {
     const state = this.sessions.get(sessionId);
     if (!state) {
       return { ok: false, error: 'Session not found.' };
     }
-    const die = state.dice.find((candidate) => candidate.id === diceId);
-    if (!die) {
+    const dice = [...new Set(diceIds)].map((id) =>
+      state.dice.find((candidate) => candidate.id === id),
+    );
+    if (dice.length === 0 || dice.some((die) => !die)) {
       return { ok: false, error: 'Die not found.' };
     }
 
-    die.result = Math.floor(Math.random() * DIE_FACES) + 1;
+    for (const die of dice as Dice[]) {
+      die.result = Math.floor(random() * DIE_FACES[die.kind]) + 1;
+      die.rollCount += 1;
+      die.rolledBy = rolledBy;
+    }
     return { ok: true, state };
   }
 

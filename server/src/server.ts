@@ -4,6 +4,7 @@ import { createServer, type Server as HttpServer } from 'node:http';
 import { Server as SocketIoServer, type Socket } from 'socket.io';
 import {
   ConnectionEvent,
+  MAX_DICE_PER_ROLL,
   MAX_PLAYER_NAME_LENGTH,
   MAX_PLAYERS_PER_SESSION,
   SESSION_ENDED_ERROR,
@@ -558,6 +559,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           request.playerId,
           request.diceId,
           request.position,
+          request.kind,
         );
         ack?.(result);
         if (result.ok) {
@@ -571,7 +573,10 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       (payload: unknown, ack?: (response: DiceRollResponse) => void) => {
         const request = parseDiceRollRequest(payload);
         if (!request) {
-          ack?.({ ok: false, error: 'sessionId, playerId, and diceId are required.' });
+          ack?.({
+            ok: false,
+            error: `sessionId, playerId, and 1-${MAX_DICE_PER_ROLL} diceIds are required.`,
+          });
           return;
         }
         if (!actsAs(request.sessionId, request.playerId)) {
@@ -579,7 +584,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           return;
         }
 
-        const result = sessions.rollDice(request.sessionId, request.diceId);
+        const result = sessions.rollDice(request.sessionId, request.diceIds, request.playerId);
         ack?.(result);
         if (result.ok) {
           io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);

@@ -317,12 +317,36 @@ describe('parseDiceSpawnRequest', () => {
       playerId: 'p1',
       diceId: 'd1',
       position: { x: 0.5, y: 0.8, z: -0.2 },
+      kind: 'd6', // the default when none is given
     });
+  });
+
+  it('accepts every die kind', () => {
+    for (const kind of ['d4', 'd6', 'd8', 'd10', 'd12', 'd20']) {
+      expect(
+        parseDiceSpawnRequest({
+          sessionId: 'abc',
+          playerId: 'p1',
+          diceId: 'd1',
+          position: { x: 0, y: 0, z: 0 },
+          kind,
+        })?.kind,
+      ).toBe(kind);
+    }
   });
 
   it.each([
     [null],
     [{ sessionId: 'abc', playerId: 'p1', diceId: 'd1' }], // missing position
+    [
+      {
+        sessionId: 'abc',
+        playerId: 'p1',
+        diceId: 'd1',
+        position: { x: 0, y: 0, z: 0 },
+        kind: 'd7',
+      },
+    ],
     [{ sessionId: 'abc', playerId: 'p1', diceId: 'd1', position: { x: 0, y: 0 } }],
     [{ sessionId: 'abc', playerId: 'p1', diceId: '', position: { x: 0, y: 0, z: 0 } }],
   ])('rejects malformed payload %#', (payload) => {
@@ -332,19 +356,26 @@ describe('parseDiceSpawnRequest', () => {
 
 describe('parseDiceRollRequest', () => {
   it('accepts a well-formed payload and trims whitespace', () => {
-    expect(parseDiceRollRequest({ sessionId: ' abc ', playerId: ' p1 ', diceId: ' d1 ' })).toEqual({
+    expect(
+      parseDiceRollRequest({ sessionId: ' abc ', playerId: ' p1 ', diceIds: [' d1 ', 'd2'] }),
+    ).toEqual({
       sessionId: 'abc',
       playerId: 'p1',
-      diceId: 'd1',
+      diceIds: ['d1', 'd2'],
     });
   });
 
-  it.each([[null], [{ sessionId: 'abc', playerId: 'p1' }], [{ diceId: 'd1' }]])(
-    'rejects malformed payload %#',
-    (payload) => {
-      expect(parseDiceRollRequest(payload)).toBeNull();
-    },
-  );
+  it.each([
+    [null],
+    [{ sessionId: 'abc', playerId: 'p1' }],
+    [{ diceIds: ['d1'] }],
+    [{ sessionId: 'abc', playerId: 'p1', diceIds: [] }],
+    [{ sessionId: 'abc', playerId: 'p1', diceIds: ['d1', ''] }],
+    [{ sessionId: 'abc', playerId: 'p1', diceIds: Array.from({ length: 21 }, (_, i) => `d${i}`) }],
+    [{ sessionId: 'abc', playerId: 'p1', diceId: 'd1' }], // the old single-id shape
+  ])('rejects malformed payload %#', (payload) => {
+    expect(parseDiceRollRequest(payload)).toBeNull();
+  });
 });
 
 describe('parseDiceRemoveRequest', () => {

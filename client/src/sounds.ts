@@ -98,3 +98,54 @@ export function playSound(entry: SoundState): Promise<void> {
   }
   return Promise.resolve();
 }
+
+// How loud one die's clatter peaks at masterVolume 1 (several dice add up).
+const CLATTER_PEAK_GAIN = 0.35;
+
+/**
+ * The sound of dice tumbling on the table: per die, a few short, filtered
+ * noise clicks that come faster and softer as it settles — synthesized, so
+ * there's no audio asset to ship. Timed to `DiceManager`'s tumble.
+ */
+export function playDiceClatter(diceCount: number, durationSeconds: number): void {
+  if (masterVolume === 0 || diceCount === 0) {
+    return;
+  }
+  const ctx = getAudioContext();
+  if (ctx.state === 'suspended') {
+    void ctx.resume();
+  }
+
+  const noise = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.03), ctx.sampleRate);
+  const samples = noise.getChannelData(0);
+  for (let i = 0; i < samples.length; i++) {
+    samples[i] = Math.random() * 2 - 1;
+  }
+
+  const start = ctx.currentTime + 0.02;
+  const perDie = CLATTER_PEAK_GAIN / Math.sqrt(Math.min(diceCount, 8));
+  for (let die = 0; die < Math.min(diceCount, 8); die++) {
+    let at = start + Math.random() * 0.06;
+    let gap = 0.16 + Math.random() * 0.06;
+    let loudness = 1;
+    while (at < start + durationSeconds && loudness > 0.08) {
+      const source = ctx.createBufferSource();
+      source.buffer = noise;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 1800 + Math.random() * 2600;
+      filter.Q.value = 4;
+      const gain = ctx.createGain();
+      const peak = perDie * loudness * masterVolume;
+      gain.gain.setValueAtTime(peak, at);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.025);
+      source.connect(filter).connect(gain).connect(ctx.destination);
+      source.start(at);
+      source.stop(at + 0.03);
+
+      at += gap;
+      gap *= 0.72; // bounces come quicker as it settles...
+      loudness *= 0.7; // ...and softer
+    }
+  }
+}

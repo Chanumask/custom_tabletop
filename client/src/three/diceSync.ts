@@ -3,23 +3,23 @@ import type { Dice } from '@custom-tabletop/shared';
 export interface DiceSyncPlan {
   added: string[];
   removed: string[];
-  /** Ids whose result changed to a new non-null value this sync — i.e. dice
-   * that were just rolled, as opposed to a die a later joiner sees already
-   * resolved (that's `added`, not `rolled` — it shouldn't spin on arrival). */
+  /** Ids rolled since the last sync — detected by `rollCount`, not by the
+   * result, so a re-roll that lands on the same number still animates. A
+   * die a later joiner sees already resolved is `added`, not `rolled` (it
+   * shouldn't tumble on arrival). */
   rolled: string[];
 }
 
 /**
- * Pure diff between a dice list and the previously known result per id, so
- * `DiceManager` can decide what to create/remove/animate without repeating
- * this logic inline (extracted the same way `tableCoordinates.ts`/
- * `tableTopUV.ts` were in Milestone 5 — keeps the DOM/THREE-touching class
- * thin and this part unit-testable without a browser). The caller updates
- * its own tracked state from `dice` after acting on the plan.
+ * Pure diff between a dice list and the previously known roll count per
+ * id, so `DiceManager` can decide what to create/remove/animate without
+ * repeating this logic inline (keeps the THREE-touching class thin and
+ * this part unit-testable without a browser). The caller updates its own
+ * tracked state from `dice` after acting on the plan.
  */
 export function planDiceSync(
   dice: Dice[],
-  previousResults: ReadonlyMap<string, number | null>,
+  previousRollCounts: ReadonlyMap<string, number>,
 ): DiceSyncPlan {
   const added: string[] = [];
   const rolled: string[] = [];
@@ -27,22 +27,14 @@ export function planDiceSync(
 
   for (const die of dice) {
     seen.add(die.id);
-    if (!previousResults.has(die.id)) {
+    const previous = previousRollCounts.get(die.id);
+    if (previous === undefined) {
       added.push(die.id);
-      continue;
-    }
-    const previous = previousResults.get(die.id);
-    if (die.result !== previous && die.result !== null) {
+    } else if (die.rollCount > previous && die.result !== null) {
       rolled.push(die.id);
     }
   }
 
-  const removed: string[] = [];
-  for (const id of previousResults.keys()) {
-    if (!seen.has(id)) {
-      removed.push(id);
-    }
-  }
-
+  const removed = [...previousRollCounts.keys()].filter((id) => !seen.has(id));
   return { added, removed, rolled };
 }

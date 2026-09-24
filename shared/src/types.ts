@@ -9,6 +9,7 @@
  */
 import type { PlayerColorId } from './player.js';
 import type { WhiteboardLine } from './whiteboard.js';
+import type { DieKind } from './dice.js';
 
 export interface Vector3 {
   x: number;
@@ -52,10 +53,17 @@ export interface Drawing {
 export interface Dice {
   id: string;
   ownerId: string;
+  kind: DieKind;
+  /** Where it rests on the table: the point under its bottom face. */
   position: Vector3;
   /** null until rolled/settled; a fresh roll is server-authoritative
    * (Math.random() never runs on the client) so it can't be faked. */
   result: number | null;
+  /** Bumped by every roll, so a re-roll that lands on the same number is
+   * still seen (and animated) as a new roll. */
+  rollCount: number;
+  /** Who rolled it last (null until rolled). */
+  rolledBy: string | null;
 }
 
 export interface SoundState {
