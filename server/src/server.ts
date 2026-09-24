@@ -17,6 +17,7 @@ import {
   type SoundUploadResponse,
   type PlayerMuteResponse,
   type PlayerUnmuteResponse,
+  type ObjectInteractResponse,
 } from '@custom-tabletop/shared';
 import { SessionStore } from './sessionStore.js';
 import {
@@ -37,6 +38,7 @@ import {
   parseSoundUploadRequest,
   parsePlayerMuteRequest,
   parsePlayerUnmuteRequest,
+  parseObjectInteractRequest,
 } from './validation.js';
 import { registerUploadRoutes } from './uploads.js';
 
@@ -212,6 +214,8 @@ export function createAppServer(): AppServer {
         request.drawingId,
         request.playerId,
         request.point,
+        request.color,
+        request.width,
       );
       if (started) {
         socket.to(request.sessionId).emit(SocketEvent.DrawingStart, request);
@@ -413,6 +417,39 @@ export function createAppServer(): AppServer {
           request.targetPlayerId,
           false,
         );
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+        }
+      },
+    );
+
+    // One generic event for every room interactable (Milestone 8),
+    // dispatched on objectId — see SessionStore.toggleLight/toggleSeated
+    // and shared/src/interactables.ts. Not host-gated (neither mutation has
+    // a per-player authority question to protect). Infrequent, full-state
+    // ack + broadcast — same pattern as scene:*/dice:*.
+    socket.on(
+      SocketEvent.ObjectInteract,
+      (payload: unknown, ack?: (response: ObjectInteractResponse) => void) => {
+        const request = parseObjectInteractRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and objectId are required.' });
+          return;
+        }
+
+        let result: ObjectInteractResponse;
+        switch (request.objectId) {
+          case 'light':
+            result = sessions.toggleLight(request.sessionId);
+            break;
+          case 'table':
+            result = sessions.toggleSeated(request.sessionId, request.playerId);
+            break;
+          default:
+            result = { ok: false, error: 'Unknown interactable.' };
+        }
+
         ack?.(result);
         if (result.ok) {
           io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);

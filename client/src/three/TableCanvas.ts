@@ -4,8 +4,16 @@ import { computeCoverRect } from './imageFit.js';
 
 export const TABLE_CANVAS_SIZE = 1024;
 const BACKGROUND_COLOR = '#e8dcc0'; // blank parchment — a scene with no backgroundImage yet
-const STROKE_COLOR = '#241a12';
-const STROKE_WIDTH = 5;
+
+export interface StrokeStyle {
+  color: string;
+  width: number;
+}
+
+/** Only used if `extendStroke` is somehow called for a drawingId before its
+ * style was ever set — shouldn't happen in practice (the first call always
+ * carries one), but keeps drawing from silently no-op-ing/throwing. */
+const FALLBACK_STYLE: StrokeStyle = { color: '#241a12', width: 5 };
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -30,6 +38,7 @@ export class TableCanvas {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly lastPoint = new Map<string, Point2D>();
+  private readonly strokeStyle = new Map<string, StrokeStyle>();
   private loadToken = 0;
 
   constructor() {
@@ -76,7 +85,7 @@ export class TableCanvas {
     }
 
     for (const drawing of scene.drawings) {
-      this.paintStroke(drawing.points);
+      this.paintStroke(drawing.points, { color: drawing.color, width: drawing.width });
     }
     this.texture.needsUpdate = true;
   }
@@ -84,40 +93,50 @@ export class TableCanvas {
   /** Draws one incremental segment of an in-progress stroke — from the
    * previous point (drawing:start's first point, or the last
    * drawing:update) to this new one. A lone point with no predecessor is
-   * drawn as a dot, so a tap-without-drag is still visible. */
-  extendStroke(drawingId: string, point: Point2D): void {
+   * drawn as a dot, so a tap-without-drag is still visible. `style` is
+   * chosen once per stroke (Milestone 8's drawing toolbar) — pass it on the
+   * first call for a given `drawingId` (typically from drawing:start, which
+   * carries it); later calls for the same id reuse the stored style and can
+   * omit it. */
+  extendStroke(drawingId: string, point: Point2D, style?: StrokeStyle): void {
+    if (style) {
+      this.strokeStyle.set(drawingId, style);
+    }
+    const activeStyle = this.strokeStyle.get(drawingId) ?? FALLBACK_STYLE;
+
     const from = this.lastPoint.get(drawingId);
     if (from) {
-      this.strokeSegment(from, point);
+      this.strokeSegment(from, point, activeStyle);
     } else {
-      this.strokeDot(point);
+      this.strokeDot(point, activeStyle);
     }
     this.lastPoint.set(drawingId, point);
     this.texture.needsUpdate = true;
   }
 
-  /** Stops tracking a finished/deleted stroke's last point, so an unrelated
-   * future stroke reusing a drawingId (it won't, ids are fresh UUIDs, but
-   * defensively) never connects to it. */
+  /** Stops tracking a finished/deleted stroke's last point and style, so an
+   * unrelated future stroke reusing a drawingId (it won't, ids are fresh
+   * UUIDs, but defensively) never connects to or restyles from it. */
   endStroke(drawingId: string): void {
     this.lastPoint.delete(drawingId);
+    this.strokeStyle.delete(drawingId);
   }
 
   dispose(): void {
     this.texture.dispose();
   }
 
-  private paintStroke(points: Point2D[]): void {
+  private paintStroke(points: Point2D[], style: StrokeStyle): void {
     const [first, ...rest] = points;
     if (!first) {
       return;
     }
     if (rest.length === 0) {
-      this.strokeDot(first);
+      this.strokeDot(first, style);
       return;
     }
-    this.ctx.strokeStyle = STROKE_COLOR;
-    this.ctx.lineWidth = STROKE_WIDTH;
+    this.ctx.strokeStyle = style.color;
+    this.ctx.lineWidth = style.width;
     this.ctx.lineCap = 'round';
     this.ctx.lineJoin = 'round';
     this.ctx.beginPath();
@@ -128,9 +147,9 @@ export class TableCanvas {
     this.ctx.stroke();
   }
 
-  private strokeSegment(from: Point2D, to: Point2D): void {
-    this.ctx.strokeStyle = STROKE_COLOR;
-    this.ctx.lineWidth = STROKE_WIDTH;
+  private strokeSegment(from: Point2D, to: Point2D, style: StrokeStyle): void {
+    this.ctx.strokeStyle = style.color;
+    this.ctx.lineWidth = style.width;
     this.ctx.lineCap = 'round';
     this.ctx.beginPath();
     this.ctx.moveTo(from.x, from.y);
@@ -138,10 +157,10 @@ export class TableCanvas {
     this.ctx.stroke();
   }
 
-  private strokeDot(point: Point2D): void {
-    this.ctx.fillStyle = STROKE_COLOR;
+  private strokeDot(point: Point2D, style: StrokeStyle): void {
+    this.ctx.fillStyle = style.color;
     this.ctx.beginPath();
-    this.ctx.arc(point.x, point.y, STROKE_WIDTH / 2, 0, Math.PI * 2);
+    this.ctx.arc(point.x, point.y, style.width / 2, 0, Math.PI * 2);
     this.ctx.fill();
   }
 }

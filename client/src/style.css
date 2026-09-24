@@ -27,6 +27,13 @@ body {
 .room-view {
   position: absolute;
   inset: 0;
+  /* Centers the canvas both when it fills the container (walking around)
+   * and when it's shrunk to a square (seated at the table, Milestone 8's
+   * applyViewportSize) — harmless in the fill case since the canvas then
+   * exactly matches the container's own size. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .room-view canvas {
@@ -55,6 +62,63 @@ body {
   font-size: 0.95rem;
   text-align: center;
   cursor: pointer;
+}
+
+/* Proximity + E prompt for a room interactable (Milestone 8) — deliberately
+ * separate from .room-view-overlay (which it can appear alongside while
+ * standing near an interactable, or replace while seated) rather than
+ * reusing the same class, since its trigger condition and position differ. */
+.interaction-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: 5rem;
+  transform: translateX(-50%);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f3e6d3;
+  font-size: 0.95rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* The seated drawing toolbar (Milestone 8) — pen color/size plus an
+ * eraser, shown only while sitting at the table (a square, near-full-frame
+ * view, applyViewportSize in RoomView.tsx). */
+.drawing-toolbar {
+  position: absolute;
+  left: 50%;
+  top: 1rem;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f3e6d3;
+  font-size: 0.9rem;
+}
+
+.drawing-toolbar button {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.drawing-toolbar button.active {
+  border-color: #f3e6d3;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.drawing-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .session-overlay {

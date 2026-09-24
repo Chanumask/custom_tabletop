@@ -14,6 +14,7 @@ import {
   type SoundUploadResponse,
   type PlayerMuteResponse,
   type PlayerUnmuteResponse,
+  type ObjectInteractResponse,
 } from '@custom-tabletop/shared';
 import { createSocket } from './socket.js';
 import { connectionStatusLabel, type ConnectionStatus } from './connectionStatus.js';
@@ -243,6 +244,23 @@ export function App() {
     );
   }
 
+  function handleObjectInteract(objectId: string) {
+    const socket = socketRef.current;
+    if (!socket || !gameState) {
+      return;
+    }
+
+    socket.emit(
+      SocketEvent.ObjectInteract,
+      { sessionId: gameState.sessionId, playerId, objectId },
+      (response: ObjectInteractResponse) => {
+        if (!response.ok) {
+          console.error('Failed to interact:', response.error);
+        }
+      },
+    );
+  }
+
   function handleMutePlayer(targetPlayerId: string) {
     const socket = socketRef.current;
     if (!socket || !gameState) {
@@ -289,6 +307,10 @@ export function App() {
           players={gameState.players}
           activeScene={activeScene}
           dice={gameState.dice}
+          lightOn={gameState.lightOn}
+          soundboard={gameState.soundboard}
+          onPlaySound={handlePlaySound}
+          onObjectInteract={handleObjectInteract}
         />
         <div className="session-overlay">
           <SessionView

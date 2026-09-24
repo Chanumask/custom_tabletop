@@ -154,24 +154,31 @@ describe('SessionStore', () => {
     const state = store.join('abc', 'p1', 'Alice');
     const sceneId = state.scenes[0]!.id;
 
-    const started = store.startDrawing('abc', sceneId, 'd1', 'p1', { x: 10, y: 20 });
+    const started = store.startDrawing('abc', sceneId, 'd1', 'p1', { x: 10, y: 20 }, '#241a12', 5);
     expect(started).toBe(true);
     expect(store.get('abc')?.scenes[0]?.drawings).toEqual([
-      { id: 'd1', sceneId, playerId: 'p1', points: [{ x: 10, y: 20 }] },
+      {
+        id: 'd1',
+        sceneId,
+        playerId: 'p1',
+        points: [{ x: 10, y: 20 }],
+        color: '#241a12',
+        width: 5,
+      },
     ]);
   });
 
   it('startDrawing on an unknown scene is a no-op that returns false', () => {
     const store = new SessionStore();
     store.join('abc', 'p1', 'Alice');
-    expect(store.startDrawing('abc', 'nope', 'd1', 'p1', { x: 0, y: 0 })).toBe(false);
+    expect(store.startDrawing('abc', 'nope', 'd1', 'p1', { x: 0, y: 0 }, '#241a12', 5)).toBe(false);
   });
 
   it('appendDrawingPoint extends an in-progress stroke', () => {
     const store = new SessionStore();
     const state = store.join('abc', 'p1', 'Alice');
     const sceneId = state.scenes[0]!.id;
-    store.startDrawing('abc', sceneId, 'd1', 'p1', { x: 0, y: 0 });
+    store.startDrawing('abc', sceneId, 'd1', 'p1', { x: 0, y: 0 }, '#241a12', 5);
 
     const appended = store.appendDrawingPoint('abc', 'd1', { x: 5, y: 5 });
     expect(appended).toBe(true);
@@ -191,8 +198,8 @@ describe('SessionStore', () => {
     const store = new SessionStore();
     const state = store.join('abc', 'p1', 'Alice');
     const sceneId = state.scenes[0]!.id;
-    store.startDrawing('abc', sceneId, 'd1', 'p1', { x: 0, y: 0 });
-    store.startDrawing('abc', sceneId, 'd2', 'p1', { x: 1, y: 1 });
+    store.startDrawing('abc', sceneId, 'd1', 'p1', { x: 0, y: 0 }, '#241a12', 5);
+    store.startDrawing('abc', sceneId, 'd2', 'p1', { x: 1, y: 1 }, '#241a12', 5);
 
     const deleted = store.deleteDrawing('abc', sceneId, 'd1');
     expect(deleted).toBe(true);

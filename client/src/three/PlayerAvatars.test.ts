@@ -3,7 +3,12 @@ import * as THREE from 'three';
 import type { Player } from '@custom-tabletop/shared';
 import { PlayerAvatars } from './PlayerAvatars.js';
 
-function makePlayer(id: string, position = { x: 0, y: 1.7, z: 0 }, rotationY = 0): Player {
+function makePlayer(
+  id: string,
+  position = { x: 0, y: 1.7, z: 0 },
+  rotationY = 0,
+  seated = false,
+): Player {
   return {
     id,
     name: id,
@@ -11,6 +16,7 @@ function makePlayer(id: string, position = { x: 0, y: 1.7, z: 0 }, rotationY = 0
     position,
     rotationY,
     muted: false,
+    seated,
   };
 }
 
@@ -67,6 +73,29 @@ describe('PlayerAvatars', () => {
     const scene = new THREE.Scene();
     const avatars = new PlayerAvatars(scene);
     expect(() => avatars.updateOne('ghost', { x: 0, y: 0, z: 0 }, 0)).not.toThrow();
+  });
+
+  it('a seated player is squashed shorter than a standing one', () => {
+    const scene = new THREE.Scene();
+    const avatars = new PlayerAvatars(scene);
+    const group = scene.getObjectByName('player-avatars') as THREE.Group;
+
+    avatars.sync([makePlayer('p1'), makePlayer('p2', { x: 0, y: 1.7, z: 0 }, 0, true)], 'p1');
+
+    const mesh = group.getObjectByName('avatar-p2') as THREE.Mesh;
+    expect(mesh.scale.y).toBeLessThan(1);
+  });
+
+  it('updateOne always applies as standing (documents why RoomView must not send player:move for a seated local player)', () => {
+    const scene = new THREE.Scene();
+    const avatars = new PlayerAvatars(scene);
+    const group = scene.getObjectByName('player-avatars') as THREE.Group;
+
+    avatars.sync([makePlayer('p1'), makePlayer('p2', { x: 0, y: 1.7, z: 0 }, 0, true)], 'p1');
+    avatars.updateOne('p2', { x: 1, y: 1.7, z: 1 }, 0);
+
+    const mesh = group.getObjectByName('avatar-p2') as THREE.Mesh;
+    expect(mesh.scale.y).toBe(1);
   });
 
   it('dispose removes the avatar group from the scene', () => {

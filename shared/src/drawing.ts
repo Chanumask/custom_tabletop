@@ -17,6 +17,12 @@ export interface DrawingStartRequest {
    * to the same stroke. */
   drawingId: string;
   point: Point2D;
+  /** Chosen once for the whole stroke (Milestone 8's drawing toolbar) — a
+   * CSS color string and a canvas-pixel line width. Not resent on every
+   * drawing:update point, same "only the delta" principle as the point
+   * itself; the server stores it once on the Drawing record. */
+  color: string;
+  width: number;
 }
 
 export interface DrawingUpdateRequest {

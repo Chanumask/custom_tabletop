@@ -61,11 +61,13 @@ Version control, docs structure, and the Claude Code workflow.
 - `player:mute` / `player:unmute` — not purely host-gated: a player can always mute/unmute themselves, and the host can additionally mute/unmute anyone (see `docs/decisions.md`). `muted` is a visible status flag only; this app has no voice chat to actually silence.
 - **Exit check:** host plays a sound, all players hear it; a muted player's state is visible to the group. **✅** — proven by `server/src/soundAndMute.test.ts` (break-round verified) and confirmed live in a real two-tab browser check (a self-mute and a host-initiated unmute of another player each appeared on both tabs with no refresh). Sounds are synthesized Web Audio tones (a small fixed catalog), not shipped audio files — no real sound assets exist in this project.
 
-## M8 — Room interactables
+## M8 — Room interactables ✅
 
-- Additional 3D objects in the room beyond the table/dice that a player can approach and use (dice tray, shelf, etc.) — first real use of the "future 3D tabletop objects" bucket from the original spec.
-- New event(s) (e.g. `object:interact`), server-validated same as everything else.
-- **Exit check:** a player walks up to an interactable and triggers it; the effect is visible to everyone in the session.
+- Three interactables, scoped live with the user beyond the roadmap's original placeholder (see `docs/decisions.md`): a light switch (a walk-up-to lamp prop, toggles the room's ambient lighting for everyone), the table's sit-down mode (a camera takeover to a full-screen, square, top-down table view, freeing up direct interaction with dice/drawing without walking around), and a physical soundboard console (large clickable buttons, reusing `sound:play` entirely).
+- One generic `object:interact` event (`shared/src/interactables.ts`), server-validated same as everything else — the exact event name `docs/engineering/architecture.md` originally suggested.
+- Trigger model: proximity + the E key (a player-chosen alternative to raycast/click), except the soundboard console's individual buttons, which are click-based like table drawing since a single keypress can't disambiguate which button.
+- The seated table view also carries a small drawing toolbar — pen color/size and an eraser (`client/src/three/eraser.ts`, reusing the `drawing:delete` event from Milestone 5) — a follow-up user request once the sit-down mode existed. `Drawing` gained per-stroke `color`/`width`.
+- **Exit check:** a player walks up to an interactable and triggers it; the effect is visible to everyone in the session. **✅** — proven by `server/src/interactables.test.ts` (break-round verified) and confirmed live in a real two-tab browser check (light toggle and seated-avatar squash both visible on the other tab; soundboard console buttons correctly gated to the host, same as the 2D panel; the drawing toolbar's color and eraser verified against the table's raw canvas pixel data) — including catching and fixing two real bugs live (a prompt-text update bug and a latent `drawing:delete` remote-redraw bug), see `docs/decisions.md`.
 
 ## M9 — Host authority hardening
 
@@ -83,7 +85,6 @@ Version control, docs structure, and the Claude Code workflow.
 
 Later, out of scope for now (revisit once M1–M10 are playable):
 
-- **Map presets & fitting**: a handful of standard/built-in map backgrounds to choose from (mirroring the soundboard's built-in presets, Milestone 7/8), plus an interactive resize/reposition step when a custom map image is uploaded so it's fitted to the circular table properly (crop/zoom/pan) rather than just auto-scaled to fill it. 2026-09-24 user request; a cheap non-interactive "cover" fit (preserve aspect ratio, crop to fill, no stretch) landed as part of Milestone 8's upload work as a stopgap — the interactive fit tool itself is still future work.
+- **Map presets & fitting**: a handful of standard/built-in map backgrounds to choose from (mirroring the soundboard's built-in presets), plus an interactive resize/reposition step when a custom map image is uploaded so it's fitted to the circular table properly (crop/zoom/pan) rather than just auto-scaled to fill it. 2026-09-24 user request; a cheap non-interactive "cover" fit (preserve aspect ratio, crop to fill, no stretch) landed as part of the file-uploads extension's work as a stopgap — the interactive fit tool itself is still future work.
 - **Wall drawing + a pen tool**: extend drawing (Milestone 5) from the table surface to the room's walls, with a real tool-selection UI (a pen tool, implying others like an eraser later) rather than the current single click-drag-anywhere-on-the-table gesture. 2026-09-24 user request.
-- **Tabletop ("sit down") mode**: a camera mode switch from the first-person walkable room to a full-screen, top-down view of the table/map, for directly interacting with objects on it (dice, and future figures/character tokens) without needing to walk around and look down. 2026-09-24 user request.
 - Persistence/save-load, mobile support, real (non-placeholder) character models.

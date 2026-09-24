@@ -1,6 +1,20 @@
 import * as THREE from 'three';
 import type { RoomLayout } from './RoomLayout.js';
 
+/** Never fully dark when the light is switched off — a faint ambient glow
+ * so the room stays navigable rather than turning into a black void. */
+const LIGHTS_OFF_SCALE = 0.08;
+
+export interface RoomLights {
+  hemi: THREE.HemisphereLight;
+  overTable: THREE.PointLight;
+  fill: THREE.PointLight;
+  /** Each light's intensity when the room light is "on" — captured at
+   * creation so `setRoomLightsOn` can scale relative to it without the two
+   * functions needing to agree on the same magic numbers twice. */
+  baseIntensity: { hemi: number; overTable: number; fill: number };
+}
+
 /**
  * Scene-level lighting for the room view, independent of whichever room
  * asset is loaded (procedural or the real Blender `.glb`). Deliberately not
@@ -10,7 +24,7 @@ import type { RoomLayout } from './RoomLayout.js';
  * (verified in-browser — the floor blew out to flat white). Tuned instead
  * directly in Three's photometric units against `renderer.toneMapping`.
  */
-export function addRoomLighting(scene: THREE.Scene, layout: RoomLayout): void {
+export function addRoomLighting(scene: THREE.Scene, layout: RoomLayout): RoomLights {
   const { table, wallHeight } = layout;
 
   const hemi = new THREE.HemisphereLight(0xfff3e0, 0x1a1410, 0.4);
@@ -23,6 +37,24 @@ export function addRoomLighting(scene: THREE.Scene, layout: RoomLayout): void {
   const fill = new THREE.PointLight(0xfff0da, 60, 18, 2);
   fill.position.set(table.center.x, wallHeight - 0.05, table.center.z);
   scene.add(fill);
+
+  return {
+    hemi,
+    overTable,
+    fill,
+    baseIntensity: { hemi: hemi.intensity, overTable: overTable.intensity, fill: fill.intensity },
+  };
+}
+
+/** Toggles the room's lighting between its normal warm level and a dim
+ * "switched off" level, driven by `GameState.lightOn` (Milestone 8's light
+ * interactable) — never fully black (`LIGHTS_OFF_SCALE`), so the room stays
+ * walkable/visible even with the light off. */
+export function setRoomLightsOn(lights: RoomLights, on: boolean): void {
+  const scale = on ? 1 : LIGHTS_OFF_SCALE;
+  lights.hemi.intensity = lights.baseIntensity.hemi * scale;
+  lights.overTable.intensity = lights.baseIntensity.overTable * scale;
+  lights.fill.intensity = lights.baseIntensity.fill * scale;
 }
 
 /** Tone mapping tuned to keep the photometric point lights above from

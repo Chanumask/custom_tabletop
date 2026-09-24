@@ -122,6 +122,8 @@ describe('Tabletop map & drawing (Milestone 5 exit check)', () => {
       sceneId,
       drawingId: 'd1',
       point: { x: 10, y: 10 },
+      color: '#241a12',
+      width: 5,
     });
     expect(await bobSeesStart).toEqual({
       sessionId: 'table-3',
@@ -129,6 +131,8 @@ describe('Tabletop map & drawing (Milestone 5 exit check)', () => {
       sceneId,
       drawingId: 'd1',
       point: { x: 10, y: 10 },
+      color: '#241a12',
+      width: 5,
     });
 
     const bobSeesUpdate = new Promise((resolve) => bob.once(SocketEvent.DrawingUpdate, resolve));
@@ -166,6 +170,8 @@ describe('Tabletop map & drawing (Milestone 5 exit check)', () => {
       sceneId,
       drawingId: 'd1',
       point: { x: 1, y: 1 },
+      color: '#241a12',
+      width: 5,
     });
     alice.emit(SocketEvent.DrawingUpdate, {
       sessionId: 'table-4',
@@ -193,6 +199,8 @@ describe('Tabletop map & drawing (Milestone 5 exit check)', () => {
           { x: 1, y: 1 },
           { x: 2, y: 2 },
         ],
+        color: '#241a12',
+        width: 5,
       },
     ]);
   });
@@ -217,6 +225,8 @@ describe('Tabletop map & drawing (Milestone 5 exit check)', () => {
       sceneId,
       drawingId: 'd1',
       point: { x: 0, y: 0 },
+      color: '#241a12',
+      width: 5,
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
 

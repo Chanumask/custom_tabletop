@@ -28,6 +28,13 @@ export interface FirstPersonControllerOptions {
  * class captures the position delta it produces each frame and re-resolves
  * it against the room/table before committing it.
  */
+/** How high above the table the camera hovers while "seated" (Milestone
+ * 8's table interactable), looking straight down at it. Tuned so the table
+ * (radius 1.1m) fills a *square* viewport (RoomView.tsx switches to one
+ * while seated, at this same fixed 70° vertical FOV) with a small margin,
+ * rather than floating in the middle of a mostly-empty square frame. */
+const SEATED_HEIGHT_ABOVE_TABLE = 1.65;
+
 export class FirstPersonController {
   readonly controls: PointerLockControls;
   private readonly room: RoomBounds;
@@ -35,6 +42,7 @@ export class FirstPersonController {
   private readonly playerRadius: number;
   private readonly moveSpeed: number;
   private readonly pressedKeys = new Set<string>();
+  private standingState: { position: THREE.Vector3; quaternion: THREE.Quaternion } | null = null;
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     this.pressedKeys.add(event.code);
@@ -101,6 +109,46 @@ export class FirstPersonController {
     const resolved = resolveMovement(before, delta, this.room, this.table, this.playerRadius);
     object.position.x = resolved.x;
     object.position.z = resolved.z;
+  }
+
+  /** "Sits" at the table (Milestone 8): releases pointer lock (so the
+   * existing raycast-driven table interactions — drawing, dice, the
+   * soundboard console — work immediately without a separate click) and
+   * takes the camera over directly, hovering it above the table looking
+   * straight down. `update()`'s movement already no-ops while unlocked, so
+   * WASD is disabled for free as a side effect, without a separate seated
+   * flag to check. A no-op if already seated. */
+  sit(): void {
+    if (this.standingState) {
+      return;
+    }
+    const object = this.controls.object;
+    this.standingState = {
+      position: object.position.clone(),
+      quaternion: object.quaternion.clone(),
+    };
+    this.controls.unlock();
+    object.position.set(this.table.center.x, SEATED_HEIGHT_ABOVE_TABLE, this.table.center.z);
+    object.lookAt(this.table.center.x, 0, this.table.center.z);
+  }
+
+  /** Restores the camera to wherever it was right before `sit()` — the
+   * player doesn't auto-relock (matching every other unlocked state, which
+   * always resumes via the "click to look around" overlay rather than a
+   * silent programmatic relock some browsers don't even allow outside a
+   * direct click gesture). A no-op if not currently seated. */
+  stand(): void {
+    if (!this.standingState) {
+      return;
+    }
+    const object = this.controls.object;
+    object.position.copy(this.standingState.position);
+    object.quaternion.copy(this.standingState.quaternion);
+    this.standingState = null;
+  }
+
+  get isSeated(): boolean {
+    return this.standingState !== null;
   }
 
   /** Current facing direction (yaw only, radians) — derived from the

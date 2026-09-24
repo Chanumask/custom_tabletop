@@ -174,6 +174,8 @@ export class SessionStore {
     drawingId: string,
     playerId: string,
     point: Point2D,
+    color: string,
+    width: number,
   ): boolean {
     const scene = this.sessions
       .get(sessionId)
@@ -182,7 +184,7 @@ export class SessionStore {
       return false;
     }
 
-    scene.drawings.push({ id: drawingId, sceneId, playerId, points: [point] });
+    scene.drawings.push({ id: drawingId, sceneId, playerId, points: [point], color, width });
     return true;
   }
 
@@ -294,12 +296,39 @@ export class SessionStore {
     return { ok: true, state };
   }
 
+  /** Not host-gated — toggling the room light affects every player equally,
+   * no per-player authority question to gate (Milestone 8). */
+  toggleLight(sessionId: string): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    state.lightOn = !state.lightOn;
+    return { ok: true, state };
+  }
+
+  /** Not host-gated — a player can only ever toggle their *own* seated
+   * status (`playerId` always comes from the requester, never a target),
+   * so there's no way to sit another player down (Milestone 8). */
+  toggleSeated(sessionId: string, playerId: string): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const player = state.players.find((candidate) => candidate.id === playerId);
+    if (!player) {
+      return { ok: false, error: 'Player not found.' };
+    }
+    player.seated = !player.seated;
+    return { ok: true, state };
+  }
+
   hasSound(sessionId: string, soundId: string): boolean {
     return this.sessions.get(sessionId)?.soundboard.some((sound) => sound.id === soundId) ?? false;
   }
 
   /** Not host-gated — any player can contribute a sound to the shared
-   * soundboard (Milestone 8). `url` is the already-uploaded file's address
+   * soundboard (the file-uploads extension). `url` is the already-uploaded file's address
    * (see server.ts's /uploads/sounds REST route and client/src/uploads.ts)
    * — this just registers it into the session, the same "upload over REST,
    * register over the socket" split `scene:update`'s map background uses. */
@@ -329,6 +358,7 @@ function createEmptySession(sessionId: string, hostId: string): GameState {
     // array/objects themselves, so per-session mutation (a future rename,
     // say) can't leak across sessions.
     soundboard: BUILTIN_SOUND_PRESETS.map((preset) => ({ ...preset })),
+    lightOn: true,
   };
 }
 
@@ -351,5 +381,6 @@ function createPlayer(id: string, name: string): Player {
     position: { ...DEFAULT_SPAWN_POSITION }, // overwritten by the client's first player:move once it joins (Milestone 4)
     rotationY: 0,
     muted: false,
+    seated: false,
   };
 }

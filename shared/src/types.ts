@@ -33,6 +33,11 @@ export interface Drawing {
   sceneId: string;
   playerId: string;
   points: Point2D[];
+  /** Chosen once when the stroke starts (Milestone 8's seated drawing
+   * toolbar) and fixed for its whole lifetime — a CSS color string and a
+   * canvas-pixel line width. */
+  color: string;
+  width: number;
 }
 
 /**
@@ -63,9 +68,10 @@ export interface SoundState {
 
 /**
  * The soundboard's built-in entries — every session seeds `soundboard`
- * with these (Milestone 8). Kept here rather than only client-side so the
- * server can seed real `GameState.soundboard` entries without owning
- * synthesis details (frequency/waveform/duration stay client-only).
+ * with these (the file-uploads extension, before Milestone 8). Kept here
+ * rather than only client-side so the server can seed real
+ * `GameState.soundboard` entries without owning synthesis details
+ * (frequency/waveform/duration stay client-only).
  */
 export const BUILTIN_SOUND_PRESETS: SoundState[] = [
   { id: 'bell', name: 'Bell', url: '', playing: false },
@@ -85,6 +91,14 @@ export interface Player {
   rotationY: number;
 
   muted: boolean;
+
+  /** Toggled by the table interactable (Milestone 8, `object:interact` with
+   * objectId "table") — a player "sitting" to interact with what's on the
+   * table without needing to walk around/look down. Visible to everyone
+   * else as a visual change on the player's own avatar (see
+   * client/src/three/PlayerAvatars.ts), not a position change: the server
+   * never moves a seated player's `position`. */
+  seated: boolean;
 }
 
 export interface Scene {
@@ -107,6 +121,11 @@ export interface GameState {
   dice: Dice[];
 
   soundboard: SoundState[];
+
+  /** The room's light switch (Milestone 8, `object:interact` with objectId
+   * "light") — a session-wide flag, not per-player: whoever flips it changes
+   * the room for everyone, the same way a real light switch would. */
+  lightOn: boolean;
 }
 
 /**

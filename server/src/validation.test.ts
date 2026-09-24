@@ -191,6 +191,8 @@ describe('parseDrawingStartRequest', () => {
       sceneId: 's1',
       drawingId: 'd1',
       point: { x: 1, y: 2 },
+      color: '#241a12',
+      width: 5,
     });
     expect(result).toEqual({
       sessionId: 'abc',
@@ -198,13 +200,48 @@ describe('parseDrawingStartRequest', () => {
       sceneId: 's1',
       drawingId: 'd1',
       point: { x: 1, y: 2 },
+      color: '#241a12',
+      width: 5,
     });
   });
 
   it.each([
     [null],
-    [{ sessionId: 'abc', playerId: 'p1', sceneId: 's1', drawingId: 'd1' }], // missing point
-    [{ sessionId: 'abc', playerId: 'p1', sceneId: 's1', drawingId: 'd1', point: { x: 1 } }],
+    [{ sessionId: 'abc', playerId: 'p1', sceneId: 's1', drawingId: 'd1' }], // missing point/color/width
+    [
+      {
+        sessionId: 'abc',
+        playerId: 'p1',
+        sceneId: 's1',
+        drawingId: 'd1',
+        point: { x: 1 },
+        color: '#241a12',
+        width: 5,
+      },
+    ],
+    [
+      // width out of bounds
+      {
+        sessionId: 'abc',
+        playerId: 'p1',
+        sceneId: 's1',
+        drawingId: 'd1',
+        point: { x: 1, y: 2 },
+        color: '#241a12',
+        width: 999,
+      },
+    ],
+    [
+      // missing color
+      {
+        sessionId: 'abc',
+        playerId: 'p1',
+        sceneId: 's1',
+        drawingId: 'd1',
+        point: { x: 1, y: 2 },
+        width: 5,
+      },
+    ],
   ])('rejects malformed payload %#', (payload) => {
     expect(parseDrawingStartRequest(payload)).toBeNull();
   });

@@ -16,6 +16,7 @@ import type {
   SoundUploadRequest,
   PlayerMuteRequest,
   PlayerUnmuteRequest,
+  ObjectInteractRequest,
   Vector3,
   Point2D,
 } from '@custom-tabletop/shared';
@@ -175,18 +176,33 @@ export function parseSceneUpdateRequest(payload: unknown): SceneUpdateRequest | 
   };
 }
 
+// Sanity bounds on a client-supplied stroke width — wide enough for the
+// toolbar's own thin/medium/thick presets with headroom, narrow enough that
+// a malformed/malicious value can't paint an absurdly huge line.
+const MIN_STROKE_WIDTH = 1;
+const MAX_STROKE_WIDTH = 40;
+
+function isValidStrokeWidth(value: unknown): value is number {
+  return isFiniteNumber(value) && value >= MIN_STROKE_WIDTH && value <= MAX_STROKE_WIDTH;
+}
+
 export function parseDrawingStartRequest(payload: unknown): DrawingStartRequest | null {
   if (typeof payload !== 'object' || payload === null) {
     return null;
   }
 
-  const { sessionId, playerId, sceneId, drawingId, point } = payload as Record<string, unknown>;
+  const { sessionId, playerId, sceneId, drawingId, point, color, width } = payload as Record<
+    string,
+    unknown
+  >;
   if (
     !isNonEmptyString(sessionId) ||
     !isNonEmptyString(playerId) ||
     !isNonEmptyString(sceneId) ||
     !isNonEmptyString(drawingId) ||
-    !isPoint2D(point)
+    !isPoint2D(point) ||
+    !isNonEmptyString(color) ||
+    !isValidStrokeWidth(width)
   ) {
     return null;
   }
@@ -197,6 +213,8 @@ export function parseDrawingStartRequest(payload: unknown): DrawingStartRequest 
     sceneId: sceneId.trim(),
     drawingId: drawingId.trim(),
     point,
+    color: color.trim(),
+    width,
   };
 }
 
@@ -345,6 +363,19 @@ export function parsePlayerMuteRequest(payload: unknown): PlayerMuteRequest | nu
     playerId: playerId.trim(),
     targetPlayerId: targetPlayerId.trim(),
   };
+}
+
+export function parseObjectInteractRequest(payload: unknown): ObjectInteractRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, objectId } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || !isNonEmptyString(objectId)) {
+    return null;
+  }
+
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), objectId: objectId.trim() };
 }
 
 export function parsePlayerUnmuteRequest(payload: unknown): PlayerUnmuteRequest | null {

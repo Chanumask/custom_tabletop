@@ -34,6 +34,8 @@ export const SocketEvent = {
 
   PlayerMute: 'player:mute',
   PlayerUnmute: 'player:unmute',
+
+  ObjectInteract: 'object:interact',
 } as const;
 
 export type SocketEventName = (typeof SocketEvent)[keyof typeof SocketEvent];

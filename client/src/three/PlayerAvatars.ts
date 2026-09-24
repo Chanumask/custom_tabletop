@@ -27,11 +27,32 @@ function createAvatarMesh(playerId: string): THREE.Mesh {
   return mesh;
 }
 
-function applyTransform(mesh: THREE.Mesh, position: Vector3, rotationY: number): void {
+// A "sitting" placeholder capsule squashes to this fraction of its standing
+// height (Milestone 8's table interactable) — no seated character pose to
+// animate to since avatars are still placeholder capsules, but a visibly
+// shorter, lowered capsule reads as "sitting" well enough, and is what makes
+// another player's seated status visible to everyone else per the M8 exit
+// check (the server never moves a seated player's position, only their
+// `seated` flag).
+const SEATED_SCALE_Y = 0.55;
+
+function applyTransform(
+  mesh: THREE.Mesh,
+  position: Vector3,
+  rotationY: number,
+  seated: boolean,
+): void {
+  const scaleY = seated ? SEATED_SCALE_Y : 1;
+  mesh.scale.set(1, scaleY, 1);
   // `position` is the sender's eye/camera height; the capsule's own center
-  // needs to sit at half its height above the floor regardless, so it's
-  // derived from AVATAR_HEIGHT rather than trusting the received y verbatim.
-  mesh.position.set(position.x, position.y - PLAYER_EYE_HEIGHT + AVATAR_HEIGHT / 2, position.z);
+  // needs to sit at half its (possibly squashed) height above the floor
+  // regardless, so it's derived from AVATAR_HEIGHT rather than trusting the
+  // received y verbatim.
+  mesh.position.set(
+    position.x,
+    position.y - PLAYER_EYE_HEIGHT + (AVATAR_HEIGHT * scaleY) / 2,
+    position.z,
+  );
   mesh.rotation.y = rotationY;
 }
 
@@ -68,7 +89,7 @@ export class PlayerAvatars {
         this.meshes.set(player.id, mesh);
         this.group.add(mesh);
       }
-      applyTransform(mesh, player.position, player.rotationY);
+      applyTransform(mesh, player.position, player.rotationY, player.seated);
     }
 
     for (const [playerId, mesh] of this.meshes) {
@@ -78,10 +99,16 @@ export class PlayerAvatars {
     }
   }
 
+  /** `player:move` broadcasts never carry `seated` (it's not a movement
+   * field) — always applies as standing. Safe in practice: a seated player
+   * never sends player:move in the first place (RoomView.tsx skips the
+   * emit while the local controller is seated), so this only ever runs for
+   * an already-standing remote player; their seated squash, when it
+   * applies, comes from `sync`'s next full-GameState broadcast instead. */
   updateOne(playerId: string, position: Vector3, rotationY: number): void {
     const mesh = this.meshes.get(playerId);
     if (mesh) {
-      applyTransform(mesh, position, rotationY);
+      applyTransform(mesh, position, rotationY, false);
     }
   }
 

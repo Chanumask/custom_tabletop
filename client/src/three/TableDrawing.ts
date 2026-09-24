@@ -13,9 +13,17 @@ export interface TableDrawingOptions {
    * (pointer-locked) — the same mouse drives both, and letting a drag
    * during mouse-look accidentally draw would be surprising. */
   isDrawingAllowed: () => boolean;
+  /** Which of the drawing toolbar's tools (Milestone 8) is active —
+   * checked on every pointerdown so switching tools mid-session takes
+   * effect on the next click without reconstructing this class. */
+  getTool: () => 'pen' | 'eraser';
   onStrokeStart: (point: Point2D) => void;
   onStrokePoint: (point: Point2D) => void;
   onStrokeEnd: () => void;
+  /** The eraser tool (Milestone 8): called with every point under the
+   * cursor while erasing, including while dragging — the caller hit-tests
+   * which stroke (if any) that point is near. */
+  onErase: (point: Point2D) => void;
 }
 
 /**
@@ -30,6 +38,7 @@ export class TableDrawing {
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointerNdc = new THREE.Vector2();
   private strokeActive = false;
+  private eraseActive = false;
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
     if (!this.options.isDrawingAllowed()) {
@@ -39,11 +48,23 @@ export class TableDrawing {
     if (!point) {
       return;
     }
+    if (this.options.getTool() === 'eraser') {
+      this.eraseActive = true;
+      this.options.onErase(point);
+      return;
+    }
     this.strokeActive = true;
     this.options.onStrokeStart(point);
   };
 
   private readonly handlePointerMove = (event: PointerEvent): void => {
+    if (this.eraseActive) {
+      const point = this.raycastToCanvasPoint(event);
+      if (point) {
+        this.options.onErase(point);
+      }
+      return;
+    }
     if (!this.strokeActive) {
       return;
     }
@@ -54,6 +75,10 @@ export class TableDrawing {
   };
 
   private readonly handlePointerUp = (): void => {
+    if (this.eraseActive) {
+      this.eraseActive = false;
+      return;
+    }
     if (!this.strokeActive) {
       return;
     }
@@ -74,6 +99,7 @@ export class TableDrawing {
     window.removeEventListener('pointermove', this.handlePointerMove);
     window.removeEventListener('pointerup', this.handlePointerUp);
     this.strokeActive = false;
+    this.eraseActive = false;
   }
 
   private raycastToCanvasPoint(event: PointerEvent): Point2D | null {
