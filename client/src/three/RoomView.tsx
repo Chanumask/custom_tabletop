@@ -38,6 +38,7 @@ import {
 import { SoundboardConsole } from './SoundboardConsole.js';
 import { nearestInteractable, type Interactable } from './interaction.js';
 import { findStrokeNear } from './eraser.js';
+import { formatKeyCode } from '../keyLabel.js';
 
 const ROOM_GLTF_URL = '/models/room.glb';
 // Throttle: enough for smooth-looking remote avatars without flooding the
@@ -89,19 +90,23 @@ export interface RoomViewProps {
   dice: Dice[];
   lightOn: boolean;
   soundboard: SoundState[];
+  /** A `KeyboardEvent.code` value (Milestone 10 follow-up, user-rebindable
+   * via Settings) — which key triggers the nearest interactable. */
+  interactKey: string;
   onPlaySound: (soundId: string) => void;
   onObjectInteract: (objectId: string) => void;
 }
 
-function promptFor(nearestId: string | null, seated: boolean): string | null {
+function promptFor(nearestId: string | null, seated: boolean, interactKey: string): string | null {
+  const keyLabel = formatKeyCode(interactKey);
   if (seated) {
-    return 'Press E to stand up';
+    return `Press ${keyLabel} to stand up`;
   }
   if (nearestId === 'light') {
-    return 'Press E to switch the light on/off';
+    return `Press ${keyLabel} to switch the light on/off`;
   }
   if (nearestId === 'table') {
-    return 'Press E to sit at the table';
+    return `Press ${keyLabel} to sit at the table`;
   }
   return null;
 }
@@ -132,6 +137,7 @@ export function RoomView({
   dice,
   lightOn,
   soundboard,
+  interactKey,
   onPlaySound,
   onObjectInteract,
 }: RoomViewProps) {
@@ -160,6 +166,7 @@ export function RoomView({
   const lastPromptKeyRef = useRef<string>('');
   const onPlaySoundRef = useRef(onPlaySound);
   const onObjectInteractRef = useRef(onObjectInteract);
+  const interactKeyRef = useRef(interactKey);
   const [locked, setLocked] = useState(false);
   const [seated, setSeated] = useState(false);
   const [interactionPrompt, setInteractionPrompt] = useState<string | null>(null);
@@ -193,6 +200,10 @@ export function RoomView({
   useEffect(() => {
     onObjectInteractRef.current = onObjectInteract;
   }, [onObjectInteract]);
+
+  useEffect(() => {
+    interactKeyRef.current = interactKey;
+  }, [interactKey]);
 
   useEffect(() => {
     drawToolRef.current = drawTool;
@@ -538,7 +549,7 @@ export function RoomView({
       // soundboard console below, since "which of several buttons" doesn't
       // map onto a single keypress the way a single toggle does.
       handleInteractKey = (event: KeyboardEvent) => {
-        if (event.code !== 'KeyE') {
+        if (event.code !== interactKeyRef.current) {
           return;
         }
         if (controller.isSeated) {
@@ -597,10 +608,10 @@ export function RoomView({
             );
         const nearestId = controller.isSeated ? 'table' : (nearest?.id ?? null);
         nearestInteractableIdRef.current = nearestId;
-        const promptKey = `${nearestId}|${controller.isSeated}`;
+        const promptKey = `${nearestId}|${controller.isSeated}|${interactKeyRef.current}`;
         if (promptKey !== lastPromptKeyRef.current) {
           lastPromptKeyRef.current = promptKey;
-          setInteractionPrompt(promptFor(nearestId, controller.isSeated));
+          setInteractionPrompt(promptFor(nearestId, controller.isSeated, interactKeyRef.current));
         }
 
         // No position to sync while seated — the camera is locked to a

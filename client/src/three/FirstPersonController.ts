@@ -10,6 +10,11 @@ const BACK_KEYS = new Set(['KeyS', 'ArrowDown']);
 const LEFT_KEYS = new Set(['KeyA', 'ArrowLeft']);
 const RIGHT_KEYS = new Set(['KeyD', 'ArrowRight']);
 
+/** Every `KeyboardEvent.code` this controller reads for movement — exported
+ * so the interact-key rebind UI (Settings, Milestone 10) can refuse to bind
+ * onto a movement key instead of silently breaking WASD. */
+export const MOVEMENT_KEYS = new Set([...FORWARD_KEYS, ...BACK_KEYS, ...LEFT_KEYS, ...RIGHT_KEYS]);
+
 export interface FirstPersonControllerOptions {
   camera: THREE.PerspectiveCamera;
   domElement: HTMLElement;

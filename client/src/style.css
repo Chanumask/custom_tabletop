@@ -121,20 +121,139 @@ body {
   gap: 0.35rem;
 }
 
+/* The session menu (Milestone 10 follow-up): a categorized, tabbed panel —
+ * only one category's content shows at a time — instead of one long
+ * scrolling list. */
 .session-overlay {
   position: absolute;
   top: 0.75rem;
   right: 0.75rem;
-  max-width: 220px;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  background: rgba(20, 14, 10, 0.75);
+  width: 17rem;
+  padding: 0.85rem;
+  border-radius: 10px;
+  background: rgba(20, 14, 10, 0.82);
   color: #f3e6d3;
   font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
 }
 
-.session-overlay ul {
-  margin: 0.5rem 0;
+.session-overlay-header {
+  margin: 0;
+  text-align: center;
+}
+
+.tab-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+
+.tab-button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.4rem 0.2rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.68rem;
+  text-align: center;
+  cursor: pointer;
+}
+
+.tab-button span {
+  white-space: nowrap;
+}
+
+.tab-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tab-button.active {
+  border-color: #f3e6d3;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.tab-panel form,
+.tab-panel > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tab-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: center;
+}
+
+.tab-panel button[type='submit'],
+.tab-panel > div > button {
+  align-self: center;
+}
+
+.tab-section-label {
+  margin: 0.4rem 0 0;
+  text-align: center;
+  font-weight: 600;
+}
+
+.tab-empty-note {
+  margin: 0;
+  text-align: center;
+  color: rgba(243, 230, 211, 0.7);
+  font-style: italic;
+}
+
+.player-list,
+.dice-list,
+.sound-list {
+  margin: 0;
   padding: 0;
   list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.player-list li,
+.dice-list li,
+.sound-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.settings-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  text-align: left;
+}
+
+.leave-button {
+  align-self: center;
+  margin-top: 0.2rem;
 }

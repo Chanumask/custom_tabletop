@@ -30,6 +30,23 @@ function getAudioContext(): AudioContext {
   return sharedContext;
 }
 
+// The peak gain a tone plays at when masterVolume is 1 — kept well under
+// 1.0 so even full volume doesn't clip.
+const TONE_PEAK_GAIN = 0.2;
+
+// Client-only preference (settings.ts), applied here rather than threaded
+// as a parameter through every playSound call site — App.tsx syncs this
+// from SettingsContext whenever the player changes it.
+let masterVolume = 1;
+
+/** Sets the volume every subsequent `playSound` call uses, for both
+ * synthesized tones and uploaded/linked audio. Clamped to [0, 1] — a
+ * malformed/out-of-range value from a future settings-import feature
+ * shouldn't be able to blow out a player's speakers. */
+export function setMasterVolume(volume: number): void {
+  masterVolume = Math.min(1, Math.max(0, volume));
+}
+
 function playTone(params: ToneParams): void {
   const ctx = getAudioContext();
   if (ctx.state === 'suspended') {
@@ -42,8 +59,13 @@ function playTone(params: ToneParams): void {
   oscillator.frequency.value = params.frequency;
 
   const durationSeconds = params.durationMs / 1000;
-  gain.gain.setValueAtTime(0.2, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationSeconds);
+  const peakGain = TONE_PEAK_GAIN * masterVolume;
+  gain.gain.setValueAtTime(peakGain, ctx.currentTime);
+  // A zero peak (volume all the way down) can't be ramped to
+  // exponentially — go silent immediately instead of throwing.
+  if (peakGain > 0) {
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationSeconds);
+  }
 
   oscillator.connect(gain).connect(ctx.destination);
   oscillator.start();
@@ -52,6 +74,7 @@ function playTone(params: ToneParams): void {
 
 function playUploadedAudio(url: string): void {
   const audio = new Audio(url);
+  audio.volume = masterVolume;
   void audio.play().catch((error: unknown) => {
     console.error('Failed to play uploaded sound:', error);
   });

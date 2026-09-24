@@ -25,7 +25,8 @@ import { RoomView } from './three/RoomView.js';
 import { DIE_SIZE } from './three/DiceManager.js';
 import { PLACEHOLDER_ROOM_LAYOUT } from './three/RoomLayout.js';
 import { randomDiceSpawnPosition } from './diceSpawn.js';
-import { playSound } from './sounds.js';
+import { playSound, setMasterVolume } from './sounds.js';
+import { useSettings } from './useSettings.js';
 
 interface JoinIntent {
   playerName: string;
@@ -46,10 +47,18 @@ export function App() {
   // arrives later — including for sounds uploaded after that closure formed.
   const gameStateRef = useRef<GameState | null>(null);
   const [playerId] = useState(() => getOrCreatePlayerId(window.sessionStorage));
+  const { settings } = useSettings();
 
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
+
+  // Keeps sounds.ts's module-level volume in sync with the player's own
+  // setting — sounds.ts isn't a React component, so it can't read
+  // SettingsContext itself.
+  useEffect(() => {
+    setMasterVolume(settings.masterVolume);
+  }, [settings.masterVolume]);
 
   const joinSession = useCallback(
     (socket: Socket, playerName: string, sessionId: string) => {
@@ -309,6 +318,7 @@ export function App() {
           dice={gameState.dice}
           lightOn={gameState.lightOn}
           soundboard={gameState.soundboard}
+          interactKey={settings.interactKey}
           onPlaySound={handlePlaySound}
           onObjectInteract={handleObjectInteract}
         />

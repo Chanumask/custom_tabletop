@@ -76,6 +76,14 @@ Version control, docs structure, and the Claude Code workflow.
 - Cross-browser pass: Chrome, Edge, Firefox required; Safari best-effort. **Not performed** — this environment's browser automation tooling drives Chrome only. Logged as an accepted, unverified gap rather than skipped silently; see `docs/decisions.md`.
 - **Exit check:** a manually-forged client event for a host-only action is rejected by the server and has no effect. **✅ (server-side)** — proven by `server/src/hostAuthority.test.ts`, break-round verified. Cross-browser rendering/input behavior is unverified, per above.
 
+## Session menu & settings extension ✅
+
+A user-requested UI/UX pass, not itself a numbered milestone — landed between M9 and M10. See `docs/decisions.md` (2026-09-24) and `docs/changelog.md` for the full breakdown.
+
+- The top-right session menu restructured into categorized tabs (Players/Map/Dice/Sound/Settings), one open at a time, with icons and centered/consistent styling.
+- Client-only settings (`localStorage`, never synced to `GameState`): master volume, and a rebindable interact key (previously hardcoded to `E`).
+- Any player can add a sound to the shared soundboard via a direct audio-file link, not just upload — a YouTube-audio-download mechanism was explicitly declined (ToS/copyright) in favor of this.
+
 ## M10 — Performance & polish
 
 - Confirm delta-only updates hold under real drawing/movement load (no full-state re-broadcast).
