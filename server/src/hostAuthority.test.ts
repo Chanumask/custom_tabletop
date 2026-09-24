@@ -50,14 +50,17 @@ function connect(url: string): Promise<ClientSocket> {
  * - scene:change           -> this file (new — had no rejection test at all)
  * - scene:update           -> tabletopMap.test.ts, "a non-host cannot switch
  *                              the map"
- * - sound:play              -> soundAndMute.test.ts, "a non-host cannot play
- *                              a sound"
  * - player:mute (of another) -> soundAndMute.test.ts, "a non-host cannot
  *                              mute another player, but the host can"
  * - player:unmute (of another) -> this file (new — mute had a rejection
  *                              test, unmute never did)
  *
- * Nothing else is host-gated: dice:*, drawing:*, sound:upload,
+ * sound:play was host-gated at the time of this audit but was **relaxed to
+ * open-to-any-player** in a later wall-soundboard follow-up (see
+ * docs/decisions.md and shared/src/sound.ts) — no longer listed above, since
+ * there's no "reject the non-host" case for it any more.
+ *
+ * Nothing else is host-gated: dice:*, drawing:*, sound:play, sound:upload,
  * object:interact, and player:move are all deliberately open to any player
  * (see docs/decisions.md for each milestone's reasoning) — there's no
  * "reject the non-host" case to test for them, only the malformed-payload

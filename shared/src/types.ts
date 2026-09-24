@@ -122,6 +122,15 @@ export interface GameState {
 
   soundboard: SoundState[];
 
+  /** The wall soundboard's fixed grid of buttons (Milestone 8 follow-up,
+   * `SOUNDBOARD_SLOT_COUNT` entries — see sound.ts) — slot index -> the id of
+   * the `soundboard` entry assigned to that physical button, or `null` for
+   * an empty one. Independent of `soundboard`'s own length/order: a sound
+   * can exist in the shared list (playable from the 2D panel) without
+   * occupying any wall slot, and a slot always points at a specific button
+   * position regardless of how many sounds get added later. */
+  soundboardSlots: (string | null)[];
+
   /** The room's light switch (Milestone 8, `object:interact` with objectId
    * "light") — a session-wide flag, not per-player: whoever flips it changes
    * the room for everyone, the same way a real light switch would. */

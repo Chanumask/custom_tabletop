@@ -319,7 +319,9 @@ export function createAppServer(): AppServer {
       },
     );
 
-    // Host-only. No persisted state to broadcast back (playing a sound
+    // Not host-gated (relaxed from host-only in the wall-soundboard
+    // follow-up — see docs/decisions.md and shared/src/sound.ts's header
+    // comment). No persisted state to broadcast back (playing a sound
     // doesn't change the session), so unlike scene:*/dice:* this just
     // relays the same payload to everyone in the session, sender included —
     // there's no local optimistic playback to avoid double-triggering, the
@@ -336,10 +338,6 @@ export function createAppServer(): AppServer {
           ack?.({ ok: false, error: 'Session not found.' });
           return;
         }
-        if (!sessions.isHost(request.sessionId, request.playerId)) {
-          ack?.({ ok: false, error: 'Only the host can play a sound.' });
-          return;
-        }
         if (!sessions.hasSound(request.sessionId, request.soundId)) {
           ack?.({ ok: false, error: 'Sound not found.' });
           return;
@@ -352,9 +350,11 @@ export function createAppServer(): AppServer {
 
     // Not host-gated — any player can contribute a sound to the shared
     // soundboard (Milestone 8). Infrequent, full-state ack + broadcast —
-    // same pattern as scene:*/dice:*, unlike sound:play. The file itself
-    // was already uploaded over REST (see uploads.ts); this just registers
-    // the resulting URL into GameState.soundboard.
+    // same pattern as scene:*/dice:*. The file itself was already uploaded
+    // over REST (see uploads.ts); this just registers the resulting URL
+    // into GameState.soundboard, and — when `slotIndex` is present (pressing
+    // an empty wall-board button) — assigns it to that slot in the same
+    // mutation.
     socket.on(
       SocketEvent.SoundUpload,
       (payload: unknown, ack?: (response: SoundUploadResponse) => void) => {
@@ -369,6 +369,7 @@ export function createAppServer(): AppServer {
           request.soundId,
           request.name,
           request.url,
+          request.slotIndex,
         );
         ack?.(result);
         if (result.ok) {

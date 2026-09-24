@@ -236,7 +236,7 @@ export function App() {
     );
   }
 
-  function handleUploadSound(name: string, url: string) {
+  function handleUploadSound(name: string, url: string, slotIndex?: number) {
     const socket = socketRef.current;
     if (!socket || !gameState) {
       return;
@@ -244,7 +244,14 @@ export function App() {
 
     socket.emit(
       SocketEvent.SoundUpload,
-      { sessionId: gameState.sessionId, playerId, soundId: crypto.randomUUID(), name, url },
+      {
+        sessionId: gameState.sessionId,
+        playerId,
+        soundId: crypto.randomUUID(),
+        name,
+        url,
+        slotIndex,
+      },
       (response: SoundUploadResponse) => {
         if (!response.ok) {
           console.error('Failed to upload sound:', response.error);
@@ -318,9 +325,11 @@ export function App() {
           dice={gameState.dice}
           lightOn={gameState.lightOn}
           soundboard={gameState.soundboard}
+          soundboardSlots={gameState.soundboardSlots}
           interactKey={settings.interactKey}
           onPlaySound={handlePlaySound}
           onObjectInteract={handleObjectInteract}
+          onUploadSound={handleUploadSound}
         />
         <div className="session-overlay">
           <SessionView

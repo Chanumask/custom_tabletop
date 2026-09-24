@@ -82,6 +82,56 @@ body {
   pointer-events: none;
 }
 
+/* A fixed center dot while pointer-locked and not seated (Milestone 8
+ * follow-up) — aiming at a specific wall-soundboard button needs a visible
+ * aim point, unlike the proximity-only light/table interactables. */
+.crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(243, 230, 211, 0.85);
+  pointer-events: none;
+}
+
+/* The wall-soundboard's assign-sound overlay (Milestone 8 follow-up),
+ * opened by pressing the interact key on an empty button
+ * (SoundboardAssignMenu.tsx) — a centered modal, distinct from the
+ * corner-anchored prompts/toolbar above since it needs real form focus. */
+.soundboard-assign-menu {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  width: 18rem;
+  padding: 1rem;
+  border-radius: 10px;
+  background: rgba(20, 14, 10, 0.92);
+  color: #f3e6d3;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.soundboard-assign-menu-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.soundboard-assign-menu form,
+.soundboard-assign-menu > label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
 /* The seated drawing toolbar (Milestone 8) — pen color/size plus an
  * eraser, shown only while sitting at the table (a square, near-full-frame
  * view, applyViewportSize in RoomView.tsx). */

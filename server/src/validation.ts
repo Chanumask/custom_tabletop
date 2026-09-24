@@ -1,24 +1,25 @@
-import type {
-  SessionJoinRequest,
-  SessionLeaveRequest,
-  PlayerMoveRequest,
-  SceneCreateRequest,
-  SceneChangeRequest,
-  SceneUpdateRequest,
-  DrawingStartRequest,
-  DrawingUpdateRequest,
-  DrawingEndRequest,
-  DrawingDeleteRequest,
-  DiceSpawnRequest,
-  DiceRollRequest,
-  DiceRemoveRequest,
-  SoundPlayRequest,
-  SoundUploadRequest,
-  PlayerMuteRequest,
-  PlayerUnmuteRequest,
-  ObjectInteractRequest,
-  Vector3,
-  Point2D,
+import {
+  SOUNDBOARD_SLOT_COUNT,
+  type SessionJoinRequest,
+  type SessionLeaveRequest,
+  type PlayerMoveRequest,
+  type SceneCreateRequest,
+  type SceneChangeRequest,
+  type SceneUpdateRequest,
+  type DrawingStartRequest,
+  type DrawingUpdateRequest,
+  type DrawingEndRequest,
+  type DrawingDeleteRequest,
+  type DiceSpawnRequest,
+  type DiceRollRequest,
+  type DiceRemoveRequest,
+  type SoundPlayRequest,
+  type SoundUploadRequest,
+  type PlayerMuteRequest,
+  type PlayerUnmuteRequest,
+  type ObjectInteractRequest,
+  type Vector3,
+  type Point2D,
 } from '@custom-tabletop/shared';
 
 /**
@@ -54,6 +55,16 @@ function isPoint2D(value: unknown): value is Point2D {
 
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === 'string';
+}
+
+function isOptionalSlotIndex(value: unknown): value is number | undefined {
+  return (
+    value === undefined ||
+    (typeof value === 'number' &&
+      Number.isInteger(value) &&
+      value >= 0 &&
+      value < SOUNDBOARD_SLOT_COUNT)
+  );
 }
 
 export function parseSessionJoinRequest(payload: unknown): SessionJoinRequest | null {
@@ -324,13 +335,14 @@ export function parseSoundUploadRequest(payload: unknown): SoundUploadRequest | 
     return null;
   }
 
-  const { sessionId, playerId, soundId, name, url } = payload as Record<string, unknown>;
+  const { sessionId, playerId, soundId, name, url, slotIndex } = payload as Record<string, unknown>;
   if (
     !isNonEmptyString(sessionId) ||
     !isNonEmptyString(playerId) ||
     !isNonEmptyString(soundId) ||
     !isNonEmptyString(name) ||
-    !isNonEmptyString(url)
+    !isNonEmptyString(url) ||
+    !isOptionalSlotIndex(slotIndex)
   ) {
     return null;
   }
@@ -341,6 +353,7 @@ export function parseSoundUploadRequest(payload: unknown): SoundUploadRequest | 
     soundId: soundId.trim(),
     name: name.trim(),
     url: url.trim(),
+    slotIndex,
   };
 }
 

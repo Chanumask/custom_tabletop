@@ -35,10 +35,11 @@ import {
   LAMP_RANGE,
   type RoomLamp,
 } from './RoomLamp.js';
-import { SoundboardConsole } from './SoundboardConsole.js';
+import { SoundboardWall } from './SoundboardWall.js';
 import { nearestInteractable, type Interactable } from './interaction.js';
 import { findStrokeNear } from './eraser.js';
 import { formatKeyCode } from '../keyLabel.js';
+import { SoundboardAssignMenu } from '../SoundboardAssignMenu.js';
 
 const ROOM_GLTF_URL = '/models/room.glb';
 // Throttle: enough for smooth-looking remote avatars without flooding the
@@ -90,17 +91,36 @@ export interface RoomViewProps {
   dice: Dice[];
   lightOn: boolean;
   soundboard: SoundState[];
+  /** Slot index -> assigned sound id or null (Milestone 8 follow-up's wall
+   * board — see shared/src/types.ts). */
+  soundboardSlots: (string | null)[];
   /** A `KeyboardEvent.code` value (Milestone 10 follow-up, user-rebindable
    * via Settings) — which key triggers the nearest interactable. */
   interactKey: string;
   onPlaySound: (soundId: string) => void;
   onObjectInteract: (objectId: string) => void;
+  /** Registers a newly-uploaded/linked sound into the shared soundboard —
+   * shared with the 2D panel's own upload form (SessionView.tsx), which
+   * never passes `slotIndex`. Passing one (from the wall board's assign
+   * menu) also assigns the sound to that physical button in the same round
+   * trip. */
+  onUploadSound: (name: string, url: string, slotIndex?: number) => void;
 }
 
-function promptFor(nearestId: string | null, seated: boolean, interactKey: string): string | null {
+function promptFor(
+  nearestId: string | null,
+  seated: boolean,
+  interactKey: string,
+  boardTarget: { slotIndex: number; soundName: string | null } | null,
+): string | null {
   const keyLabel = formatKeyCode(interactKey);
   if (seated) {
     return `Press ${keyLabel} to stand up`;
+  }
+  if (boardTarget) {
+    return boardTarget.soundName
+      ? `Press ${keyLabel} to play "${boardTarget.soundName}"`
+      : `Press ${keyLabel} to add a sound to this button`;
   }
   if (nearestId === 'light') {
     return `Press ${keyLabel} to switch the light on/off`;
@@ -118,16 +138,25 @@ function promptFor(nearestId: string | null, seated: boolean, interactKey: strin
  * player as a placeholder capsule avatar (`PlayerAvatars`, Milestone 4),
  * renders the active scene's background/drawings as a `CanvasTexture` on
  * the table (`TableCanvas`/`TableDrawing`, Milestone 5), renders/animates
- * dice on the table (`DiceManager`, Milestone 6), and renders the room's two
+ * dice on the table (`DiceManager`, Milestone 6), and renders the room's
  * interactables — a light switch and the table's sit-down mode
- * (`RoomLamp`/`FirstPersonController.sit`/`stand`, Milestone 8) plus a
- * clickable soundboard console (`SoundboardConsole`, presentation only,
- * reusing `sound:play`). Click-to-lock, Esc (browser default) to release;
- * drawing/console-buttons only while not locked; interactables trigger via
- * proximity + E regardless of lock state. Sitting switches the viewport to
- * a square, table-filling frame (`applyViewportSize`) and shows a small
- * drawing toolbar (pen color/size, plus an eraser reusing `drawing:delete`
- * via a stroke hit-test, `eraser.ts`) alongside it. */
+ * (`RoomLamp`/`FirstPersonController.sit`/`stand`, Milestone 8, proximity +
+ * E) plus a wall-mounted 4x4 soundboard (`SoundboardWall`, Milestone 8
+ * follow-up, reusing `sound:play`/`sound:upload`) triggered by *aiming* at a
+ * specific button and pressing E — proximity alone can't disambiguate which
+ * of 16 buttons on a flat wall a player means, so this one raycasts from the
+ * camera's own look direction instead of XZ distance. Pressing E on a filled
+ * button plays its sound for everyone; on an empty one it opens
+ * `SoundboardAssignMenu`, a DOM overlay for attaching a sound via link or
+ * upload. Click-to-lock, Esc (browser default) to release; drawing only
+ * while not locked. The light/table proximity interactables trigger via E
+ * regardless of lock state (unchanged from Milestone 8); the board's
+ * aim-based targeting only makes sense while actively looking around, so it
+ * only resolves while pointer-locked. Sitting switches the viewport to a
+ * square, table-filling
+ * frame (`applyViewportSize`) and shows a small drawing toolbar (pen
+ * color/size, plus an eraser reusing `drawing:delete` via a stroke hit-test,
+ * `eraser.ts`) alongside it. */
 export function RoomView({
   socket,
   sessionId,
@@ -137,9 +166,11 @@ export function RoomView({
   dice,
   lightOn,
   soundboard,
+  soundboardSlots,
   interactKey,
   onPlaySound,
   onObjectInteract,
+  onUploadSound,
 }: RoomViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FirstPersonController | null>(null);
@@ -155,9 +186,14 @@ export function RoomView({
   const lampRef = useRef<RoomLamp | null>(null);
   const lightOnRef = useRef<boolean>(lightOn);
   const soundboardRef = useRef<SoundState[]>(soundboard);
-  const soundboardConsoleRef = useRef<SoundboardConsole | null>(null);
+  const soundboardSlotsRef = useRef<(string | null)[]>(soundboardSlots);
+  const soundboardWallRef = useRef<SoundboardWall | null>(null);
   const interactablesRef = useRef<Interactable[]>([]);
   const nearestInteractableIdRef = useRef<string | null>(null);
+  // The wall board's targeted slot (aim-based, recomputed every frame in
+  // the animate loop below) — separate from nearestInteractableIdRef, which
+  // only ever holds the light/table's proximity-based ids.
+  const boardTargetSlotRef = useRef<number | null>(null);
   // Deduped separately from nearestInteractableIdRef: sitting down keeps
   // that ref at 'table' (it's still what E would toggle), but the prompt
   // text itself must still change from "sit" to "stand up" — a plain
@@ -166,10 +202,17 @@ export function RoomView({
   const lastPromptKeyRef = useRef<string>('');
   const onPlaySoundRef = useRef(onPlaySound);
   const onObjectInteractRef = useRef(onObjectInteract);
+  const onUploadSoundRef = useRef(onUploadSound);
   const interactKeyRef = useRef(interactKey);
   const [locked, setLocked] = useState(false);
   const [seated, setSeated] = useState(false);
   const [interactionPrompt, setInteractionPrompt] = useState<string | null>(null);
+  // The wall board's assign-sound overlay (Milestone 8 follow-up) — set to
+  // the empty slot's index while open, null otherwise. Mirrored into a ref
+  // for the same reason every other per-frame-read value here is (the mount
+  // effect's closures only run once and would otherwise see a stale value).
+  const [assignSlotIndex, setAssignSlotIndex] = useState<number | null>(null);
+  const assignSlotIndexRef = useRef<number | null>(null);
   // The drawing toolbar (Milestone 8, shown only while seated) — local UI
   // preference, not shared GameState; mirrored into refs so the mount
   // effect's closures (registered once) always read the current value
@@ -202,8 +245,16 @@ export function RoomView({
   }, [onObjectInteract]);
 
   useEffect(() => {
+    onUploadSoundRef.current = onUploadSound;
+  }, [onUploadSound]);
+
+  useEffect(() => {
     interactKeyRef.current = interactKey;
   }, [interactKey]);
+
+  useEffect(() => {
+    assignSlotIndexRef.current = assignSlotIndex;
+  }, [assignSlotIndex]);
 
   useEffect(() => {
     drawToolRef.current = drawTool;
@@ -256,13 +307,14 @@ export function RoomView({
     }
   }, [lightOn]);
 
-  // The soundboard console (Milestone 8) is presentation only — it just
-  // mirrors GameState.soundboard the same way the 2D panel does, reusing
-  // sound:play entirely (see onPlaySound).
+  // The wall board (Milestone 8 follow-up) is presentation only — it just
+  // mirrors GameState.soundboard/soundboardSlots the same way the 2D panel
+  // mirrors soundboard, reusing sound:play/sound:upload entirely.
   useEffect(() => {
     soundboardRef.current = soundboard;
-    soundboardConsoleRef.current?.sync(soundboard);
-  }, [soundboard]);
+    soundboardSlotsRef.current = soundboardSlots;
+    soundboardWallRef.current?.sync(soundboard, soundboardSlots);
+  }, [soundboard, soundboardSlots]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -373,7 +425,6 @@ export function RoomView({
 
     let tableDrawing: TableDrawing | null = null;
     let handleInteractKey: ((event: KeyboardEvent) => void) | null = null;
-    let handleConsoleClick: ((event: PointerEvent) => void) | null = null;
 
     void loadRoom({ gltfUrl: ROOM_GLTF_URL }).then((room) => {
       if (disposed) {
@@ -388,9 +439,9 @@ export function RoomView({
       setLampOn(lamp, lightOnRef.current);
       lampRef.current = lamp;
 
-      const soundboardConsole = new SoundboardConsole(scene, 0);
-      soundboardConsole.sync(soundboardRef.current);
-      soundboardConsoleRef.current = soundboardConsole;
+      const soundboardWall = new SoundboardWall(scene, 0);
+      soundboardWall.sync(soundboardRef.current, soundboardSlotsRef.current);
+      soundboardWallRef.current = soundboardWall;
 
       interactablesRef.current = [
         { id: 'light', position: LAMP_POSITION, range: LAMP_RANGE },
@@ -544,12 +595,18 @@ export function RoomView({
         tableDrawing.connect();
       }
 
-      // Proximity + E (Milestone 8, user-chosen over a raycast/click model)
-      // for the light and the table; a click model instead for the
-      // soundboard console below, since "which of several buttons" doesn't
-      // map onto a single keypress the way a single toggle does.
+      // Proximity + E (Milestone 8) for the light and the table; aim + E
+      // (Milestone 8 follow-up) for the wall board's individual buttons —
+      // see the raycastFromCamera call in the animate loop below for why the
+      // board needs a different targeting model than a single toggle does.
       handleInteractKey = (event: KeyboardEvent) => {
         if (event.code !== interactKeyRef.current) {
+          return;
+        }
+        // The assign-sound overlay is a normal DOM form; while it's open,
+        // the interact key should type into it (or do nothing) like any
+        // other key, not re-trigger room interactions underneath it.
+        if (assignSlotIndexRef.current !== null) {
           return;
         }
         if (controller.isSeated) {
@@ -557,6 +614,17 @@ export function RoomView({
           applyViewportSize(camera, renderer, container, false);
           setSeated(false);
           onObjectInteractRef.current('table');
+          return;
+        }
+        const targetedSlot = boardTargetSlotRef.current;
+        if (targetedSlot !== null) {
+          const soundId = soundboardWallRef.current?.getSlotSoundId(targetedSlot) ?? null;
+          if (soundId) {
+            onPlaySoundRef.current(soundId);
+          } else {
+            controller.controls.unlock();
+            setAssignSlotIndex(targetedSlot);
+          }
           return;
         }
         const nearestId = nearestInteractableIdRef.current;
@@ -570,24 +638,6 @@ export function RoomView({
         }
       };
       document.addEventListener('keydown', handleInteractKey);
-
-      // Console buttons are raycast-clickable only while the pointer isn't
-      // locked — the same "mouse is free to interact with something in the
-      // room" gating TableDrawing uses for the table surface.
-      const pointerNdc = new THREE.Vector2();
-      handleConsoleClick = (event: PointerEvent) => {
-        if (controller.controls.isLocked) {
-          return;
-        }
-        const rect = renderer.domElement.getBoundingClientRect();
-        pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-        const soundId = soundboardConsoleRef.current?.raycastButton(camera, pointerNdc);
-        if (soundId) {
-          onPlaySoundRef.current(soundId);
-        }
-      };
-      renderer.domElement.addEventListener('pointerdown', handleConsoleClick);
 
       let lastSentAt = 0;
       const lastSentPosition = new THREE.Vector3(Infinity, Infinity, Infinity);
@@ -608,10 +658,35 @@ export function RoomView({
             );
         const nearestId = controller.isSeated ? 'table' : (nearest?.id ?? null);
         nearestInteractableIdRef.current = nearestId;
-        const promptKey = `${nearestId}|${controller.isSeated}|${interactKeyRef.current}`;
+
+        // Aim-based, not proximity-based (see the class doc comment) — only
+        // resolved while actively looking around and not mid-assign-menu, so
+        // a frozen unlocked view (or the menu's own frozen aim) can't keep
+        // re-targeting a button behind the scenes.
+        const targetedSlot =
+          !controller.isSeated &&
+          controller.controls.isLocked &&
+          assignSlotIndexRef.current === null
+            ? (soundboardWallRef.current?.raycastFromCamera(camera) ?? null)
+            : null;
+        boardTargetSlotRef.current = targetedSlot;
+        const boardTarget =
+          targetedSlot !== null
+            ? {
+                slotIndex: targetedSlot,
+                soundName:
+                  soundboardRef.current.find(
+                    (sound) => sound.id === soundboardWallRef.current?.getSlotSoundId(targetedSlot),
+                  )?.name ?? null,
+              }
+            : null;
+
+        const promptKey = `${nearestId}|${controller.isSeated}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}`;
         if (promptKey !== lastPromptKeyRef.current) {
           lastPromptKeyRef.current = promptKey;
-          setInteractionPrompt(promptFor(nearestId, controller.isSeated, interactKeyRef.current));
+          setInteractionPrompt(
+            promptFor(nearestId, controller.isSeated, interactKeyRef.current, boardTarget),
+          );
         }
 
         // No position to sync while seated — the camera is locked to a
@@ -656,9 +731,6 @@ export function RoomView({
       if (handleInteractKey) {
         document.removeEventListener('keydown', handleInteractKey);
       }
-      if (handleConsoleClick) {
-        renderer.domElement.removeEventListener('pointerdown', handleConsoleClick);
-      }
       cancelAnimationFrame(animationFrameId);
       controllerRef.current?.dispose();
       controllerRef.current = null;
@@ -673,8 +745,8 @@ export function RoomView({
         disposeLamp(lampRef.current);
         lampRef.current = null;
       }
-      soundboardConsoleRef.current?.dispose();
-      soundboardConsoleRef.current = null;
+      soundboardWallRef.current?.dispose();
+      soundboardWallRef.current = null;
       roomLightsRef.current = null;
       renderer.dispose();
       if (renderer.domElement.parentNode === container) {
@@ -685,7 +757,8 @@ export function RoomView({
 
   return (
     <div ref={containerRef} className="room-view">
-      {!locked && !seated && (
+      {locked && !seated && assignSlotIndex === null && <div className="crosshair" />}
+      {!locked && !seated && assignSlotIndex === null && (
         <button
           type="button"
           className="room-view-overlay"
@@ -696,7 +769,18 @@ export function RoomView({
           or click-drag on the table to draw
         </button>
       )}
-      {interactionPrompt && <div className="interaction-prompt">{interactionPrompt}</div>}
+      {interactionPrompt && assignSlotIndex === null && (
+        <div className="interaction-prompt">{interactionPrompt}</div>
+      )}
+      {assignSlotIndex !== null && (
+        <SoundboardAssignMenu
+          onAssign={(name, url) => {
+            onUploadSoundRef.current(name, url, assignSlotIndex);
+            setAssignSlotIndex(null);
+          }}
+          onClose={() => setAssignSlotIndex(null)}
+        />
+      )}
       {seated && (
         <div className="drawing-toolbar">
           <button

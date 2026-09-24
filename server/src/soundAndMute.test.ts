@@ -54,7 +54,10 @@ describe('Soundboard & mute (Milestone 7 exit check)', () => {
     await new Promise<void>((resolve) => app.http.close(() => resolve()));
   });
 
-  it('the host playing a sound is heard (received) by every player in the session, host included', async () => {
+  it('a non-host player playing a sound is heard (received) by every player in the session, sender included', async () => {
+    // Playing was host-only through Milestone 9 but was opened up to any
+    // player in the wall-soundboard follow-up (docs/decisions.md) — proven
+    // here with Bob (not the host) as the one triggering it.
     const alice = await connect(url);
     const bob = await connect(url);
     clients.push(alice, bob);
@@ -65,32 +68,16 @@ describe('Soundboard & mute (Milestone 7 exit check)', () => {
     const aliceHearsIt = new Promise((resolve) => alice.once(SocketEvent.SoundPlay, resolve));
     const bobHearsIt = new Promise((resolve) => bob.once(SocketEvent.SoundPlay, resolve));
 
-    const result = await soundPlayAck(alice, {
+    const result = await soundPlayAck(bob, {
       sessionId: 'table-1',
-      playerId: 'alice-id',
+      playerId: 'bob-id',
       soundId: 'bell',
     });
     expect(result).toEqual({ ok: true });
 
-    const expected = { sessionId: 'table-1', playerId: 'alice-id', soundId: 'bell' };
+    const expected = { sessionId: 'table-1', playerId: 'bob-id', soundId: 'bell' };
     expect(await aliceHearsIt).toEqual(expected);
     expect(await bobHearsIt).toEqual(expected);
-  });
-
-  it('a non-host cannot play a sound', async () => {
-    const alice = await connect(url);
-    const bob = await connect(url);
-    clients.push(alice, bob);
-
-    await joinAck(alice, { sessionId: 'table-2', playerId: 'alice-id', playerName: 'Alice' });
-    await joinAck(bob, { sessionId: 'table-2', playerId: 'bob-id', playerName: 'Bob' });
-
-    const result = await soundPlayAck(bob, {
-      sessionId: 'table-2',
-      playerId: 'bob-id',
-      soundId: 'bell',
-    });
-    expect(result).toEqual({ ok: false, error: 'Only the host can play a sound.' });
   });
 
   it('rejects playing an unrecognized sound id', async () => {
@@ -106,7 +93,7 @@ describe('Soundboard & mute (Milestone 7 exit check)', () => {
     expect(result).toEqual({ ok: false, error: 'Sound not found.' });
   });
 
-  it('a fresh session already has the built-in soundboard presets', async () => {
+  it("a fresh session already has the built-in soundboard presets, filling the wall board's first slots", async () => {
     const alice = await connect(url);
     clients.push(alice);
     const joined = await joinAck(alice, {
@@ -117,9 +104,18 @@ describe('Soundboard & mute (Milestone 7 exit check)', () => {
     expect(joined.ok).toBe(true);
     if (!joined.ok) return;
     expect(joined.state.soundboard.map((s) => s.id)).toEqual(['bell', 'drum', 'alert']);
+    // The wall board (Milestone 8 follow-up) is a fixed 16-slot grid: the
+    // three built-ins fill the first three buttons, everything else starts
+    // empty, ready for a player to press and attach something.
+    expect(joined.state.soundboardSlots).toEqual([
+      'bell',
+      'drum',
+      'alert',
+      ...Array<null>(13).fill(null),
+    ]);
   });
 
-  it("a non-host player's uploaded sound is added to the shared soundboard, seen live by everyone, and can then be played by the host", async () => {
+  it("a non-host player's uploaded sound is added to the shared soundboard, seen live by everyone, and can then be played by anyone", async () => {
     const alice = await connect(url);
     const bob = await connect(url);
     clients.push(alice, bob);
@@ -134,8 +130,7 @@ describe('Soundboard & mute (Milestone 7 exit check)', () => {
       alice.once(SocketEvent.SessionState, resolve),
     );
 
-    // Bob (not the host) uploads a sound — uploading is explicitly not
-    // host-gated, unlike playing.
+    // Bob (not the host) uploads a sound — uploading was never host-gated.
     const uploadResult = await soundUploadAck(bob, {
       sessionId: 'table-2d',
       playerId: 'bob-id',
@@ -155,10 +150,11 @@ describe('Soundboard & mute (Milestone 7 exit check)', () => {
     const broadcast = (await aliceSeesTheUpload) as { soundboard: { id: string }[] };
     expect(broadcast.soundboard.map((s) => s.id)).toContain('custom-1');
 
-    // The host can now play the uploaded sound.
-    const playResult = await soundPlayAck(alice, {
+    // Bob himself can now play the sound he just uploaded — playing is open
+    // to any player (see the test above), not just the host.
+    const playResult = await soundPlayAck(bob, {
       sessionId: 'table-2d',
-      playerId: 'alice-id',
+      playerId: 'bob-id',
       soundId: 'custom-1',
     });
     expect(playResult).toEqual({ ok: true });
@@ -177,6 +173,42 @@ describe('Soundboard & mute (Milestone 7 exit check)', () => {
       url: 'http://localhost:3001/uploads/sounds/whatever.mp3',
     });
     expect(result).toEqual({ ok: false, error: 'A sound with that id already exists.' });
+  });
+
+  it('sound:upload with a slotIndex assigns the new sound to that wall-board slot', async () => {
+    const alice = await connect(url);
+    clients.push(alice);
+    await joinAck(alice, { sessionId: 'table-2f', playerId: 'alice-id', playerName: 'Alice' });
+
+    // Slot 5 starts empty (only 0/1/2 are pre-filled) — pressing it opens
+    // the assign menu client-side, which then uploads with slotIndex: 5.
+    const result = await soundUploadAck(alice, {
+      sessionId: 'table-2f',
+      playerId: 'alice-id',
+      soundId: 'custom-2',
+      name: 'Air Horn',
+      url: 'http://localhost:3001/uploads/sounds/air-horn.mp3',
+      slotIndex: 5,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.soundboardSlots[5]).toBe('custom-2');
+  });
+
+  it('sound:upload rejects an out-of-range slotIndex as malformed', async () => {
+    const alice = await connect(url);
+    clients.push(alice);
+    await joinAck(alice, { sessionId: 'table-2g', playerId: 'alice-id', playerName: 'Alice' });
+
+    const result = await soundUploadAck(alice, {
+      sessionId: 'table-2g',
+      playerId: 'alice-id',
+      soundId: 'custom-3',
+      name: 'Air Horn',
+      url: 'http://localhost:3001/uploads/sounds/air-horn.mp3',
+      slotIndex: 16, // valid indices are 0..15
+    });
+    expect(result.ok).toBe(false);
   });
 
   it("a muted player's state is seen live by everyone in the session", async () => {

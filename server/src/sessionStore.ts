@@ -1,6 +1,7 @@
 import {
   BUILTIN_SOUND_PRESETS,
   DEFAULT_SPAWN_POSITION,
+  SOUNDBOARD_SLOT_COUNT,
   type Dice,
   type GameState,
   type Player,
@@ -331,8 +332,19 @@ export class SessionStore {
    * soundboard (the file-uploads extension). `url` is the already-uploaded file's address
    * (see server.ts's /uploads/sounds REST route and client/src/uploads.ts)
    * — this just registers it into the session, the same "upload over REST,
-   * register over the socket" split `scene:update`'s map background uses. */
-  addSound(sessionId: string, soundId: string, name: string, url: string): GameStateMutationResult {
+   * register over the socket" split `scene:update`'s map background uses.
+   * `slotIndex`, when given, also assigns the new sound to that wall-board
+   * slot in the same mutation (pressing an empty button, Milestone 8
+   * follow-up) — validated as in-range by `validation.ts` before this is
+   * ever called, but bounds-checked again here defensively since this method
+   * also has non-socket callers in tests. */
+  addSound(
+    sessionId: string,
+    soundId: string,
+    name: string,
+    url: string,
+    slotIndex?: number,
+  ): GameStateMutationResult {
     const state = this.sessions.get(sessionId);
     if (!state) {
       return { ok: false, error: 'Session not found.' };
@@ -342,6 +354,9 @@ export class SessionStore {
     }
 
     state.soundboard.push({ id: soundId, name, url, playing: false });
+    if (slotIndex !== undefined && slotIndex >= 0 && slotIndex < state.soundboardSlots.length) {
+      state.soundboardSlots[slotIndex] = soundId;
+    }
     return { ok: true, state };
   }
 }
@@ -358,6 +373,14 @@ function createEmptySession(sessionId: string, hostId: string): GameState {
     // array/objects themselves, so per-session mutation (a future rename,
     // say) can't leak across sessions.
     soundboard: BUILTIN_SOUND_PRESETS.map((preset) => ({ ...preset })),
+    // The wall board starts with the built-in presets filling its first few
+    // buttons (continuity with the old console, which always showed them)
+    // and every other slot empty, ready for a player to press and attach
+    // something via the assign menu.
+    soundboardSlots: [
+      ...BUILTIN_SOUND_PRESETS.map((preset) => preset.id),
+      ...Array<null>(SOUNDBOARD_SLOT_COUNT - BUILTIN_SOUND_PRESETS.length).fill(null),
+    ],
     lightOn: true,
   };
 }

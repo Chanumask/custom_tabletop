@@ -1,17 +1,29 @@
 /**
  * Request/response payload shapes for sound:play/sound:upload (Milestones 7
- * and 8). Playing is host-only (the roadmap's own default scope); uploading
- * a sound to the shared soundboard is not — any player can contribute one
- * (docs/decisions.md). Unlike scene:* / dice:*, sound:play has no persisted
- * GameState to broadcast back — playing a sound doesn't change anything
- * about the session, so the ack is a bare ok/error and the broadcast
- * (server -> every client, sender included — see docs/decisions.md for why
- * the sender isn't excluded here) carries just the payload back out, the
- * same shape it came in as. sound:upload *does* change persisted state
- * (`GameState.soundboard`), so it uses the ack + full-broadcast pattern
- * instead, like scene:* / dice:*.
+ * and 8). **Playing was host-only through Milestone 9** but was opened up to
+ * any player in the wall-soundboard follow-up (docs/decisions.md) — a
+ * physical board any player can walk up to and press wouldn't make sense
+ * gated to the host alone, and gating it per-trigger-source (host-only from
+ * the 2D panel, open from the wall) would mean the same event enforces two
+ * different rules depending on who's asking, which is more confusing than
+ * useful. Uploading a sound to the shared soundboard was never host-gated —
+ * any player can contribute one (docs/decisions.md). Unlike scene:* /
+ * dice:*, sound:play has no persisted GameState to broadcast back — playing
+ * a sound doesn't change anything about the session, so the ack is a bare
+ * ok/error and the broadcast (server -> every client, sender included — see
+ * docs/decisions.md for why the sender isn't excluded here) carries just the
+ * payload back out, the same shape it came in as. sound:upload *does* change
+ * persisted state (`GameState.soundboard`, and optionally
+ * `GameState.soundboardSlots` — see below), so it uses the ack +
+ * full-broadcast pattern instead, like scene:* / dice:*.
  */
 import type { GameState } from './types.js';
+
+/** The wall soundboard (Milestone 8 follow-up) is a fixed 4x4 grid of
+ * physical buttons — independent of however many sounds
+ * `GameState.soundboard` grows to via uploads, since a button is a specific
+ * spot on the wall, not "the Nth sound in the list." */
+export const SOUNDBOARD_SLOT_COUNT = 16;
 
 export interface SoundPlayRequest {
   sessionId: string;
@@ -34,6 +46,11 @@ export interface SoundUploadRequest {
    * the file itself goes over a plain REST POST, not this socket event;
    * this just registers the resulting URL into the shared soundboard). */
   url: string;
+  /** Set when this upload comes from pressing an empty wall-soundboard
+   * button (0..SOUNDBOARD_SLOT_COUNT-1) — assigns the newly-registered sound
+   * to that slot in the same round trip, rather than needing a second event.
+   * Omitted for an ordinary 2D-panel upload, which doesn't touch any slot. */
+  slotIndex?: number;
 }
 
 export type SoundUploadResponse = { ok: true; state: GameState } | { ok: false; error: string };

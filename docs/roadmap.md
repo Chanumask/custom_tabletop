@@ -84,6 +84,15 @@ A user-requested UI/UX pass, not itself a numbered milestone — landed between 
 - Client-only settings (`localStorage`, never synced to `GameState`): master volume, and a rebindable interact key (previously hardcoded to `E`).
 - Any player can add a sound to the shared soundboard via a direct audio-file link, not just upload — a YouTube-audio-download mechanism was explicitly declined (ToS/copyright) in favor of this.
 
+## Wall soundboard extension ✅ (pending live browser verification)
+
+A further user-requested rework of the M8 soundboard interactable, landed right after the session-menu extension above. See `docs/decisions.md` (2026-09-24) and `docs/changelog.md` for the full breakdown.
+
+- Replaced the M8 floor-standing console with a wall-mounted 4x4 grid of individually-addressable buttons (`GameState.soundboardSlots`), each independently empty or holding a specific sound.
+- Interaction switched from click to aim + E (a proximity-only model can't tell 16 wall-mounted buttons apart); pressing an empty button opens an in-room menu to attach a sound via link or upload.
+- `sound:play` was relaxed from host-only to open to any player, applied consistently to both the wall board and the 2D panel.
+- Build/lint/tests all clean, but the actual in-room look (wall placement, aiming, the assign-menu overlay) hasn't been visually confirmed yet — the browser automation tooling was disconnected when this landed.
+
 ## M10 — Performance & polish
 
 - Confirm delta-only updates hold under real drawing/movement load (no full-state re-broadcast).

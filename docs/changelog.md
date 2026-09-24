@@ -6,6 +6,36 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-24 — Wall soundboard rework: 4x4 grid, per-button sound assignment, aim + E
+
+**Asked** (user): "the soundboard isnt working as intended. it shoul be on one of the walls. a big board with 16 buttons (4x4) interacting with one of the buttons with e should play the attatched sound for all players. if theres no sound attatched e should open a menu where you can select a sound by posting an url or uploading a file."
+
+### What landed
+
+- Replaced the M8 floor-standing "jukebox cabinet" console with **`SoundboardWall`** (`client/src/three/SoundboardWall.ts`): a flat panel mounted on the room's east wall (the same corner the old cabinet occupied), 16 fixed buttons in a 4x4 grid.
+- New **`GameState.soundboardSlots`** (16-entry, slot index -> sound id or `null`) — independent of the ever-growing `soundboard` list; a fresh session pre-fills slots 0/1/2 with the built-in presets.
+- **Aim-based targeting, not proximity**: `SoundboardWall.raycastFromCamera` casts from the camera's look direction (bounded range) since 16 wall-mounted buttons can't be told apart by XZ distance alone. Added a small on-screen crosshair while locked so there's a visible aim point.
+- Pressing E on a filled button plays its sound (now for **any player**, not just the host — see below); on an empty button it opens a new overlay (**`SoundboardAssignMenu.tsx`**) to attach a sound via a direct link or file upload, reusing the same upload/link logic as the 2D panel.
+- **`sound:play` is no longer host-gated** — relaxed globally (both the wall board and the 2D panel's Play buttons), confirmed with the user via `AskUserQuestion` first, since gating the same event differently by which UI triggered it made no sense.
+- `sound:upload` gained an optional `slotIndex` field so pressing an empty button can register + place a sound in one round trip, instead of a second event.
+- Branch `feat/wall-soundboard`, squash-merged into local `main`. **Not pushed.**
+
+### Checked
+
+- Full `sanity-check` (lint/format/build/test): 232 tests (155 server, 77 client — up from 227), all clean. New `soundboardLayout.test.ts` unit-tests the pure grid-offset math; `soundAndMute.test.ts` extended for the relaxed play authority and slot-assignment behavior (valid + out-of-range `slotIndex`).
+- **Live browser verification was not completed** — the Claude-in-Chrome extension reported disconnected when attempted this session. Build/type-check/tests all pass, but the actual in-room look/feel (wall placement, button spacing, crosshair, the assign-menu overlay) has not been visually confirmed. Flagged to the user directly rather than claimed as done.
+
+### Next session
+
+If picking this back up: reconnect the Claude-in-Chrome extension and do the deferred live check — join a session, walk up to the east wall, confirm the 4x4 board renders in a sensible spot (not clipping into the wall or overlapping other geometry), aim at a button and confirm the crosshair/prompt/E-to-play work, press an empty button and confirm the assign-menu overlay opens and correctly un-locks the pointer, submit a sound via both the link and upload paths and confirm it appears on the right button and plays for a second (non-host) player too.
+
+- **Branch:** `main` — none open. `feat/wall-soundboard` merged and deleted.
+- **State:** M1–M9 done, plus the file-uploads, session-menu/settings, and wall-soundboard extensions.
+- **Watch for:** the deferred browser check above; also double check the wall panel's exact placement/scale against the real Blender room the first time it's actually viewed, since its position (`SOUNDBOARD_WALL_POSITION`) was chosen from prior screenshots/known-clear space, not verified against the live geometry this round.
+- **Environment:** dev server was left running in the background this session (started fresh partway through after the prior session's instances had died) — verify it's still healthy before relying on it, or just restart with `npm run dev`.
+
+---
+
 ## 2026-09-24 — Session menu rework: tabs, client settings, rebindable interact key, direct-link sounds
 
 **Asked** (user): restructure the top-right session menu into categorized tabs (only one open at a time, centered text, consistent spacing, icons); add client-only settings (volume, extensible for more later); make the interact key rebindable; investigate the soundboard "not working" and add a way for any player to add sounds via a link (their example: a YouTube link).

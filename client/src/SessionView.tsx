@@ -100,12 +100,7 @@ export function SessionView({
           />
         )}
         {activeTab === 'soundboard' && (
-          <SoundboardTab
-            state={state}
-            isHost={isHost}
-            onPlaySound={onPlaySound}
-            onUploadSound={onUploadSound}
-          />
+          <SoundboardTab state={state} onPlaySound={onPlaySound} onUploadSound={onUploadSound} />
         )}
         {activeTab === 'settings' && <SettingsTab />}
       </div>
@@ -260,12 +255,10 @@ function DiceTab({
 
 function SoundboardTab({
   state,
-  isHost,
   onPlaySound,
   onUploadSound,
 }: {
   state: GameState;
-  isHost: boolean;
   onPlaySound: (soundId: string) => void;
   onUploadSound: (name: string, url: string) => void;
 }) {
@@ -307,11 +300,9 @@ function SoundboardTab({
         {state.soundboard.map((sound) => (
           <li key={sound.id}>
             <span>{sound.name}</span>
-            {isHost && (
-              <button type="button" onClick={() => onPlaySound(sound.id)}>
-                Play
-              </button>
-            )}
+            <button type="button" onClick={() => onPlaySound(sound.id)}>
+              Play
+            </button>
           </li>
         ))}
       </ul>
