@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import type { Obstacle } from './collision.js';
+import type { Seat } from './avatarMotion.js';
 import { PLACEHOLDER_ROOM_LAYOUT, type RoomLayout, type TableSurface } from './RoomLayout.js';
 
 export interface RoomAsset {
@@ -12,6 +13,8 @@ export interface RoomAsset {
   whiteboardSurface: THREE.Mesh | null;
   /** Hidden while seated: it hangs right where the top-down camera sits. */
   chandelier: THREE.Object3D | null;
+  /** Where seated players' characters sit (every `Chair_*`), facing the table. */
+  seats: Seat[];
 }
 
 /** Blender objects named `COL_*` are invisible collision footprints. */
@@ -30,6 +33,8 @@ function boxOf(object: THREE.Object3D): THREE.Box3 {
  * - every `COL_*` object -> an `Obstacle` footprint (and hidden),
  * - `Table_Top` -> the play surface's center/size/height,
  * - `Floor` -> the walkable bounds, `Ceiling` -> the wall height,
+ * - every `Chair_*` -> a seat facing the table (where a seated player's
+ *   character sits),
  * - `Whiteboard_Surface` / `Chandelier` -> handed back for the caller.
  *
  * Anything missing falls back to `fallback` (so a stripped-down model still
@@ -67,6 +72,19 @@ export function describeRoom(
   const floorBox = floor ? boxOf(floor) : null;
   const ceiling = root.getObjectByName('Ceiling');
 
+  const seats: Seat[] = [];
+  root.traverse((node) => {
+    if (node.name.startsWith('Chair_')) {
+      const at = new THREE.Vector3();
+      node.getWorldPosition(at);
+      seats.push({
+        x: at.x,
+        z: at.z,
+        yaw: Math.atan2(table.center.x - at.x, table.center.z - at.z),
+      });
+    }
+  });
+
   const whiteboard = root.getObjectByName('Whiteboard_Surface');
   return {
     object3D: root,
@@ -81,6 +99,7 @@ export function describeRoom(
     tableTop: tableNode instanceof THREE.Mesh ? tableNode : null,
     whiteboardSurface: whiteboard instanceof THREE.Mesh ? whiteboard : null,
     chandelier: root.getObjectByName('Chandelier') ?? null,
+    seats,
   };
 }
 

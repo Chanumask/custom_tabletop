@@ -34,6 +34,22 @@ describe('describeRoom', () => {
     expect(room.tableTop?.name).toBe('Table_Top');
   });
 
+  it('turns every Chair_* into a seat that faces the table', () => {
+    const root = new THREE.Group();
+    root.add(box('Table_Top', [2, 0.04, 2], [0, 0.76, 0]));
+    root.add(box('Chair_S', [0.6, 1, 0.6], [0, 0.5, 1.56]));
+    root.add(box('Chair_E', [0.6, 1, 0.6], [1.56, 0.5, 0]));
+    root.add(box('COL_Chair_S', [0.6, 1, 0.6], [0, 0.5, 1.56])); // a collider, not a seat
+
+    const { seats } = describeRoom(root);
+    expect(seats).toHaveLength(2);
+    const south = seats.find((seat) => seat.z > 1)!;
+    // Facing -Z (toward the table): yaw π, i.e. a +Z-facing model turned round.
+    expect(Math.abs(south.yaw)).toBeCloseTo(Math.PI);
+    const east = seats.find((seat) => seat.x > 1)!;
+    expect(east.yaw).toBeCloseTo(-Math.PI / 2);
+  });
+
   it('hides collider boxes so they never render', () => {
     const root = new THREE.Group();
     const collider = box('COL_Chair_N', [0.6, 1, 0.6], [0, 0.5, 1.5]);
@@ -48,5 +64,6 @@ describe('describeRoom', () => {
     expect(room.tableTop).toBeNull();
     expect(room.whiteboardSurface).toBeNull();
     expect(room.chandelier).toBeNull();
+    expect(room.seats).toEqual([]);
   });
 });

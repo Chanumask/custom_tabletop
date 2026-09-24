@@ -354,6 +354,7 @@ export function App() {
           onObjectInteract={handleObjectInteract}
           onUploadSound={handleUploadSound}
           onAssignSlot={handleAssignSlot}
+          onNotify={toast}
         />
         <SessionView
           state={gameState}

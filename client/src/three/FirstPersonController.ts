@@ -4,7 +4,10 @@ import { resolveMovement, type Obstacle, type RoomBounds } from './collision.js'
 import { PLAYER_RADIUS, seatedCameraHeight, type TableSurface } from './RoomLayout.js';
 import { isTypingTarget } from '../keyboard.js';
 
-const MOVE_SPEED = 3; // metres/second, walking pace
+/** Metres/second. Walking is the default; holding Shift runs — so other
+ * players see a matching walk or run animation (avatarMotion.ts). */
+const WALK_SPEED = 2.2;
+const RUN_SPEED = 4.2;
 
 const FORWARD_KEYS = new Set(['KeyW', 'ArrowUp']);
 const BACK_KEYS = new Set(['KeyS', 'ArrowDown']);
@@ -15,6 +18,8 @@ const RIGHT_KEYS = new Set(['KeyD', 'ArrowRight']);
  * so the interact-key rebind UI (Settings, Milestone 10) can refuse to bind
  * onto a movement key instead of silently breaking WASD. */
 export const MOVEMENT_KEYS = new Set([...FORWARD_KEYS, ...BACK_KEYS, ...LEFT_KEYS, ...RIGHT_KEYS]);
+/** Held to run instead of walk. */
+export const RUN_KEYS = new Set(['ShiftLeft', 'ShiftRight']);
 
 export interface FirstPersonControllerOptions {
   camera: THREE.PerspectiveCamera;
@@ -25,7 +30,8 @@ export interface FirstPersonControllerOptions {
   /** The play surface — where sitting down looks. */
   table: TableSurface;
   playerRadius?: number;
-  moveSpeed?: number;
+  walkSpeed?: number;
+  runSpeed?: number;
 }
 
 /**
@@ -44,7 +50,8 @@ export class FirstPersonController {
   private readonly table: TableSurface;
   private readonly camera: THREE.PerspectiveCamera;
   private readonly playerRadius: number;
-  private readonly moveSpeed: number;
+  private readonly walkSpeed: number;
+  private readonly runSpeed: number;
   private readonly pressedKeys = new Set<string>();
   private standingState: { position: THREE.Vector3; quaternion: THREE.Quaternion } | null = null;
 
@@ -74,7 +81,8 @@ export class FirstPersonController {
     this.table = options.table;
     this.camera = options.camera;
     this.playerRadius = options.playerRadius ?? PLAYER_RADIUS;
-    this.moveSpeed = options.moveSpeed ?? MOVE_SPEED;
+    this.walkSpeed = options.walkSpeed ?? WALK_SPEED;
+    this.runSpeed = options.runSpeed ?? RUN_SPEED;
   }
 
   connect(): void {
@@ -114,7 +122,8 @@ export class FirstPersonController {
     // Normalize so diagonal (forward+strafe) movement isn't faster than
     // moving along a single axis.
     const inputLength = Math.hypot(forwardAmount, rightAmount) || 1;
-    const step = (this.moveSpeed * deltaSeconds) / inputLength;
+    const speed = this.anyPressed(RUN_KEYS) ? this.runSpeed : this.walkSpeed;
+    const step = (speed * deltaSeconds) / inputLength;
 
     const object = this.controls.object;
     const before = { x: object.position.x, z: object.position.z };

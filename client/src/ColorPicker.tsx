@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import { PLAYER_COLORS, type PlayerColorId } from '@custom-tabletop/shared';
+import { CHARACTER_TITLES } from './three/characters.js';
 
 export interface ColorPickerProps {
   value: PlayerColorId;
@@ -27,7 +28,7 @@ export function ColorPicker({ value, taken, onChange, label }: ColorPickerProps)
             role="radio"
             aria-checked={selected}
             aria-label={isTaken ? `${color.label} (taken)` : color.label}
-            title={isTaken ? `${color.label} — taken` : color.label}
+            title={`${color.label} — ${CHARACTER_TITLES[color.id]}${isTaken ? ' (taken)' : ''}`}
             className={`color-swatch${selected ? ' selected' : ''}${isTaken ? ' taken' : ''}`}
             style={{ '--swatch': color.hex } as CSSProperties}
             disabled={isTaken}

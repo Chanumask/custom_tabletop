@@ -37,6 +37,8 @@ export const SocketEvent = {
   PlayerMove: 'player:move',
   /** A player changes their own name/color mid-session. */
   PlayerUpdate: 'player:update',
+  /** A short character animation everyone else sees (emote.ts). */
+  PlayerEmote: 'player:emote',
 
   DiceSpawn: 'dice:spawn',
   DiceRoll: 'dice:roll',

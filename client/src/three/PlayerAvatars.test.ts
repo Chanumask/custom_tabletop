@@ -1,129 +1,157 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import type { Player } from '@custom-tabletop/shared';
+import type { Player, PlayerColorId } from '@custom-tabletop/shared';
 import { PlayerAvatars } from './PlayerAvatars.js';
+import type { CharacterAsset, CharacterSource } from './characters.js';
+import { nameTagLabel } from './nameTag.js';
 
-function makePlayer(
-  id: string,
-  position = { x: 0, y: 1.7, z: 0 },
-  rotationY = 0,
-  seated = false,
-  connected = true,
-): Player {
+/** A stand-in character: a body mesh wearing a "Shirt" material, plus the
+ * clips PlayerAvatars looks for (empty motion is fine for these tests). */
+function fakeCharacters(): CharacterSource & { loads: PlayerColorId[] } {
+  const loads: PlayerColorId[] = [];
+  const clip = (name: string) =>
+    new THREE.AnimationClip(name, 1, [new THREE.NumberKeyframeTrack('.scale[x]', [0, 1], [1, 1])]);
+  return {
+    loads,
+    async load(color: PlayerColorId): Promise<CharacterAsset> {
+      loads.push(color);
+      const scene = new THREE.Group();
+      scene.add(
+        new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial({ name: 'Shirt' })),
+      );
+      scene.add(
+        new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial({ name: 'Skin' })),
+      );
+      return { scene, animations: ['Idle', 'Walk', 'Run', 'Wave', 'Death'].map(clip) };
+    },
+  };
+}
+
+function player(id: string, overrides: Partial<Player> = {}): Player {
   return {
     id,
     name: id,
     color: 'red',
     character: { id, name: id },
-    position,
-    rotationY,
+    position: { x: 0, y: 1.7, z: 0 },
+    rotationY: 0,
     muted: false,
-    seated,
-    connected,
+    seated: false,
+    connected: true,
+    ...overrides,
   };
 }
 
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+function shirtOf(avatars: PlayerAvatars, id: string): THREE.MeshStandardMaterial {
+  let shirt: THREE.MeshStandardMaterial | undefined;
+  avatars.objectFor(id)?.traverse((node) => {
+    if (node instanceof THREE.Mesh && node.material.name === 'Shirt') shirt = node.material;
+  });
+  if (!shirt) throw new Error('no shirt');
+  return shirt;
+}
+
 describe('PlayerAvatars', () => {
-  it('creates an avatar for every player except the local one', () => {
-    const scene = new THREE.Scene();
-    const avatars = new PlayerAvatars(scene);
-    const group = scene.getObjectByName('player-avatars') as THREE.Group;
+  it('gives every other player a character (never the local player) in their color', async () => {
+    const characters = fakeCharacters();
+    const avatars = new PlayerAvatars(new THREE.Scene(), characters);
+    avatars.sync(
+      [player('me'), player('a', { color: 'blue' }), player('b', { color: 'green' })],
+      'me',
+    );
+    await flush();
 
-    avatars.sync([makePlayer('p1'), makePlayer('p2'), makePlayer('p3')], 'p1');
-
-    expect(group.children.map((child) => child.name).sort()).toEqual(['avatar-p2', 'avatar-p3']);
+    expect(avatars.stats()).toEqual({ avatars: 2, loaded: 2 });
+    expect(characters.loads.sort()).toEqual(['blue', 'green']);
+    expect(`#${shirtOf(avatars, 'a').color.getHexString()}`).toBe('#3d7fdb');
+    expect(avatars.objectFor('me')).toBeUndefined();
   });
 
-  it('removes an avatar once its player is no longer in the list', () => {
-    const scene = new THREE.Scene();
-    const avatars = new PlayerAvatars(scene);
-    const group = scene.getObjectByName('player-avatars') as THREE.Group;
-
-    avatars.sync([makePlayer('p1'), makePlayer('p2')], 'p1');
-    avatars.sync([makePlayer('p1')], 'p1');
-
-    expect(group.children).toHaveLength(0);
+  it('gives each avatar its own materials, so tinting one never affects another', async () => {
+    const avatars = new PlayerAvatars(new THREE.Scene(), fakeCharacters());
+    avatars.sync([player('a', { color: 'red' }), player('b', { color: 'red' })], 'me');
+    await flush();
+    expect(shirtOf(avatars, 'a')).not.toBe(shirtOf(avatars, 'b'));
   });
 
-  it('positions a new avatar from the player snapshot it was created from', () => {
-    const scene = new THREE.Scene();
-    const avatars = new PlayerAvatars(scene);
-    const group = scene.getObjectByName('player-avatars') as THREE.Group;
-
-    avatars.sync([makePlayer('p1'), makePlayer('p2', { x: 2, y: 1.7, z: -3 }, 1.2)], 'p1');
-
-    const mesh = group.getObjectByName('avatar-p2') as THREE.Mesh;
-    expect(mesh.position.x).toBeCloseTo(2);
-    expect(mesh.position.z).toBeCloseTo(-3);
-    expect(mesh.rotation.y).toBeCloseTo(1.2);
+  it('swaps to the new character when a player changes color', async () => {
+    const characters = fakeCharacters();
+    const avatars = new PlayerAvatars(new THREE.Scene(), characters);
+    avatars.sync([player('a', { color: 'red' })], 'me');
+    await flush();
+    avatars.sync([player('a', { color: 'purple' })], 'me');
+    await flush();
+    expect(characters.loads).toEqual(['red', 'purple']);
+    expect(`#${shirtOf(avatars, 'a').color.getHexString()}`).toBe('#9160d6');
   });
 
-  it('updateOne moves an existing avatar without touching the player list', () => {
+  it('removes the avatar of a player who left', async () => {
     const scene = new THREE.Scene();
-    const avatars = new PlayerAvatars(scene);
-    const group = scene.getObjectByName('player-avatars') as THREE.Group;
-
-    avatars.sync([makePlayer('p1'), makePlayer('p2')], 'p1');
-    avatars.updateOne('p2', { x: 5, y: 1.7, z: 4 }, 0.5);
-
-    const mesh = group.getObjectByName('avatar-p2') as THREE.Mesh;
-    expect(mesh.position.x).toBeCloseTo(5);
-    expect(mesh.position.z).toBeCloseTo(4);
-    expect(mesh.rotation.y).toBeCloseTo(0.5);
+    const avatars = new PlayerAvatars(scene, fakeCharacters());
+    avatars.sync([player('a'), player('b')], 'me');
+    await flush();
+    avatars.sync([player('a')], 'me');
+    expect(avatars.stats().avatars).toBe(1);
+    expect(scene.getObjectByName('avatar-b')).toBeUndefined();
   });
 
-  it('updateOne for an unknown player id is a silent no-op', () => {
-    const scene = new THREE.Scene();
-    const avatars = new PlayerAvatars(scene);
-    expect(() => avatars.updateOne('ghost', { x: 0, y: 0, z: 0 }, 0)).not.toThrow();
+  it('glides toward live position updates instead of teleporting, but snaps a big jump', async () => {
+    const avatars = new PlayerAvatars(new THREE.Scene(), fakeCharacters());
+    avatars.sync([player('a')], 'me');
+    await flush();
+
+    avatars.updateOne('a', { x: 1, y: 1.7, z: 0 }, 0);
+    avatars.update(1 / 60);
+    const x = avatars.objectFor('a')!.position.x;
+    expect(x).toBeGreaterThan(0);
+    expect(x).toBeLessThan(1);
+
+    avatars.updateOne('a', { x: -4, y: 1.7, z: 3 }, 0);
+    avatars.update(1 / 60);
+    expect(avatars.objectFor('a')!.position.x).toBeCloseTo(-4);
   });
 
-  it('a seated player is squashed shorter than a standing one', () => {
-    const scene = new THREE.Scene();
-    const avatars = new PlayerAvatars(scene);
-    const group = scene.getObjectByName('player-avatars') as THREE.Group;
+  it('seats a seated player on a chair, facing the way the chair faces', async () => {
+    const seats = [{ x: 0, z: 1.56, yaw: Math.PI }];
+    const avatars = new PlayerAvatars(new THREE.Scene(), fakeCharacters(), seats);
+    avatars.sync([player('a', { seated: true, position: { x: 0.3, y: 1.7, z: 2 } })], 'me');
+    await flush();
+    avatars.update(1 / 60);
 
-    avatars.sync([makePlayer('p1'), makePlayer('p2', { x: 0, y: 1.7, z: 0 }, 0, true)], 'p1');
-
-    const mesh = group.getObjectByName('avatar-p2') as THREE.Mesh;
-    expect(mesh.scale.y).toBeLessThan(1);
+    const object = avatars.objectFor('a')!;
+    // On the chair (nudged a little toward the table, which this seat faces).
+    expect(object.position.x).toBeCloseTo(0);
+    expect(object.position.z).toBeGreaterThan(1.4);
+    expect(object.position.z).toBeLessThan(1.56);
+    expect(object.rotation.y).toBeCloseTo(Math.PI);
   });
 
-  it('updateOne always applies as standing (documents why RoomView must not send player:move for a seated local player)', () => {
-    const scene = new THREE.Scene();
-    const avatars = new PlayerAvatars(scene);
-    const group = scene.getObjectByName('player-avatars') as THREE.Group;
-
-    avatars.sync([makePlayer('p1'), makePlayer('p2', { x: 0, y: 1.7, z: 0 }, 0, true)], 'p1');
-    avatars.updateOne('p2', { x: 1, y: 1.7, z: 1 }, 0);
-
-    const mesh = group.getObjectByName('avatar-p2') as THREE.Mesh;
-    expect(mesh.scale.y).toBe(1);
+  it('turns a reconnecting player into a translucent ghost and back', async () => {
+    const avatars = new PlayerAvatars(new THREE.Scene(), fakeCharacters());
+    avatars.sync([player('a', { connected: false })], 'me');
+    await flush();
+    expect(shirtOf(avatars, 'a').opacity).toBeLessThan(1);
+    avatars.sync([player('a', { connected: true })], 'me');
+    expect(shirtOf(avatars, 'a').opacity).toBe(1);
   });
 
-  it('a reconnecting player fades to a ghost, and back to solid once they return', () => {
+  it('dispose removes the avatar group from the scene', async () => {
     const scene = new THREE.Scene();
-    const avatars = new PlayerAvatars(scene);
-    const group = scene.getObjectByName('player-avatars') as THREE.Group;
-    const origin = { x: 0, y: 1.7, z: 0 };
-
-    avatars.sync([makePlayer('p1'), makePlayer('p2', origin, 0, false, false)], 'p1');
-    const material = (group.getObjectByName('avatar-p2') as THREE.Mesh)
-      .material as THREE.MeshStandardMaterial;
-    expect(material.transparent).toBe(true);
-    expect(material.opacity).toBeLessThan(1);
-
-    avatars.sync([makePlayer('p1'), makePlayer('p2', origin, 0, false, true)], 'p1');
-    expect(material.opacity).toBe(1);
-  });
-
-  it('dispose removes the avatar group from the scene', () => {
-    const scene = new THREE.Scene();
-    const avatars = new PlayerAvatars(scene);
-
-    avatars.sync([makePlayer('p1'), makePlayer('p2')], 'p1');
+    const avatars = new PlayerAvatars(scene, fakeCharacters());
+    avatars.sync([player('a')], 'me');
+    await flush();
     avatars.dispose();
-
     expect(scene.getObjectByName('player-avatars')).toBeUndefined();
+  });
+});
+
+describe('nameTagLabel', () => {
+  const base = { name: 'Mia', colorHex: '#d9443b', muted: false, away: false };
+  it('shows the name, plus status when relevant', () => {
+    expect(nameTagLabel(base)).toBe('Mia');
+    expect(nameTagLabel({ ...base, muted: true })).toBe('Mia · muted');
+    expect(nameTagLabel({ ...base, away: true, muted: true })).toBe('Mia · reconnecting…');
   });
 });

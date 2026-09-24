@@ -35,6 +35,7 @@ import {
   parseSessionPeekRequest,
   parsePlayerUpdateRequest,
   parsePlayerMoveRequest,
+  parsePlayerEmoteRequest,
   parseSceneCreateRequest,
   parseSceneChangeRequest,
   parseSceneUpdateRequest,
@@ -69,6 +70,8 @@ export interface AppServerOptions {
 }
 
 const DEFAULT_DISCONNECT_GRACE_MS = 45_000;
+/** Minimum spacing between one socket's emotes. */
+const EMOTE_MIN_INTERVAL_MS = 400;
 
 /** Every acked event's rejection when the socket isn't joined to the
  * payload's session as the payload's player — see `actsAs` below. */
@@ -369,6 +372,24 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       if (moved) {
         socket.to(request.sessionId).emit(SocketEvent.PlayerMove, request);
       }
+    });
+
+    // Fire-and-forget like player:move: nothing is stored (an emote is a
+    // moment, not state) and the sender is excluded (they can't see their own
+    // avatar from first person). Rate-limited per socket so holding a key or
+    // a scripted client can't flood everyone else.
+    let lastEmoteAt = 0;
+    socket.on(SocketEvent.PlayerEmote, (payload: unknown) => {
+      const request = parsePlayerEmoteRequest(payload);
+      if (!request || !actsAs(request.sessionId, request.playerId)) {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastEmoteAt < EMOTE_MIN_INTERVAL_MS) {
+        return;
+      }
+      lastEmoteAt = now;
+      socket.to(request.sessionId).emit(SocketEvent.PlayerEmote, request);
     });
 
     // Infrequent, host-gated, full-state ack + broadcast — same pattern as

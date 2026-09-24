@@ -2,8 +2,10 @@ import {
   MAX_PLAYER_NAME_LENGTH,
   MAX_SOUND_NAME_LENGTH,
   SOUNDBOARD_SLOT_COUNT,
+  isEmoteId,
   isHttpUrl,
   isPlayerColorId,
+  type PlayerEmoteRequest,
   type SoundboardAssignRequest,
   type SoundRemoveRequest,
   type PlayerUpdateRequest,
@@ -539,4 +541,17 @@ export function parsePlayerUnmuteRequest(payload: unknown): PlayerUnmuteRequest 
     playerId: playerId.trim(),
     targetPlayerId: targetPlayerId.trim(),
   };
+}
+
+export function parsePlayerEmoteRequest(payload: unknown): PlayerEmoteRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, emote } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || !isEmoteId(emote)) {
+    return null;
+  }
+
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), emote };
 }

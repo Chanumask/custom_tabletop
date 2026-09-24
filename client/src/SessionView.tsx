@@ -1,5 +1,6 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
+  EMOTES,
   MAX_PLAYER_NAME_LENGTH,
   playerColorHex,
   type GameState,
@@ -14,7 +15,7 @@ import { MapCropDialog, type MapSource } from './MapCropDialog.js';
 import { SOUND_KIND_LABEL, soundKind } from './soundKind.js';
 import { useSettings } from './useSettings.js';
 import { formatKeyCode } from './keyLabel.js';
-import { MOVEMENT_KEYS } from './three/FirstPersonController.js';
+import { MOVEMENT_KEYS, RUN_KEYS } from './three/FirstPersonController.js';
 import { MapIcon, DiceIcon, SoundIcon, PlayersIcon, SettingsIcon } from './icons.js';
 
 export interface SessionViewProps {
@@ -507,8 +508,12 @@ function SettingsTab() {
         setRebinding(false);
         return;
       }
-      if (MOVEMENT_KEYS.has(event.code)) {
+      if (MOVEMENT_KEYS.has(event.code) || RUN_KEYS.has(event.code)) {
         setRebindError('That key is used for movement — try another.');
+        return;
+      }
+      if (EMOTES.some((emote) => emote.key === event.code)) {
+        setRebindError('That key plays an emote — try another.');
         return;
       }
       updateSettings({ interactKey: event.code });

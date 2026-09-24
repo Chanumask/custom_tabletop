@@ -13,6 +13,8 @@ import {
   type DrawingDeleteRequest,
   type Dice,
   type SoundState,
+  type PlayerEmoteRequest,
+  EMOTES,
 } from '@custom-tabletop/shared';
 import { loadRoom } from './RoomLoader.js';
 import { FirstPersonController } from './FirstPersonController.js';
@@ -23,6 +25,8 @@ import {
   type RoomLights,
 } from './RoomLighting.js';
 import { PlayerAvatars } from './PlayerAvatars.js';
+import { CharacterLibrary } from './characters.js';
+import { isTypingTarget } from '../keyboard.js';
 import { TableCanvas } from './TableCanvas.js';
 import { TableDrawing } from './TableDrawing.js';
 import { remapTableTopUV } from './tableTopUV.js';
@@ -43,10 +47,14 @@ import { isInteractKeyPress } from '../keyboard.js';
 import { SoundboardAssignMenu } from '../SoundboardAssignMenu.js';
 
 const ROOM_GLTF_URL = '/models/room.glb';
+// Module-level so each character model downloads once per page, not once
+// per room mount (leaving and rejoining a session reuses it).
+const characterLibrary = new CharacterLibrary();
 // Throttle: enough for smooth-looking remote avatars without flooding the
 // socket (docs/engineering/architecture.md, "Performance" — deltas, not a
 // broadcast on every frame).
 const MOVE_SEND_INTERVAL_MS = 100;
+const MAX_FRAME_SECONDS = 0.1;
 const MOVE_POSITION_EPSILON = 0.01;
 const MOVE_ROTATION_EPSILON = 0.01;
 // How far past the table's own edge still counts as "approaching" it for
@@ -111,6 +119,8 @@ export interface RoomViewProps {
   onUploadSound: (name: string, url: string, slotIndex?: number) => void;
   /** Put an existing sound on a wall button, or clear it (null). */
   onAssignSlot: (slotIndex: number, soundId: string | null) => void;
+  /** Short on-screen feedback (e.g. "You wave"). */
+  onNotify: (text: string) => void;
 }
 
 function promptFor(
@@ -178,6 +188,7 @@ export function RoomView({
   onObjectInteract,
   onUploadSound,
   onAssignSlot,
+  onNotify,
 }: RoomViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FirstPersonController | null>(null);
@@ -211,6 +222,7 @@ export function RoomView({
   const onPlaySoundRef = useRef(onPlaySound);
   const onObjectInteractRef = useRef(onObjectInteract);
   const onUploadSoundRef = useRef(onUploadSound);
+  const onNotifyRef = useRef(onNotify);
   const interactKeyRef = useRef(interactKey);
   const [locked, setLocked] = useState(false);
   const [seated, setSeated] = useState(false);
@@ -258,6 +270,10 @@ export function RoomView({
   useEffect(() => {
     onUploadSoundRef.current = onUploadSound;
   }, [onUploadSound]);
+
+  useEffect(() => {
+    onNotifyRef.current = onNotify;
+  }, [onNotify]);
 
   useEffect(() => {
     interactKeyRef.current = interactKey;
@@ -371,6 +387,11 @@ export function RoomView({
     };
     socket.on(SocketEvent.PlayerMove, handleRemoteMove);
 
+    const handleRemoteEmote = (request: PlayerEmoteRequest) => {
+      avatarsRef.current?.playEmote(request.playerId, request.emote);
+    };
+    socket.on(SocketEvent.PlayerEmote, handleRemoteEmote);
+
     // Live, point-by-point stroke updates from other players — a full
     // scene redraw is for background/membership changes (the effect
     // above), not for this.
@@ -453,6 +474,7 @@ export function RoomView({
       setSeated(seatedNow);
     };
     let handleInteractKey: ((event: KeyboardEvent) => void) | null = null;
+    let handleEmoteKey: ((event: KeyboardEvent) => void) | null = null;
 
     void loadRoom(ROOM_GLTF_URL).then((room) => {
       if (disposed) {
@@ -483,7 +505,7 @@ export function RoomView({
         },
       ];
 
-      const avatars = new PlayerAvatars(scene);
+      const avatars = new PlayerAvatars(scene, characterLibrary, room.seats);
       avatars.sync(playersRef.current, playerId);
       avatarsRef.current = avatars;
 
@@ -513,6 +535,7 @@ export function RoomView({
           controller,
           scene,
           renderer,
+          avatars,
         };
       }
 
@@ -689,15 +712,39 @@ export function RoomView({
       };
       document.addEventListener('keydown', handleInteractKey);
 
+      // Emotes on the number keys: everyone else sees this player's
+      // character perform it (the local player gets a short confirmation,
+      // since they can't see their own avatar from first person).
+      handleEmoteKey = (event: KeyboardEvent) => {
+        if (event.repeat || isTypingTarget(event.target) || controller.isSeated) {
+          return;
+        }
+        const emote = EMOTES.find((candidate) => candidate.key === event.code);
+        if (!emote) {
+          return;
+        }
+        socket.emit(SocketEvent.PlayerEmote, {
+          sessionId,
+          playerId,
+          emote: emote.id,
+        } satisfies PlayerEmoteRequest);
+        onNotifyRef.current(`${emote.label}!`);
+      };
+      document.addEventListener('keydown', handleEmoteKey);
+
       let lastSentAt = 0;
       const lastSentPosition = new THREE.Vector3(Infinity, Infinity, Infinity);
       let lastSentYaw = Infinity;
 
       const animate = () => {
         animationFrameId = requestAnimationFrame(animate);
-        const delta = clock.getDelta();
+        // Capped: after the tab was hidden, the first frame's delta can be
+        // seconds long — one huge step could carry the player past thin
+        // furniture (collision checks where a step ends, not the path).
+        const delta = Math.min(clock.getDelta(), MAX_FRAME_SECONDS);
         controller.update(delta);
         diceManagerRef.current?.update(delta);
+        avatarsRef.current?.update(delta);
         renderer.render(scene, camera);
 
         const nearest = controller.isSeated
@@ -774,12 +821,16 @@ export function RoomView({
       disposed = true;
       window.removeEventListener('resize', handleResize);
       socket.off(SocketEvent.PlayerMove, handleRemoteMove);
+      socket.off(SocketEvent.PlayerEmote, handleRemoteEmote);
       socket.off(SocketEvent.DrawingStart, handleDrawingStart);
       socket.off(SocketEvent.DrawingUpdate, handleDrawingUpdate);
       socket.off(SocketEvent.DrawingEnd, handleDrawingEnd);
       socket.off(SocketEvent.DrawingDelete, handleDrawingDelete);
       if (handleInteractKey) {
         document.removeEventListener('keydown', handleInteractKey);
+      }
+      if (handleEmoteKey) {
+        document.removeEventListener('keydown', handleEmoteKey);
       }
       cancelAnimationFrame(animationFrameId);
       controllerRef.current?.dispose();
@@ -814,7 +865,7 @@ export function RoomView({
           className="room-view-overlay"
           onClick={() => controllerRef.current?.controls.lock()}
         >
-          Click to look around (WASD to move · Esc to release)
+          Click to look around (WASD to move · Shift to run · 1–6 to emote · Esc to release)
           <br />
           or click-drag on the table to draw
         </button>
