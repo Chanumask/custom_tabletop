@@ -9,3 +9,4 @@ export * from './sound.js';
 export * from './interactables.js';
 export * from './youtube.js';
 export * from './emote.js';
+export * from './whiteboard.js';

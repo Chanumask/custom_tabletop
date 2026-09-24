@@ -416,6 +416,74 @@ body {
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
 }
 
+/* The whiteboard editor (WhiteboardEditor.tsx): a small white board of its
+ * own, one ruled row per in-world line, each in its ink color. */
+.whiteboard-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  width: min(34rem, calc(100vw - 2rem));
+  box-sizing: border-box;
+  padding: 1.1rem 1.2rem;
+  border-radius: 12px;
+  background: rgba(24, 17, 12, 0.97);
+  color: #f3e6d3;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+
+.whiteboard-lines {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0.5rem 0.8rem;
+  border: 6px solid #b9c0c6; /* the board's aluminium frame */
+  border-radius: 6px;
+  background: #f4f6f7;
+  list-style: none;
+}
+
+.whiteboard-lines li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-bottom: 2px solid rgba(80, 110, 140, 0.14);
+}
+
+.whiteboard-lines li:last-child {
+  border-bottom: none;
+}
+
+.whiteboard-lines input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.1rem;
+  border: none;
+  background: transparent;
+  color: #2b2f36;
+  font-family:
+    'Segoe Print', 'Bradley Hand', 'Chalkboard SE', 'Marker Felt', 'Comic Sans MS', cursive,
+    sans-serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.whiteboard-lines input:focus {
+  outline: none;
+  background: rgba(80, 110, 140, 0.08);
+}
+
+.whiteboard-lines input::placeholder {
+  color: rgba(43, 47, 54, 0.35);
+}
+
+.ink-dot {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 1px solid rgba(43, 47, 54, 0.25);
+  border-radius: 50%;
+}
+
 .modal-title {
   margin: 0;
   font-size: 1.05rem;

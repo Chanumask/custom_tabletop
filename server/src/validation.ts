@@ -2,7 +2,10 @@ import {
   MAX_PLAYER_NAME_LENGTH,
   MAX_SOUND_NAME_LENGTH,
   SOUNDBOARD_SLOT_COUNT,
+  WHITEBOARD_LINE_COUNT,
+  WHITEBOARD_MAX_LINE_LENGTH,
   isEmoteId,
+  type WhiteboardWriteRequest,
   isHttpUrl,
   isPlayerColorId,
   type PlayerEmoteRequest,
@@ -554,4 +557,41 @@ export function parsePlayerEmoteRequest(payload: unknown): PlayerEmoteRequest | 
   }
 
   return { sessionId: sessionId.trim(), playerId: playerId.trim(), emote };
+}
+
+// Control characters (newlines, tabs, ...) would break the board's one-line-
+// per-row layout, so they're turned into spaces rather than rejected.
+/** Replaces control characters (code points below 32, and 127) with spaces. */
+function withoutControlChars(text: string): string {
+  let result = '';
+  for (const char of text) {
+    const code = char.charCodeAt(0);
+    result += code < 32 || code === 127 ? ' ' : char;
+  }
+  return result;
+}
+
+export function parseWhiteboardWriteRequest(payload: unknown): WhiteboardWriteRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, lines } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    !Array.isArray(lines) ||
+    lines.length !== WHITEBOARD_LINE_COUNT ||
+    !lines.every((line) => line === null || typeof line === 'string')
+  ) {
+    return null;
+  }
+  const cleaned = (lines as (string | null)[]).map((line) =>
+    line === null ? null : withoutControlChars(line).trimEnd(),
+  );
+  if (cleaned.some((line) => line !== null && line.length > WHITEBOARD_MAX_LINE_LENGTH)) {
+    return null;
+  }
+
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), lines: cleaned };
 }

@@ -14,7 +14,9 @@ import {
   type Dice,
   type SoundState,
   type PlayerEmoteRequest,
+  type WhiteboardLine,
   EMOTES,
+  WHITEBOARD_LINE_COUNT,
 } from '@custom-tabletop/shared';
 import { loadRoom } from './RoomLoader.js';
 import { FirstPersonController } from './FirstPersonController.js';
@@ -27,6 +29,9 @@ import {
 import { PlayerAvatars } from './PlayerAvatars.js';
 import { CharacterLibrary } from './characters.js';
 import { isTypingTarget } from '../keyboard.js';
+import { WhiteboardCanvas } from './WhiteboardCanvas.js';
+import { WhiteboardEditor } from '../WhiteboardEditor.js';
+import { inkColorFor } from '../whiteboardInk.js';
 import { TableCanvas } from './TableCanvas.js';
 import { TableDrawing } from './TableDrawing.js';
 import { remapTableTopUV } from './tableTopUV.js';
@@ -55,6 +60,9 @@ const characterLibrary = new CharacterLibrary();
 // broadcast on every frame).
 const MOVE_SEND_INTERVAL_MS = 100;
 const MAX_FRAME_SECONDS = 0.1;
+/** How close (along the view ray) the whiteboard can be aimed at. */
+const WHITEBOARD_RANGE = 3.2;
+const SCREEN_CENTER = new THREE.Vector2(0, 0);
 const MOVE_POSITION_EPSILON = 0.01;
 const MOVE_ROTATION_EPSILON = 0.01;
 // How far past the table's own edge still counts as "approaching" it for
@@ -121,6 +129,10 @@ export interface RoomViewProps {
   onAssignSlot: (slotIndex: number, soundId: string | null) => void;
   /** Short on-screen feedback (e.g. "You wave"). */
   onNotify: (text: string) => void;
+  /** The whiteboard's lines (GameState.whiteboard). */
+  whiteboard: WhiteboardLine[];
+  /** Saves the whiteboard: the edited lines' text, `null` for the rest. */
+  onWriteWhiteboard: (lines: (string | null)[]) => void;
 }
 
 function promptFor(
@@ -128,6 +140,7 @@ function promptFor(
   seated: boolean,
   interactKey: string,
   boardTarget: { slotIndex: number; soundName: string | null } | null,
+  whiteboardTargeted: boolean,
 ): string | null {
   const keyLabel = formatKeyCode(interactKey);
   if (seated) {
@@ -137,6 +150,9 @@ function promptFor(
     return boardTarget.soundName
       ? `Press ${keyLabel} to play "${boardTarget.soundName}" · Shift+${keyLabel} to change it`
       : `Press ${keyLabel} to put a sound on this button`;
+  }
+  if (whiteboardTargeted) {
+    return `Press ${keyLabel} to write on the whiteboard`;
   }
   if (nearestId === 'light') {
     return `Press ${keyLabel} to switch the light on/off`;
@@ -189,6 +205,8 @@ export function RoomView({
   onUploadSound,
   onAssignSlot,
   onNotify,
+  whiteboard,
+  onWriteWhiteboard,
 }: RoomViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FirstPersonController | null>(null);
@@ -232,6 +250,13 @@ export function RoomView({
   // for the same reason every other per-frame-read value here is (the mount
   // effect's closures only run once and would otherwise see a stale value).
   const [assignSlotIndex, setAssignSlotIndex] = useState<number | null>(null);
+  // The whiteboard editor (change request #5) — open or not; mirrored into a
+  // ref for the once-registered key handler, like assignSlotIndex.
+  const [whiteboardOpen, setWhiteboardOpen] = useState(false);
+  const whiteboardOpenRef = useRef(false);
+  const whiteboardRef = useRef<WhiteboardLine[]>(whiteboard);
+  const whiteboardCanvasRef = useRef<WhiteboardCanvas | null>(null);
+  const whiteboardTargetedRef = useRef(false);
   const assignSlotIndexRef = useRef<number | null>(null);
   // The drawing toolbar (Milestone 8, shown only while seated) — local UI
   // preference, not shared GameState; mirrored into refs so the mount
@@ -243,6 +268,7 @@ export function RoomView({
   // Stable identity so the assign menu's Escape listener isn't re-registered
   // on every RoomView render.
   const closeAssignMenu = useCallback(() => setAssignSlotIndex(null), []);
+  const closeWhiteboard = useCallback(() => setWhiteboardOpen(false), []);
   const drawToolRef = useRef<DrawTool>(drawTool);
   const drawColorRef = useRef(drawColor);
   const drawWidthRef = useRef(drawWidth);
@@ -282,6 +308,18 @@ export function RoomView({
   useEffect(() => {
     assignSlotIndexRef.current = assignSlotIndex;
   }, [assignSlotIndex]);
+
+  useEffect(() => {
+    whiteboardOpenRef.current = whiteboardOpen;
+  }, [whiteboardOpen]);
+
+  // Re-ink when the lines change *or* when an author changes color.
+  useEffect(() => {
+    whiteboardRef.current = whiteboard;
+    whiteboardCanvasRef.current?.draw(
+      whiteboard.map((line) => ({ text: line.text, color: inkColorFor(line, players) })),
+    );
+  }, [whiteboard, players]);
 
   useEffect(() => {
     drawToolRef.current = drawTool;
@@ -494,6 +532,26 @@ export function RoomView({
       soundboardWall.sync(soundboardRef.current, soundboardSlotsRef.current);
       soundboardWallRef.current = soundboardWall;
 
+      const whiteboardSurface = room.whiteboardSurface;
+      if (whiteboardSurface) {
+        const board = new WhiteboardCanvas(WHITEBOARD_LINE_COUNT);
+        board.texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        whiteboardSurface.material = new THREE.MeshStandardMaterial({
+          map: board.texture,
+          // Matte enough that the lamp's highlight never washes out the ink.
+          roughness: 0.7,
+        });
+        board.draw(
+          whiteboardRef.current.map((line) => ({
+            text: line.text,
+            color: inkColorFor(line, playersRef.current),
+          })),
+        );
+        whiteboardCanvasRef.current = board;
+      }
+      const whiteboardRaycaster = new THREE.Raycaster();
+      whiteboardRaycaster.far = WHITEBOARD_RANGE;
+
       interactablesRef.current = [
         { id: 'light', position: LAMP_POSITION, range: LAMP_RANGE },
         {
@@ -680,7 +738,7 @@ export function RoomView({
         // The assign-sound overlay is a normal DOM form; while it's open,
         // the interact key should type into it (or do nothing) like any
         // other key, not re-trigger room interactions underneath it.
-        if (assignSlotIndexRef.current !== null) {
+        if (assignSlotIndexRef.current !== null || whiteboardOpenRef.current) {
           return;
         }
         if (controller.isSeated) {
@@ -699,6 +757,11 @@ export function RoomView({
             controller.controls.unlock();
             setAssignSlotIndex(targetedSlot);
           }
+          return;
+        }
+        if (whiteboardTargetedRef.current) {
+          controller.controls.unlock();
+          setWhiteboardOpen(true);
           return;
         }
         const nearestId = nearestInteractableIdRef.current;
@@ -767,6 +830,21 @@ export function RoomView({
             ? (soundboardWallRef.current?.raycastFromCamera(camera) ?? null)
             : null;
         boardTargetSlotRef.current = targetedSlot;
+
+        let whiteboardTargeted = false;
+        if (
+          targetedSlot === null &&
+          whiteboardSurface &&
+          !controller.isSeated &&
+          controller.controls.isLocked &&
+          assignSlotIndexRef.current === null &&
+          !whiteboardOpenRef.current
+        ) {
+          whiteboardRaycaster.setFromCamera(SCREEN_CENTER, camera);
+          whiteboardTargeted =
+            whiteboardRaycaster.intersectObject(whiteboardSurface, false).length > 0;
+        }
+        whiteboardTargetedRef.current = whiteboardTargeted;
         const boardTarget =
           targetedSlot !== null
             ? {
@@ -778,11 +856,17 @@ export function RoomView({
               }
             : null;
 
-        const promptKey = `${nearestId}|${controller.isSeated}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}`;
+        const promptKey = `${nearestId}|${controller.isSeated}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}`;
         if (promptKey !== lastPromptKeyRef.current) {
           lastPromptKeyRef.current = promptKey;
           setInteractionPrompt(
-            promptFor(nearestId, controller.isSeated, interactKeyRef.current, boardTarget),
+            promptFor(
+              nearestId,
+              controller.isSeated,
+              interactKeyRef.current,
+              boardTarget,
+              whiteboardTargeted,
+            ),
           );
         }
 
@@ -848,6 +932,8 @@ export function RoomView({
       }
       soundboardWallRef.current?.dispose();
       soundboardWallRef.current = null;
+      whiteboardCanvasRef.current?.dispose();
+      whiteboardCanvasRef.current = null;
       roomLightsRef.current = null;
       renderer.dispose();
       if (renderer.domElement.parentNode === container) {
@@ -858,8 +944,10 @@ export function RoomView({
 
   return (
     <div ref={containerRef} className="room-view">
-      {locked && !seated && assignSlotIndex === null && <div className="crosshair" />}
-      {!locked && !seated && assignSlotIndex === null && (
+      {locked && !seated && assignSlotIndex === null && !whiteboardOpen && (
+        <div className="crosshair" />
+      )}
+      {!locked && !seated && assignSlotIndex === null && !whiteboardOpen && (
         <button
           type="button"
           className="room-view-overlay"
@@ -870,8 +958,20 @@ export function RoomView({
           or click-drag on the table to draw
         </button>
       )}
-      {interactionPrompt && assignSlotIndex === null && (
+      {interactionPrompt && assignSlotIndex === null && !whiteboardOpen && (
         <div className="interaction-prompt">{interactionPrompt}</div>
+      )}
+      {whiteboardOpen && (
+        <WhiteboardEditor
+          lines={whiteboard}
+          players={players}
+          selfColor={players.find((candidate) => candidate.id === playerId)?.color ?? 'red'}
+          onSave={(lines) => {
+            onWriteWhiteboard(lines);
+            setWhiteboardOpen(false);
+          }}
+          onClose={closeWhiteboard}
+        />
       )}
       {assignSlotIndex !== null && (
         <SoundboardAssignMenu

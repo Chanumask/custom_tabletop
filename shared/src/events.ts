@@ -54,6 +54,9 @@ export const SocketEvent = {
   PlayerUnmute: 'player:unmute',
 
   ObjectInteract: 'object:interact',
+
+  /** Save the whiteboard's lines (whiteboard.ts). */
+  WhiteboardWrite: 'whiteboard:write',
 } as const;
 
 export type SocketEventName = (typeof SocketEvent)[keyof typeof SocketEvent];
