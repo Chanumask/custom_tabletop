@@ -3,7 +3,10 @@
     "blender": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["mcp-for-blender@2.0.0"]
+      "args": ["mcp-for-blender@2.0.4"],
+      "env": {
+        "DISABLE_TELEMETRY": "true"
+      }
     }
   }
 }

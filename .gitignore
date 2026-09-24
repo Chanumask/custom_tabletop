@@ -34,3 +34,9 @@ coverage/
 
 # User-uploaded files (map images, soundboard audio) — server-local, not source
 server/uploads/
+
+# Raw third-party asset packs (~500MB, re-downloadable — see
+# blender/source-assets/README.md). Only the processed outputs are tracked:
+# blender/*.blend (editable source) and client/public/models/*.glb (runtime).
+blender/source-assets/*
+!blender/source-assets/README.md
