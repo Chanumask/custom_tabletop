@@ -27,7 +27,7 @@ import {
   saveLastJoin,
   type JoinIntent,
 } from './joinMemory.js';
-import { JoinForm } from './JoinForm.js';
+import { BrandMark, JoinForm } from './JoinForm.js';
 import { SessionView } from './SessionView.js';
 import { RoomView } from './three/RoomView.js';
 import { DIE_SIZE } from './three/DiceManager.js';
@@ -399,20 +399,26 @@ export function App() {
 
   return (
     <main className="pre-join">
-      <h1>Custom Tabletop</h1>
-      <p>
-        {rejoining && lastJoinRef.current
-          ? `Rejoining session ${lastJoinRef.current.sessionId}…`
-          : connectionStatusLabel(status)}
-      </p>
-      {rejoining && (
-        <button type="button" onClick={() => forgetSession(null)}>
-          Cancel
-        </button>
-      )}
-      {!rejoining && (
+      {rejoining ? (
+        <div className="join-card rejoin-card" role="status">
+          <BrandMark />
+          <p className="rejoin-title">
+            {lastJoinRef.current ? (
+              <>
+                Rejoining session <strong>{lastJoinRef.current.sessionId}</strong>…
+              </>
+            ) : (
+              'Rejoining…'
+            )}
+          </p>
+          <p className="rejoin-detail">{connectionStatusLabel(status)}</p>
+          <button type="button" className="secondary-button" onClick={() => forgetSession(null)}>
+            Cancel
+          </button>
+        </div>
+      ) : (
         <JoinForm
-          disabled={status !== 'connected'}
+          connection={status}
           error={joinError}
           initialName={loadRememberedName(window.localStorage)}
           initialColor={loadRememberedColor(window.localStorage)}

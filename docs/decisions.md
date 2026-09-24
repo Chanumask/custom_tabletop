@@ -6,6 +6,29 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-25 — Join screen redesign: your character on a pedestal beside a branded card; invite links paste straight into the code field
+
+**Decided** (change request #6).
+
+1. **Layout: a live 3D preview of the character your color plays as, beside the form card**, over a dim, warm backdrop in the in-game panels' palette (with a faint battle-map grid). The preview idles on a small pedestal and waves when you pick a character; drag to spin it, and it turns back to a three-quarter view on release. A glow in the chosen player color sits behind it. On phones (≤ 860 px) it stacks: a shorter preview on top, the card below. The preview is the "who am I going to be?" answer the color picker alone couldn't give: six colors only mean something once you see the six characters.
+2. **No new dependencies.** The preview reuses three.js, the character GLBs and the avatars' shirt tinting, and the fonts are system stacks (a serif for the brand). Cost: +9 KB of JS. It loads each picked model once (a module-level `CharacterLibrary`) and frees its WebGL context (`forceContextLoss`) on join, before the room creates its own. It honours `prefers-reduced-motion` (no wave, no inertia, no entrance). Without WebGL it simply isn't shown; the caption still names the character.
+3. **The status logic moved into a pure `describeJoinStatus`** (unit-tested), which also returns the colors of the players already at the table. The status line shows those as dots ("●●● 3 players at the table · hosted by Alice"). In host mode, a taken code offers "Join it instead".
+4. **The code field accepts a pasted invite link** (`…?join=CODE` → `CODE`, via `normalizeSessionCodeInput`) and keeps only letters, digits and dashes. The input no longer has a `maxLength`: that would have cut a pasted URL off before the code could be extracted, so the normalizer caps the length instead.
+5. **Rejoin state gets its own card** (brand mark, "Rejoining session CODE…", Cancel) instead of a bare paragraph. The connection status is a small pill in the card footer. The app got a d20 favicon and a dark `body` background, so there's no white flash before React renders.
+
+**Verified:** `joinStatus.test.ts` (6 tests) and `sessionCode.test.ts` (+3: normalizing, invite-link extraction, length cap).
+
+Live (Chrome):
+- **Hosting:** Alice hosted TAVERN from the new screen.
+- **Joining:** a second tab joined it from the new screen. A third tab pasted `http://localhost:5173/?join=board` and got `BOARD`.
+- **Taken colors:** on TAVERN, a third tab saw "2 players at the table · hosted by Alice" with red and blue dots. Red and blue were disabled and the picker moved to green, the Ranger.
+- **Preview:** drag-spin worked. After joining, one canvas remained (the preview's context was freed) and there were no console errors.
+- **Phone (375 px):** after a fix, 16 px gutters and no overflow. The card had been 377 px in a 343 px column because it used content-box sizing with `width: 100%`; `.pre-join`'s `overflow: hidden` had hidden that as clipped edges.
+
+408 tests; lint, format and build clean.
+
+---
+
 ## 2026-09-25 — Whiteboard: six synced text lines, each in its writer's color, edits sent per line so concurrent writers never collide
 
 **Decided** (change request #5).
@@ -329,7 +352,7 @@ Live (Chrome, 3 tabs plus a 4th socket-client player):
 
 ## Table of Contents
 
-**2026-09-25** — Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
+**2026-09-25** — Join screen redesign: character preview on a pedestal, pure join-status logic, invite links paste into the code field, rejoin card, no new deps; Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
 
 **2026-09-24** — Player characters: six Quaternius models built by a glTF-Transform script, interpolation, chair sitting, emotes, name tags, Blender MCP read_homefile crash gotcha, frame-delta cap; map crop/preview dialog, uploads named by validated type; room rework: square table, furnished Blender room, geometry read from the model, true-color table surface; soundboard links validated, YouTube as a visible clip, board management; player colors, pre-join peek, live profile edits, invite links, toasts; identity binding, reconnect grace period, host handover, resume-only rejoin; wall soundboard rework (4x4 aim-and-E grid, `sound:play` opened to everyone); session menu rework (tabs, client-only settings, rebindable interact key, no YouTube downloader); Milestone 9: host authority hardening, an audit pass (not a new feature), the roadmap's stale "host-gated" list corrected, two real socket-level coverage gaps closed (scene:create, scene:change), player:unmute given its first test coverage, cross-browser pass logged as unverified (Chrome-only tooling); Milestone 8: room interactables, one generic object:interact event, proximity+E over raycast/click, table sit-down mode as a pure camera takeover, seated status visible via avatar squash, a soundboard console reusing sound:play, a real prompt-text bug caught live, a square full-screen seated table view, a seated drawing toolbar (per-stroke color/width, an eraser reusing drawing:delete), a latent drawing:delete remote-redraw bug caught and fixed, a React-controlled-input automation-testing gotcha, a real user-reported eraser bug (local drawing state never updated in real time) caught and fixed; File uploads (M5/M7 extension): REST upload + socket-register two-step, soundboard becomes real shared state, cover-fit stopgap for map images, three related asks captured as roadmap entries instead of implemented; Milestone 7: soundboard & mute, synthesized tones, self-mute plus host moderation, sender included in the sound broadcast; Milestone 6: dice, server-authoritative roll result, motion decoupled from result label, `Dice.sceneId` dropped, client-picked spawn position; Milestone 5: tabletop map & drawing, draw-on-the-table interaction, runtime UV remap, single-scene scope cut, `Point2D` spec deviation
 

@@ -1,18 +1,20 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import {
   MAX_PLAYER_NAME_LENGTH,
-  MAX_PLAYERS_PER_SESSION,
   PLAYER_COLORS,
+  playerColorHex,
   type PlayerColorId,
   type SessionPeekResponse,
 } from '@custom-tabletop/shared';
-import { generateSessionCode } from './sessionCode.js';
+import { generateSessionCode, normalizeSessionCodeInput } from './sessionCode.js';
 import { ColorPicker } from './ColorPicker.js';
-
-type Mode = 'host' | 'join';
+import { describeJoinStatus, type JoinMode } from './joinStatus.js';
+import { connectionStatusLabel, type ConnectionStatus } from './connectionStatus.js';
+import { CHARACTER_TITLES } from './three/characters.js';
+import { CharacterPreview } from './three/CharacterPreview.js';
 
 export interface JoinFormProps {
-  disabled: boolean;
+  connection: ConnectionStatus;
   error: string | null;
   /** Pre-filled so a returning player doesn't retype their name. */
   initialName: string;
@@ -25,19 +27,16 @@ export interface JoinFormProps {
 
 const PEEK_DEBOUNCE_MS = 250;
 
-function normalizeCode(raw: string): string {
-  return raw.toUpperCase().replace(/\s+/g, '');
-}
-
 /**
- * The join screen's form: two deliberate flows — host a new session (with
- * a generated, editable code) or join an existing one by code — plus name
- * and color. The code is "peeked" live (`session:peek`) so the player sees
- * who's in a session and which colors are taken *before* joining, and the
- * primary action explains exactly what will happen.
+ * The join screen (change request #6): your character on the left, the form
+ * on the right. Two deliberate flows — host a new table (with a generated,
+ * editable code) or join one by code / pasted invite link — plus name and
+ * color. The code is "peeked" live (`session:peek`), so the player sees
+ * who's at a table and which colors are taken *before* joining, and the
+ * primary action says exactly what will happen.
  */
 export function JoinForm({
-  disabled,
+  connection,
   error,
   initialName,
   initialColor,
@@ -45,7 +44,7 @@ export function JoinForm({
   onPeek,
   onJoin,
 }: JoinFormProps) {
-  const [mode, setMode] = useState<Mode>(inviteCode ? 'join' : 'host');
+  const [mode, setMode] = useState<JoinMode>(inviteCode ? 'join' : 'host');
   const [name, setName] = useState(initialName);
   const [color, setColor] = useState<PlayerColorId>(initialColor);
   const [hostCode, setHostCode] = useState(generateSessionCode);
@@ -53,9 +52,10 @@ export function JoinForm({
   const [peek, setPeek] = useState<{ code: string; result: SessionPeekResponse } | null>(null);
 
   const code = mode === 'host' ? hostCode : joinCode;
+  const offline = connection !== 'connected';
 
   useEffect(() => {
-    if (!code || disabled) {
+    if (!code || offline) {
       return;
     }
     let cancelled = false;
@@ -70,16 +70,17 @@ export function JoinForm({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [code, disabled, onPeek]);
+  }, [code, offline, onPeek]);
 
   // Only trust a peek for the code currently on screen.
   const current = peek && peek.code === code ? peek.result : null;
+  const status = describeJoinStatus(mode, code, current);
   const taken = useMemo(
     () => new Set<PlayerColorId>(mode === 'join' && current ? current.takenColors : []),
     [mode, current],
   );
 
-  // If the chosen color turns out to be taken in the session being joined,
+  // If the chosen color turns out to be taken at the table being joined,
   // move to the first free one rather than letting the server surprise them.
   useEffect(() => {
     if (taken.has(color)) {
@@ -90,32 +91,8 @@ export function JoinForm({
     }
   }, [taken, color]);
 
-  let status: string | null = null;
-  let blocked = false;
-  if (mode === 'join') {
-    if (!joinCode) {
-      status = 'Enter the code your host shared with you.';
-      blocked = true;
-    } else if (!current) {
-      status = 'Looking up session…';
-      blocked = true;
-    } else if (!current.exists) {
-      status = 'No session with that code — check it, or host a new one.';
-      blocked = true;
-    } else if (current.playerCount >= MAX_PLAYERS_PER_SESSION) {
-      status = `That session is full (${MAX_PLAYERS_PER_SESSION} players).`;
-      blocked = true;
-    } else {
-      const players = `${current.playerCount} player${current.playerCount === 1 ? '' : 's'}`;
-      status = current.hostName ? `${players} · hosted by ${current.hostName}` : players;
-    }
-  } else if (current?.exists) {
-    status = 'That code is already in use — pick another.';
-    blocked = true;
-  }
-
   const trimmedName = name.trim();
-  const canSubmit = !disabled && !blocked && trimmedName.length > 0 && code.length > 0;
+  const canSubmit = !offline && !status.blocked && trimmedName.length > 0 && code.length > 0;
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -124,94 +101,169 @@ export function JoinForm({
     }
   }
 
+  function joinExisting() {
+    setJoinCode(hostCode);
+    setMode('join');
+  }
+
+  const accent = { '--accent': playerColorHex(color) } as CSSProperties;
+
   return (
-    <form className="join-form" onSubmit={handleSubmit}>
-      <div className="join-mode-switch" role="tablist" aria-label="Host or join">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'host'}
-          className={mode === 'host' ? 'active' : ''}
-          onClick={() => setMode('host')}
-        >
-          Host a session
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'join'}
-          className={mode === 'join' ? 'active' : ''}
-          onClick={() => setMode('join')}
-        >
-          Join with a code
-        </button>
-      </div>
+    <div className="join-layout" style={accent}>
+      <section className="join-hero">
+        <CharacterPreview color={color} />
+        <p className="character-caption">
+          <span className="character-name">{trimmedName || 'You'}</span>
+          <span className="character-title">{CHARACTER_TITLES[color]}</span>
+        </p>
+        <p className="character-hint" aria-hidden="true">
+          Drag to spin
+        </p>
+      </section>
 
-      <label className="join-field">
-        <span>Your name</span>
-        <input
-          value={name}
-          maxLength={MAX_PLAYER_NAME_LENGTH}
-          autoComplete="nickname"
-          placeholder="What should the table call you?"
-          onChange={(event) => setName(event.target.value)}
-          required
-        />
-      </label>
+      <form className="join-card" onSubmit={handleSubmit}>
+        <header className="join-brand">
+          <BrandMark />
+          <div>
+            <h1>Custom Tabletop</h1>
+            <p>Pull up a chair — your table is one code away.</p>
+          </div>
+        </header>
 
-      <div className="join-field">
-        <span>Your color</span>
-        <ColorPicker value={color} taken={taken} onChange={setColor} label="Your color" />
-      </div>
+        <div className="join-mode-switch" role="tablist" aria-label="Host or join" data-mode={mode}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'host'}
+            className={mode === 'host' ? 'active' : ''}
+            onClick={() => setMode('host')}
+          >
+            Host a session
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'join'}
+            className={mode === 'join' ? 'active' : ''}
+            onClick={() => setMode('join')}
+          >
+            Join with a code
+          </button>
+        </div>
 
-      {mode === 'host' ? (
         <label className="join-field">
-          <span>Session code</span>
-          <span className="code-row">
-            <input
-              className="code-input"
-              value={hostCode}
-              maxLength={12}
-              onChange={(event) => setHostCode(normalizeCode(event.target.value))}
-            />
-            <button
-              type="button"
-              className="code-reroll"
-              title="Generate a new code"
-              onClick={() => setHostCode(generateSessionCode())}
-            >
-              ↻
-            </button>
-          </span>
-        </label>
-      ) : (
-        <label className="join-field">
-          <span>Session code</span>
+          <span className="join-label">Your name</span>
           <input
-            className="code-input"
-            value={joinCode}
-            maxLength={12}
-            placeholder="ABCDE"
-            autoFocus={!inviteCode}
-            onChange={(event) => setJoinCode(normalizeCode(event.target.value))}
+            value={name}
+            maxLength={MAX_PLAYER_NAME_LENGTH}
+            autoComplete="nickname"
+            placeholder="What should the table call you?"
+            autoFocus={!initialName && !inviteCode}
+            onChange={(event) => setName(event.target.value)}
+            required
           />
         </label>
-      )}
 
-      {status && (
-        <p className={`join-status${blocked && mode === 'join' && joinCode ? ' warn' : ''}`}>
-          {status}
-        </p>
-      )}
-      {error && (
-        <p className="join-error" role="alert">
-          {error}
-        </p>
-      )}
+        <div className="join-field">
+          <span className="join-label">Your character</span>
+          <ColorPicker value={color} taken={taken} onChange={setColor} label="Your color" />
+        </div>
 
-      <button type="submit" className="join-submit" disabled={!canSubmit}>
-        {mode === 'host' ? 'Create session' : 'Join session'}
-      </button>
-    </form>
+        <div className="join-field">
+          <label className="join-label" htmlFor="session-code">
+            {mode === 'host' ? 'Your session code' : 'Session code or invite link'}
+          </label>
+          <span className="code-row">
+            {mode === 'host' ? (
+              <>
+                <input
+                  id="session-code"
+                  className="code-input"
+                  value={hostCode}
+                  spellCheck={false}
+                  autoComplete="off"
+                  onChange={(event) => setHostCode(normalizeSessionCodeInput(event.target.value))}
+                />
+                <button
+                  type="button"
+                  className="code-reroll"
+                  title="Generate a new code"
+                  aria-label="Generate a new code"
+                  onClick={() => setHostCode(generateSessionCode())}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              <input
+                id="session-code"
+                className="code-input"
+                value={joinCode}
+                placeholder="ABCDE"
+                spellCheck={false}
+                autoComplete="off"
+                autoFocus={!!initialName && !inviteCode}
+                onChange={(event) => setJoinCode(normalizeSessionCodeInput(event.target.value))}
+              />
+            )}
+          </span>
+        </div>
+
+        {status.message && (
+          <p className={`join-status ${status.tone}`} role="status">
+            {status.present.length > 0 && (
+              <span className="join-present" aria-hidden="true">
+                {status.present.map((id) => (
+                  <span key={id} style={{ background: playerColorHex(id) }} />
+                ))}
+              </span>
+            )}
+            <span>{status.message}</span>
+            {mode === 'host' && current?.exists && (
+              <button type="button" className="link-button" onClick={joinExisting}>
+                Join it instead
+              </button>
+            )}
+          </p>
+        )}
+        {error && (
+          <p className="join-error" role="alert">
+            {error}
+          </p>
+        )}
+
+        <button type="submit" className="join-submit" disabled={!canSubmit}>
+          {mode === 'host' ? 'Create session' : 'Join session'}
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        </button>
+
+        <footer className="join-footer">
+          <span className={`connection-pill ${connection}`} role="status">
+            <span className="connection-dot" aria-hidden="true" />
+            {connectionStatusLabel(connection)}
+          </span>
+        </footer>
+      </form>
+    </div>
+  );
+}
+
+/** A d20 — the app's mark (also its favicon, see index.html). */
+export function BrandMark() {
+  return (
+    <svg className="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+      <path className="brand-mark-body" d="M32 3 57 17.5v29L32 61 7 46.5v-29Z" />
+      <path
+        className="brand-mark-edges"
+        d="M32 16 15 43h34ZM32 3v13M7 17.5 32 16l25 1.5M7 17.5 15 43l-8 3.5M15 43l17 18 17-18 8 3.5M57 17.5 49 43"
+      />
+      <text x="32" y="38" textAnchor="middle">
+        20
+      </text>
+    </svg>
   );
 }
