@@ -10,6 +10,7 @@ import {
   type SessionLeaveResponse,
   type SessionPeekResponse,
   type SoundPlayRequest,
+  type DieKind,
 } from '@custom-tabletop/shared';
 import { Toasts } from './Toasts.js';
 import { YouTubeClip, type ActiveClip } from './YouTubeClip.js';
@@ -30,7 +31,6 @@ import {
 import { BrandMark, JoinForm } from './JoinForm.js';
 import { SessionView } from './SessionView.js';
 import { RoomView } from './three/RoomView.js';
-import { DIE_SIZE } from './three/DiceManager.js';
 import { PLACEHOLDER_ROOM_LAYOUT } from './three/RoomLayout.js';
 import { randomDiceSpawnPosition } from './diceSpawn.js';
 import { playSound, setMasterVolume } from './sounds.js';
@@ -282,18 +282,22 @@ export function App() {
       'Failed to update the map',
     );
 
-  const handleSpawnDie = () =>
+  const handleSpawnDie = (kind: DieKind) =>
     sendAction(
       SocketEvent.DiceSpawn,
       {
         diceId: crypto.randomUUID(),
-        position: randomDiceSpawnPosition(PLACEHOLDER_ROOM_LAYOUT.table, DIE_SIZE),
+        kind,
+        position: randomDiceSpawnPosition(
+          PLACEHOLDER_ROOM_LAYOUT.table,
+          gameState?.dice.map((die) => die.position),
+        ),
       },
-      'Failed to spawn a die',
+      'Failed to add a die',
     );
 
-  const handleRollDie = (diceId: string) =>
-    sendAction(SocketEvent.DiceRoll, { diceId }, 'Failed to roll the die');
+  const handleRollDice = (diceIds: string[]) =>
+    sendAction(SocketEvent.DiceRoll, { diceIds }, 'Failed to roll');
 
   const handleRemoveDie = (diceId: string) =>
     sendAction(SocketEvent.DiceRemove, { diceId }, 'Failed to remove the die');
@@ -360,6 +364,7 @@ export function App() {
           onNotify={toast}
           whiteboard={gameState.whiteboard}
           onWriteWhiteboard={handleWriteWhiteboard}
+          onRollDice={handleRollDice}
         />
         <SessionView
           state={gameState}
@@ -367,7 +372,7 @@ export function App() {
           onLeave={handleLeave}
           onSetMapBackground={handleSetMapBackground}
           onSpawnDie={handleSpawnDie}
-          onRollDie={handleRollDie}
+          onRollDice={handleRollDice}
           onRemoveDie={handleRemoveDie}
           onPlaySound={handlePlaySound}
           onUploadSound={handleUploadSound}

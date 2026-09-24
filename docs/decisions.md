@@ -6,6 +6,39 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-25 — Real RPG dice: d4–d20 with numbered faces that land on the server's result; a roll nonce; pool rolls
+
+**Decided** (the handover's "re-roll to the same number doesn't animate" bug, plus the "real dice" idea).
+
+1. **`Dice` gained `kind` (d4/d6/d8/d10/d12/d20), `rollCount` and `rolledBy`.** Clients detect a roll by `rollCount` going up, not by the result changing. That fixes the bug: a re-roll that lands on the same number is a new roll and animates. The result stays server-decided (`Math.random` on the server), now over `DIE_FACES[kind]`.
+2. **`dice:roll` takes `diceIds: string[]` (1–20), all or nothing.** "Roll my dice" is one simultaneous roll with one broadcast, not N racing requests. That's the unit a roll log can record as a single "rolled 3d6: 4 + 2 + 6 = 12" line. A table holds at most 40 dice (`MAX_DICE_PER_SESSION`), so a spawn loop can't flood a session.
+3. **Real polyhedra with printed numbers, landing with the result actually on top**, rather than keeping the cube with a floating label:
+   - Geometry comes from three's Platonic solids, plus a hand-built pentagonal trapezohedron for the d10. For the d10's kites to be planar, the apex height is z·(1+cos 36°)/(1−cos 36°).
+   - Triangles are grouped into faces by normal. Opposite faces are numbered to sum to n+1, like real dice.
+   - The d4 is numbered at its vertices and read at the top one.
+   - Each face maps into its own cell of a canvas atlas, painted in the owner's player color.
+   - A roll tumbles (spin about an axis that unwinds to zero, slerping into the target pose, with two shrinking hops) and ends in `restingQuaternion(result)`.
+   - The tumble is seeded by die id and roll count, so every client ends in the same pose, and a later joiner or a reload shows it identically without animating.
+   - The result badge stays hidden until the die lands, then pops in: gold for a natural 20 on a d20, red for a natural 1. Seated (looking straight down), badges sit beside the die rather than on top of its face.
+   - Everyone hears a synthesized clatter timed to the tumble; there's no audio asset.
+4. **Rolling is in-world too:** aim at a die and press E ("Press E to roll the d8"), or click one at the table (`TableDrawing.claimClick` lets a die take the click before a stroke starts). The Dice tab has a d4–d20 picker, "Roll my dice (n)" with the total, "Clear mine", and a list with owner, result and roll count.
+5. **`Dice.position` is now the point on the table under the die.** Each shape lifts itself by its own resting height (the face's plane distance), so it isn't one cube's half-height for every kind. New dice take the freest of 12 random spots.
+6. **Material calibrated for the table, not in general.** Dice only ever lie under the chandelier (55 cd, ~1.5 m up), which ACES-tonemapped every player color to a pale pastel. The albedo is scaled to 0.3. `specularIntensity` is 0.12, because the seated camera sits right beside that light and any gloss mirrored it as a white top face.
+
+**Verified:**
+- `diceShapes.test.ts` (25 tests): per kind, the face count; numbering 1..n; opposite faces summing to n+1; d4 corner numbering; every result resting flat on a face with that number (vertex on a d4) straight up; deterministic seeds; each face in its own atlas cell.
+- `diceSync.test.ts` (7, including a same-number re-roll) and `diceSpawn.test.ts` (4, including keeping clear of other dice).
+- Server tests: every face reachable per kind, same-number re-roll counted, pool rolls all-or-nothing, the dice cap, and parser cases.
+
+Live (Chrome, two tabs):
+- Bob added one of each kind in blue and rolled all six: 3 + 2 + 5 + 1 + 11 + 6 = 28. A close-up of each die showed exactly that number on top, with the d4's three 3s around its apex.
+- A seated click on the d20 rolled a natural 20 (gold badge). Alice's tab showed the same results and roll counts.
+- Standing, the aim prompt read "Press E to roll the d8", and E rolled it.
+
+414 tests; lint, format and build clean.
+
+---
+
 ## 2026-09-25 — Join screen redesign: your character on a pedestal beside a branded card; invite links paste straight into the code field
 
 **Decided** (change request #6).
@@ -352,7 +385,7 @@ Live (Chrome, 3 tabs plus a 4th socket-client player):
 
 ## Table of Contents
 
-**2026-09-25** — Join screen redesign: character preview on a pedestal, pure join-status logic, invite links paste into the code field, rejoin card, no new deps; Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
+**2026-09-25** — Real RPG dice: d4–d20 polyhedra landing on the server result, `rollCount` nonce fixes same-number re-rolls, pool rolls, in-world rolling, table-calibrated material; Join screen redesign: character preview on a pedestal, pure join-status logic, invite links paste into the code field, rejoin card, no new deps; Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
 
 **2026-09-24** — Player characters: six Quaternius models built by a glTF-Transform script, interpolation, chair sitting, emotes, name tags, Blender MCP read_homefile crash gotcha, frame-delta cap; map crop/preview dialog, uploads named by validated type; room rework: square table, furnished Blender room, geometry read from the model, true-color table surface; soundboard links validated, YouTube as a visible clip, board management; player colors, pre-join peek, live profile edits, invite links, toasts; identity binding, reconnect grace period, host handover, resume-only rejoin; wall soundboard rework (4x4 aim-and-E grid, `sound:play` opened to everyone); session menu rework (tabs, client-only settings, rebindable interact key, no YouTube downloader); Milestone 9: host authority hardening, an audit pass (not a new feature), the roadmap's stale "host-gated" list corrected, two real socket-level coverage gaps closed (scene:create, scene:change), player:unmute given its first test coverage, cross-browser pass logged as unverified (Chrome-only tooling); Milestone 8: room interactables, one generic object:interact event, proximity+E over raycast/click, table sit-down mode as a pure camera takeover, seated status visible via avatar squash, a soundboard console reusing sound:play, a real prompt-text bug caught live, a square full-screen seated table view, a seated drawing toolbar (per-stroke color/width, an eraser reusing drawing:delete), a latent drawing:delete remote-redraw bug caught and fixed, a React-controlled-input automation-testing gotcha, a real user-reported eraser bug (local drawing state never updated in real time) caught and fixed; File uploads (M5/M7 extension): REST upload + socket-register two-step, soundboard becomes real shared state, cover-fit stopgap for map images, three related asks captured as roadmap entries instead of implemented; Milestone 7: soundboard & mute, synthesized tones, self-mute plus host moderation, sender included in the sound broadcast; Milestone 6: dice, server-authoritative roll result, motion decoupled from result label, `Dice.sceneId` dropped, client-picked spawn position; Milestone 5: tabletop map & drawing, draw-on-the-table interaction, runtime UV remap, single-scene scope cut, `Point2D` spec deviation
 

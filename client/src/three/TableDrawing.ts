@@ -24,6 +24,9 @@ export interface TableDrawingOptions {
    * cursor while erasing, including while dragging — the caller hit-tests
    * which stroke (if any) that point is near. */
   onErase: (point: Point2D) => void;
+  /** Gets first say on a click (seated): e.g. clicking a die rolls it
+   * instead of starting a stroke under it. Returns true if it used the click. */
+  claimClick?: (raycaster: THREE.Raycaster) => boolean;
 }
 
 /**
@@ -42,6 +45,10 @@ export class TableDrawing {
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
     if (!this.options.isDrawingAllowed()) {
+      return;
+    }
+    this.aim(event);
+    if (this.options.claimClick?.(this.raycaster)) {
       return;
     }
     const point = this.raycastToCanvasPoint(event);
@@ -102,12 +109,15 @@ export class TableDrawing {
     this.eraseActive = false;
   }
 
-  private raycastToCanvasPoint(event: PointerEvent): Point2D | null {
+  private aim(event: PointerEvent): void {
     const rect = this.options.domElement.getBoundingClientRect();
     this.pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
     this.raycaster.setFromCamera(this.pointerNdc, this.options.camera);
+  }
+
+  private raycastToCanvasPoint(event: PointerEvent): Point2D | null {
+    this.aim(event);
     const [hit] = this.raycaster.intersectObject(this.options.tableTopMesh, false);
     if (!hit) {
       return null;

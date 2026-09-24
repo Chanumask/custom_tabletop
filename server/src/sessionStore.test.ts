@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SessionStore } from './sessionStore.js';
+import { DIE_FACES, DIE_KINDS, MAX_DICE_PER_SESSION } from '@custom-tabletop/shared';
 
 describe('SessionStore', () => {
   it('creates a session on first join and makes that player the host', () => {
@@ -381,7 +382,15 @@ describe('SessionStore', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.state.dice).toEqual([
-      { id: 'd1', ownerId: 'p1', position: { x: 0.2, y: 0.8, z: -0.1 }, result: null },
+      {
+        id: 'd1',
+        ownerId: 'p1',
+        kind: 'd6',
+        position: { x: 0.2, y: 0.8, z: -0.1 },
+        result: null,
+        rollCount: 0,
+        rolledBy: null,
+      },
     ]);
   });
 
@@ -407,7 +416,7 @@ describe('SessionStore', () => {
     store.join('abc', 'p1', 'Alice');
     store.spawnDice('abc', 'p1', 'd1', { x: 0, y: 0, z: 0 });
 
-    const result = store.rollDice('abc', 'd1');
+    const result = store.rollDice('abc', ['d1']);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -420,7 +429,63 @@ describe('SessionStore', () => {
   it('rollDice for an unknown die returns an error', () => {
     const store = new SessionStore();
     store.join('abc', 'p1', 'Alice');
-    expect(store.rollDice('abc', 'nope')).toEqual({ ok: false, error: 'Die not found.' });
+    expect(store.rollDice('abc', ['nope'])).toEqual({ ok: false, error: 'Die not found.' });
+  });
+
+  it('rollDice covers every face of each kind, and only those', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    for (const kind of DIE_KINDS) {
+      store.spawnDice('abc', 'p1', kind, { x: 0, y: 0, z: 0 }, kind);
+      const faces = DIE_FACES[kind];
+      const seen = new Set<number>();
+      // Walk the random source across [0, 1) so every face must come up.
+      for (let i = 0; i < faces; i++) {
+        const result = store.rollDice('abc', [kind], 'p1', () => (i + 0.5) / faces);
+        if (!result.ok) throw new Error(result.error);
+        seen.add(result.state.dice.find((die) => die.id === kind)!.result!);
+      }
+      expect([...seen].sort((a, b) => a - b)).toEqual(
+        Array.from({ length: faces }, (_, index) => index + 1),
+      );
+    }
+  });
+
+  it('a re-roll to the same number still counts as a new roll', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+    store.spawnDice('abc', 'p1', 'd1', { x: 0, y: 0, z: 0 }, 'd20');
+
+    store.rollDice('abc', ['d1'], 'p1', () => 0.5);
+    const again = store.rollDice('abc', ['d1'], 'p2', () => 0.5);
+    if (!again.ok) throw new Error(again.error);
+    expect(again.state.dice[0]).toMatchObject({ result: 11, rollCount: 2, rolledBy: 'p2' });
+  });
+
+  it('rolls a pool together, or nothing if any die is missing', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.spawnDice('abc', 'p1', 'a', { x: 0, y: 0, z: 0 });
+    store.spawnDice('abc', 'p1', 'b', { x: 0, y: 0, z: 0 }, 'd8');
+
+    expect(store.rollDice('abc', ['a', 'missing']).ok).toBe(false);
+    const state = store.join('abc', 'p1', 'Alice');
+    expect(state.dice.every((die) => die.rollCount === 0)).toBe(true);
+
+    const pool = store.rollDice('abc', ['a', 'b', 'a'], 'p1');
+    if (!pool.ok) throw new Error(pool.error);
+    // A duplicated id rolls that die once.
+    expect(pool.state.dice.map((die) => die.rollCount)).toEqual([1, 1]);
+  });
+
+  it('caps the number of dice on the table', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    for (let i = 0; i < MAX_DICE_PER_SESSION; i++) {
+      expect(store.spawnDice('abc', 'p1', `d${i}`, { x: 0, y: 0, z: 0 }).ok).toBe(true);
+    }
+    expect(store.spawnDice('abc', 'p1', 'one-too-many', { x: 0, y: 0, z: 0 }).ok).toBe(false);
   });
 
   it('removeDice removes just that die', () => {

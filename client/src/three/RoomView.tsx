@@ -12,6 +12,7 @@ import {
   type DrawingEndRequest,
   type DrawingDeleteRequest,
   type Dice,
+  type DieKind,
   type SoundState,
   type PlayerEmoteRequest,
   type WhiteboardLine,
@@ -35,7 +36,8 @@ import { inkColorFor } from '../whiteboardInk.js';
 import { TableCanvas } from './TableCanvas.js';
 import { TableDrawing } from './TableDrawing.js';
 import { remapTableTopUV } from './tableTopUV.js';
-import { DiceManager } from './DiceManager.js';
+import { DiceManager, TUMBLE_SECONDS } from './DiceManager.js';
+import { playDiceClatter } from '../sounds.js';
 import {
   createLamp,
   setLampOn,
@@ -63,6 +65,8 @@ const MAX_FRAME_SECONDS = 0.1;
 /** How close (along the view ray) the whiteboard can be aimed at. */
 const WHITEBOARD_RANGE = 3.2;
 const SCREEN_CENTER = new THREE.Vector2(0, 0);
+/** How far away a die on the table can be aimed at to roll it. */
+const DIE_REACH = 2.6;
 const MOVE_POSITION_EPSILON = 0.01;
 const MOVE_ROTATION_EPSILON = 0.01;
 // How far past the table's own edge still counts as "approaching" it for
@@ -133,6 +137,8 @@ export interface RoomViewProps {
   whiteboard: WhiteboardLine[];
   /** Saves the whiteboard: the edited lines' text, `null` for the rest. */
   onWriteWhiteboard: (lines: (string | null)[]) => void;
+  /** Rolls dice on the table (aim + interact, or a click while seated). */
+  onRollDice: (diceIds: string[]) => void;
 }
 
 function promptFor(
@@ -141,6 +147,7 @@ function promptFor(
   interactKey: string,
   boardTarget: { slotIndex: number; soundName: string | null } | null,
   whiteboardTargeted: boolean,
+  targetedDie: DieKind | null = null,
 ): string | null {
   const keyLabel = formatKeyCode(interactKey);
   if (seated) {
@@ -150,6 +157,9 @@ function promptFor(
     return boardTarget.soundName
       ? `Press ${keyLabel} to play "${boardTarget.soundName}" · Shift+${keyLabel} to change it`
       : `Press ${keyLabel} to put a sound on this button`;
+  }
+  if (targetedDie) {
+    return `Press ${keyLabel} to roll the ${targetedDie}`;
   }
   if (whiteboardTargeted) {
     return `Press ${keyLabel} to write on the whiteboard`;
@@ -207,6 +217,7 @@ export function RoomView({
   onNotify,
   whiteboard,
   onWriteWhiteboard,
+  onRollDice,
 }: RoomViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FirstPersonController | null>(null);
@@ -238,6 +249,8 @@ export function RoomView({
   // doesn't change, only `seated` does.
   const lastPromptKeyRef = useRef<string>('');
   const onPlaySoundRef = useRef(onPlaySound);
+  const onRollDiceRef = useRef(onRollDice);
+  const targetedDieRef = useRef<string | null>(null);
   const onObjectInteractRef = useRef(onObjectInteract);
   const onUploadSoundRef = useRef(onUploadSound);
   const onNotifyRef = useRef(onNotify);
@@ -288,6 +301,10 @@ export function RoomView({
   useEffect(() => {
     onPlaySoundRef.current = onPlaySound;
   }, [onPlaySound]);
+
+  useEffect(() => {
+    onRollDiceRef.current = onRollDice;
+  }, [onRollDice]);
 
   useEffect(() => {
     onObjectInteractRef.current = onObjectInteract;
@@ -353,10 +370,11 @@ export function RoomView({
   // Dice (Milestone 6): spawn/roll/remove all arrive via the same
   // GameState.dice snapshot (no separate delta channel like player:move),
   // so a single sync per change covers membership and live roll results.
+  // Players too: a die is drawn in its owner's color.
   useEffect(() => {
     diceRef.current = dice;
-    diceManagerRef.current?.sync(dice);
-  }, [dice]);
+    diceManagerRef.current?.sync(dice, players);
+  }, [dice, players]);
 
   // The room light (Milestone 8) is a session-wide flag, applied to both
   // the ambient/point lights (RoomLighting.ts) and the lamp prop's own
@@ -510,6 +528,7 @@ export function RoomView({
         chandelier.visible = !seatedNow;
       }
       setSeated(seatedNow);
+      diceManagerRef.current?.setSeated(seatedNow);
     };
     let handleInteractKey: ((event: KeyboardEvent) => void) | null = null;
     let handleEmoteKey: ((event: KeyboardEvent) => void) | null = null;
@@ -567,8 +586,10 @@ export function RoomView({
       avatars.sync(playersRef.current, playerId);
       avatarsRef.current = avatars;
 
-      const diceManager = new DiceManager(scene);
-      diceManager.sync(diceRef.current);
+      const diceManager = new DiceManager(scene, (count) => playDiceClatter(count, TUMBLE_SECONDS));
+      diceManager.sync(diceRef.current, playersRef.current);
+      const diceRaycaster = new THREE.Raycaster();
+      diceRaycaster.far = DIE_REACH;
       diceManagerRef.current = diceManager;
 
       const controller = new FirstPersonController({
@@ -635,6 +656,14 @@ export function RoomView({
           tableTopMesh,
           table: room.layout.table,
           isDrawingAllowed: () => !controller.controls.isLocked,
+          claimClick: (raycaster) => {
+            const dieId = diceManagerRef.current?.pick(raycaster);
+            if (dieId) {
+              onRollDiceRef.current([dieId]);
+              return true;
+            }
+            return false;
+          },
           getTool: () => drawToolRef.current,
           onStrokeStart: (point) => {
             currentDrawingId = crypto.randomUUID();
@@ -759,6 +788,10 @@ export function RoomView({
           }
           return;
         }
+        if (targetedDieRef.current) {
+          onRollDiceRef.current([targetedDieRef.current]);
+          return;
+        }
         if (whiteboardTargetedRef.current) {
           controller.controls.unlock();
           setWhiteboardOpen(true);
@@ -806,7 +839,7 @@ export function RoomView({
         // furniture (collision checks where a step ends, not the path).
         const delta = Math.min(clock.getDelta(), MAX_FRAME_SECONDS);
         controller.update(delta);
-        diceManagerRef.current?.update(delta);
+        diceManagerRef.current?.update(delta, camera);
         avatarsRef.current?.update(delta);
         renderer.render(scene, camera);
 
@@ -831,9 +864,25 @@ export function RoomView({
             : null;
         boardTargetSlotRef.current = targetedSlot;
 
+        let targetedDie: string | null = null;
+        if (
+          targetedSlot === null &&
+          !controller.isSeated &&
+          controller.controls.isLocked &&
+          assignSlotIndexRef.current === null &&
+          !whiteboardOpenRef.current
+        ) {
+          diceRaycaster.setFromCamera(SCREEN_CENTER, camera);
+          targetedDie = diceManager.pick(diceRaycaster);
+        }
+        targetedDieRef.current = targetedDie;
+        const targetedDieKind =
+          diceRef.current.find((candidate) => candidate.id === targetedDie)?.kind ?? null;
+
         let whiteboardTargeted = false;
         if (
           targetedSlot === null &&
+          targetedDie === null &&
           whiteboardSurface &&
           !controller.isSeated &&
           controller.controls.isLocked &&
@@ -856,7 +905,7 @@ export function RoomView({
               }
             : null;
 
-        const promptKey = `${nearestId}|${controller.isSeated}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}`;
+        const promptKey = `${nearestId}|${controller.isSeated}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}|${targetedDie}`;
         if (promptKey !== lastPromptKeyRef.current) {
           lastPromptKeyRef.current = promptKey;
           setInteractionPrompt(
@@ -866,6 +915,7 @@ export function RoomView({
               interactKeyRef.current,
               boardTarget,
               whiteboardTargeted,
+              targetedDieKind,
             ),
           );
         }
@@ -955,7 +1005,7 @@ export function RoomView({
         >
           Click to look around (WASD to move · Shift to run · 1–6 to emote · Esc to release)
           <br />
-          or click-drag on the table to draw
+          or click-drag on the table to draw · click a die to roll it
         </button>
       )}
       {interactionPrompt && assignSlotIndex === null && !whiteboardOpen && (
