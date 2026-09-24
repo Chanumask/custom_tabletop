@@ -5,6 +5,8 @@ import {
   type SessionJoinResponse,
   type SoundPlayResponse,
   type SoundUploadResponse,
+  type SoundboardAssignResponse,
+  type SoundRemoveResponse,
   type PlayerMuteResponse,
 } from '@custom-tabletop/shared';
 import { withTestToken } from './testSupport.js';
@@ -148,6 +150,7 @@ describe('Soundboard & mute (Milestone 7 exit check)', () => {
       name: 'Air Horn',
       url: 'http://localhost:3001/uploads/sounds/air-horn.mp3',
       playing: false,
+      addedBy: 'bob-id',
     });
 
     const broadcast = (await aliceSeesTheUpload) as { soundboard: { id: string }[] };
@@ -212,6 +215,89 @@ describe('Soundboard & mute (Milestone 7 exit check)', () => {
       slotIndex: 16, // valid indices are 0..15
     });
     expect(result.ok).toBe(false);
+  });
+
+  it('sound:upload rejects a link that is not an http(s) URL', async () => {
+    const alice = await connect(url);
+    clients.push(alice);
+    await joinAck(alice, { sessionId: 'table-2h', playerId: 'alice-id', playerName: 'Alice' });
+
+    const result = await soundUploadAck(alice, {
+      sessionId: 'table-2h',
+      playerId: 'alice-id',
+      soundId: 'custom-4',
+      name: 'Sneaky',
+      url: 'javascript:alert(1)',
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it('any player can put an existing sound on a wall button, reassign it, or clear it', async () => {
+    const alice = await connect(url);
+    const bob = await connect(url);
+    clients.push(alice, bob);
+    await joinAck(alice, { sessionId: 'table-2i', playerId: 'alice-id', playerName: 'Alice' });
+    await joinAck(bob, { sessionId: 'table-2i', playerId: 'bob-id', playerName: 'Bob' });
+
+    const assign = (slotIndex: number, soundId: string | null) =>
+      new Promise<SoundboardAssignResponse>((resolve) =>
+        bob.emit(
+          SocketEvent.SoundboardAssign,
+          { sessionId: 'table-2i', playerId: 'bob-id', slotIndex, soundId },
+          resolve,
+        ),
+      );
+
+    const placed = await assign(9, 'drum');
+    expect(placed.ok && placed.state.soundboardSlots[9]).toBe('drum');
+    const cleared = await assign(0, null);
+    expect(cleared.ok && cleared.state.soundboardSlots[0]).toBeNull();
+    expect(await assign(3, 'no-such-sound')).toEqual({ ok: false, error: 'Sound not found.' });
+  });
+
+  it('a sound can be removed by whoever added it or by the host, and leaves the wall with it', async () => {
+    const alice = await connect(url);
+    const bob = await connect(url);
+    const carol = await connect(url);
+    clients.push(alice, bob, carol);
+    await joinAck(alice, { sessionId: 'table-2j', playerId: 'alice-id', playerName: 'Alice' });
+    await joinAck(bob, { sessionId: 'table-2j', playerId: 'bob-id', playerName: 'Bob' });
+    await joinAck(carol, { sessionId: 'table-2j', playerId: 'carol-id', playerName: 'Carol' });
+
+    await soundUploadAck(bob, {
+      sessionId: 'table-2j',
+      playerId: 'bob-id',
+      soundId: 'bobs-horn',
+      name: 'Horn',
+      url: 'https://example.com/horn.mp3',
+      slotIndex: 7,
+    });
+    await soundUploadAck(bob, {
+      sessionId: 'table-2j',
+      playerId: 'bob-id',
+      soundId: 'bobs-bell',
+      name: 'Bell 2',
+      url: 'https://example.com/bell.mp3',
+    });
+
+    const remove = (client: ClientSocket, playerId: string, soundId: string) =>
+      new Promise<SoundRemoveResponse>((resolve) =>
+        client.emit(SocketEvent.SoundRemove, { sessionId: 'table-2j', playerId, soundId }, resolve),
+      );
+
+    expect(await remove(carol, 'carol-id', 'bobs-horn')).toEqual({
+      ok: false,
+      error: 'Only whoever added a sound, or the host, can remove it.',
+    });
+
+    const byOwner = await remove(bob, 'bob-id', 'bobs-horn');
+    expect(byOwner.ok).toBe(true);
+    if (!byOwner.ok) return;
+    expect(byOwner.state.soundboard.map((s) => s.id)).not.toContain('bobs-horn');
+    expect(byOwner.state.soundboardSlots[7]).toBeNull();
+
+    const byHost = await remove(alice, 'alice-id', 'bobs-bell');
+    expect(byHost.ok).toBe(true);
   });
 
   it("a muted player's state is seen live by everyone in the session", async () => {

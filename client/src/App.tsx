@@ -3,6 +3,7 @@ import type { Socket } from 'socket.io-client';
 import {
   SESSION_ENDED_ERROR,
   SocketEvent,
+  parseYouTubeUrl,
   type GameState,
   type PlayerColorId,
   type SessionJoinResponse,
@@ -11,6 +12,7 @@ import {
   type SoundPlayRequest,
 } from '@custom-tabletop/shared';
 import { Toasts } from './Toasts.js';
+import { YouTubeClip, type ActiveClip } from './YouTubeClip.js';
 import { useToasts } from './useToasts.js';
 import { createSocket } from './socket.js';
 import { connectionStatusLabel, type ConnectionStatus } from './connectionStatus.js';
@@ -81,6 +83,10 @@ export function App() {
   const [inviteCode] = useState(readInviteCode);
   const { settings } = useSettings();
   const { toasts, toast, dismiss } = useToasts();
+  // The soundboard's visible YouTube player (YouTubeClip.tsx), if a clip is
+  // currently playing.
+  const [clip, setClip] = useState<ActiveClip | null>(null);
+  const clipCounter = useRef(0);
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -170,10 +176,19 @@ export function App() {
     // alone, since an uploaded sound's url isn't known to this listener
     // otherwise.
     socket.on(SocketEvent.SoundPlay, (request: SoundPlayRequest) => {
-      const entry = gameStateRef.current?.soundboard.find((sound) => sound.id === request.soundId);
-      if (entry) {
-        playSound(entry);
+      const state = gameStateRef.current;
+      const entry = state?.soundboard.find((sound) => sound.id === request.soundId);
+      if (!entry) {
+        return;
       }
+      const youtube = parseYouTubeUrl(entry.url);
+      if (youtube) {
+        const playedBy =
+          state?.players.find((player) => player.id === request.playerId)?.name ?? 'someone';
+        setClip({ key: ++clipCounter.current, ...youtube, title: entry.name, playedBy });
+        return;
+      }
+      playSound(entry).catch(() => toast(`Couldn’t play “${entry.name}”.`, 'error'));
     });
 
     socket.on('disconnect', () => setStatus('disconnected'));
@@ -181,7 +196,7 @@ export function App() {
     return () => {
       socket.disconnect();
     };
-  }, [joinSession, forgetSession]);
+  }, [joinSession, forgetSession, toast]);
 
   // Keep the join screen's remembered name/color in step with whatever this
   // player currently is — including mid-session profile changes.
@@ -293,6 +308,16 @@ export function App() {
       'Failed to upload sound',
     );
 
+  const handleAssignSlot = (slotIndex: number, soundId: string | null) =>
+    sendAction(
+      SocketEvent.SoundboardAssign,
+      { slotIndex, soundId },
+      'Failed to change the wall button',
+    );
+
+  const handleRemoveSound = (soundId: string) =>
+    sendAction(SocketEvent.SoundRemove, { soundId }, 'Failed to remove the sound');
+
   const handleObjectInteract = (objectId: string) =>
     sendAction(SocketEvent.ObjectInteract, { objectId }, 'Failed to interact');
 
@@ -328,6 +353,7 @@ export function App() {
           onPlaySound={handlePlaySound}
           onObjectInteract={handleObjectInteract}
           onUploadSound={handleUploadSound}
+          onAssignSlot={handleAssignSlot}
         />
         <SessionView
           state={gameState}
@@ -343,8 +369,18 @@ export function App() {
           onUnmutePlayer={handleUnmutePlayer}
           onTransferHost={handleTransferHost}
           onUpdateProfile={handleUpdateProfile}
+          onAssignSlot={handleAssignSlot}
+          onRemoveSound={handleRemoveSound}
           onNotify={toast}
         />
+        {clip && (
+          <YouTubeClip
+            clip={clip}
+            volume={settings.masterVolume}
+            onClose={() => setClip(null)}
+            onError={(message) => toast(message, 'error')}
+          />
+        )}
         {status !== 'connected' && (
           <div className="connection-banner" role="status">
             Connection lost — reconnecting…

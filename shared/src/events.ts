@@ -44,6 +44,9 @@ export const SocketEvent = {
 
   SoundPlay: 'sound:play',
   SoundUpload: 'sound:upload',
+  SoundRemove: 'sound:remove',
+  /** Put an existing sound on a wall-board button, or clear the button. */
+  SoundboardAssign: 'soundboard:assign',
 
   PlayerMute: 'player:mute',
   PlayerUnmute: 'player:unmute',

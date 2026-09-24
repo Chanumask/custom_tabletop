@@ -1,28 +1,37 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
-import { uploadSound } from './uploads.js';
-import { deriveNameFromUrl } from './soundName.js';
+import { useEffect, useState } from 'react';
+import type { SoundState } from '@custom-tabletop/shared';
+import { AddSoundForm } from './AddSoundForm.js';
 
 export interface SoundboardAssignMenuProps {
-  onAssign: (name: string, url: string) => void;
+  slotIndex: number;
+  soundboard: SoundState[];
+  /** What the button plays right now (null = empty). */
+  currentSoundId: string | null;
+  /** Put an existing soundboard entry on this button, or clear it (null). */
+  onAssignExisting: (soundId: string | null) => void;
+  /** Register a brand-new sound and put it on this button. */
+  onAddNew: (name: string, url: string) => void;
   onClose: () => void;
 }
 
 /**
- * The overlay opened by pressing the interact key on an empty wall-board
- * button (`SoundboardWall.ts`, Milestone 8 follow-up) — lets any player
- * attach a sound to that slot via a direct link or a file upload, the same
- * two paths the 2D panel's soundboard tab already offers (`SessionView.tsx`),
- * just reachable from inside the room instead of the side menu. Rendered as
- * a DOM overlay over the WebGL canvas, same pattern as the drawing toolbar
- * and interaction prompt in `RoomView.tsx`. The caller is responsible for
- * releasing pointer lock before showing this (a locked mouse can't click a
- * text field) and not re-locking after it closes, matching every other
- * unlocked state in this app.
+ * The overlay for configuring one wall-board button (`SoundboardWall.ts`) —
+ * opened by pressing the interact key on an empty button, or Shift + the
+ * interact key on a filled one. Any player can pick a sound already on the
+ * soundboard, add a new one by link (audio file or YouTube) or upload, or
+ * clear the button. A DOM overlay over the WebGL canvas, same as the
+ * drawing toolbar; the caller releases pointer lock before showing it (a
+ * locked mouse can't click a text field) and doesn't re-lock after.
  */
-export function SoundboardAssignMenu({ onAssign, onClose }: SoundboardAssignMenuProps) {
-  const [url, setUrl] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export function SoundboardAssignMenu({
+  slotIndex,
+  soundboard,
+  currentSoundId,
+  onAssignExisting,
+  onAddNew,
+  onClose,
+}: SoundboardAssignMenuProps) {
+  const [picked, setPicked] = useState(currentSoundId ?? '');
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -34,57 +43,44 @@ export function SoundboardAssignMenu({ onAssign, onClose }: SoundboardAssignMenu
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  function handleSubmitUrl(event: FormEvent) {
-    event.preventDefault();
-    const trimmed = url.trim();
-    if (!trimmed) {
-      return;
-    }
-    onAssign(deriveNameFromUrl(trimmed), trimmed);
-  }
-
-  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) {
-      return;
-    }
-    setUploading(true);
-    setError(null);
-    try {
-      const uploadedUrl = await uploadSound(file);
-      onAssign(file.name.replace(/\.[^./]+$/, ''), uploadedUrl);
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : 'Upload failed.');
-    } finally {
-      setUploading(false);
-    }
-  }
-
   return (
-    <div className="soundboard-assign-menu">
-      <p className="soundboard-assign-menu-title">Add a sound to this button</p>
-      <form onSubmit={handleSubmitUrl}>
+    <div className="soundboard-assign-menu" role="dialog" aria-label="Wall board button">
+      <p className="soundboard-assign-menu-title">Button {slotIndex + 1}</p>
+
+      <div className="assign-existing">
         <label>
-          Direct link to an audio file
-          <input
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            placeholder="https://…/sound.mp3"
-            autoFocus
-          />
+          Play a sound from the board
+          <select value={picked} onChange={(event) => setPicked(event.target.value)}>
+            <option value="">— choose a sound —</option>
+            {soundboard.map((sound) => (
+              <option key={sound.id} value={sound.id}>
+                {sound.name}
+              </option>
+            ))}
+          </select>
         </label>
-        <button type="submit">Add</button>
-      </form>
-      <label>
-        or upload a file
-        <input type="file" accept="audio/*" onChange={(event) => void handleFileChange(event)} />
-      </label>
-      {uploading && <p>Uploading…</p>}
-      {error && <p role="alert">{error}</p>}
-      <button type="button" onClick={onClose}>
-        Cancel
-      </button>
+        <button
+          type="button"
+          disabled={!picked || picked === currentSoundId}
+          onClick={() => onAssignExisting(picked)}
+        >
+          Use it
+        </button>
+      </div>
+
+      <p className="soundboard-assign-menu-divider">or add a new one</p>
+      <AddSoundForm onAdd={onAddNew} autoFocusLink={currentSoundId === null} />
+
+      <div className="assign-actions">
+        {currentSoundId !== null && (
+          <button type="button" onClick={() => onAssignExisting(null)}>
+            Clear this button
+          </button>
+        )}
+        <button type="button" onClick={onClose}>
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }

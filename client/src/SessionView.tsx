@@ -8,9 +8,10 @@ import {
 } from '@custom-tabletop/shared';
 import { ColorPicker } from './ColorPicker.js';
 import type { ToastKind } from './useToasts.js';
-import { uploadImage, uploadSound } from './uploads.js';
+import { uploadImage } from './uploads.js';
+import { AddSoundForm } from './AddSoundForm.js';
+import { SOUND_KIND_LABEL, soundKind } from './soundKind.js';
 import { useSettings } from './useSettings.js';
-import { deriveNameFromUrl } from './soundName.js';
 import { formatKeyCode } from './keyLabel.js';
 import { MOVEMENT_KEYS } from './three/FirstPersonController.js';
 import { MapIcon, DiceIcon, SoundIcon, PlayersIcon, SettingsIcon } from './icons.js';
@@ -29,6 +30,8 @@ export interface SessionViewProps {
   onUnmutePlayer: (targetPlayerId: string) => void;
   onTransferHost: (targetPlayerId: string) => void;
   onUpdateProfile: (patch: { name?: string; color?: PlayerColorId }) => void;
+  onAssignSlot: (slotIndex: number, soundId: string | null) => void;
+  onRemoveSound: (soundId: string) => void;
   onNotify: (text: string, kind?: ToastKind) => void;
 }
 
@@ -62,6 +65,8 @@ export function SessionView({
   onUnmutePlayer,
   onTransferHost,
   onUpdateProfile,
+  onAssignSlot,
+  onRemoveSound,
   onNotify,
 }: SessionViewProps) {
   const isHost = playerId === state.hostId;
@@ -131,7 +136,15 @@ export function SessionView({
           />
         )}
         {activeTab === 'soundboard' && (
-          <SoundboardTab state={state} onPlaySound={onPlaySound} onUploadSound={onUploadSound} />
+          <SoundboardTab
+            state={state}
+            playerId={playerId}
+            isHost={isHost}
+            onPlaySound={onPlaySound}
+            onUploadSound={onUploadSound}
+            onAssignSlot={onAssignSlot}
+            onRemoveSound={onRemoveSound}
+          />
         )}
         {activeTab === 'settings' && <SettingsTab />}
       </div>
@@ -366,79 +379,94 @@ function DiceTab({
 
 function SoundboardTab({
   state,
+  playerId,
+  isHost,
   onPlaySound,
   onUploadSound,
+  onAssignSlot,
+  onRemoveSound,
 }: {
   state: GameState;
+  playerId: string;
+  isHost: boolean;
   onPlaySound: (soundId: string) => void;
   onUploadSound: (name: string, url: string) => void;
+  onAssignSlot: (slotIndex: number, soundId: string | null) => void;
+  onRemoveSound: (soundId: string) => void;
 }) {
-  const [soundUploadError, setSoundUploadError] = useState<string | null>(null);
-  const [soundUploading, setSoundUploading] = useState(false);
-  const [soundUrl, setSoundUrl] = useState('');
-
-  async function handleSoundFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) {
-      return;
-    }
-    setSoundUploading(true);
-    setSoundUploadError(null);
-    try {
-      const url = await uploadSound(file);
-      onUploadSound(file.name.replace(/\.[^./]+$/, ''), url);
-    } catch (error) {
-      setSoundUploadError(error instanceof Error ? error.message : 'Upload failed.');
-    } finally {
-      setSoundUploading(false);
-    }
-  }
-
-  function handleAddSoundUrl(event: FormEvent) {
-    event.preventDefault();
-    const trimmed = soundUrl.trim();
-    if (!trimmed) {
-      return;
-    }
-    onUploadSound(deriveNameFromUrl(trimmed), trimmed);
-    setSoundUrl('');
-  }
+  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
+  const soundName = (id: string | null) =>
+    id ? (state.soundboard.find((sound) => sound.id === id)?.name ?? null) : null;
 
   return (
     <div>
       <ul className="sound-list">
-        {state.soundboard.map((sound) => (
-          <li key={sound.id}>
-            <span>{sound.name}</span>
-            <button type="button" onClick={() => onPlaySound(sound.id)}>
-              Play
-            </button>
-          </li>
-        ))}
+        {state.soundboard.map((sound) => {
+          const kind = soundKind(sound);
+          const canRemove = isHost || sound.addedBy === playerId;
+          return (
+            <li key={sound.id}>
+              <span className="sound-name" title={sound.name}>
+                <span className={`sound-kind sound-kind-${kind}`}>{SOUND_KIND_LABEL[kind]}</span>
+                {sound.name}
+              </span>
+              <span className="player-actions">
+                <button type="button" onClick={() => onPlaySound(sound.id)}>
+                  Play
+                </button>
+                {canRemove && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    title={`Remove “${sound.name}”`}
+                    aria-label={`Remove ${sound.name}`}
+                    onClick={() => onRemoveSound(sound.id)}
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            </li>
+          );
+        })}
       </ul>
-      <p className="tab-section-label">Add a sound (shared with everyone)</p>
-      <label>
-        Upload a file
-        <input
-          type="file"
-          accept="audio/*"
-          onChange={(event) => void handleSoundFileChange(event)}
-        />
-      </label>
-      <form onSubmit={handleAddSoundUrl}>
-        <label>
-          or a direct link to an audio file
-          <input
-            value={soundUrl}
-            onChange={(event) => setSoundUrl(event.target.value)}
-            placeholder="https://…/sound.mp3"
-          />
+
+      <p className="tab-section-label">Wall board</p>
+      <div className="slot-grid">
+        {state.soundboardSlots.map((slotSoundId, index) => {
+          const name = soundName(slotSoundId);
+          return (
+            <button
+              key={index}
+              type="button"
+              className={`slot-cell${name ? ' filled' : ''}${selectedSlot === index ? ' selected' : ''}`}
+              title={name ?? `Button ${index + 1} — empty`}
+              onClick={() => setSelectedSlot(selectedSlot === index ? null : index)}
+            >
+              {name ?? '+'}
+            </button>
+          );
+        })}
+      </div>
+      {selectedSlot !== null && (
+        <label className="slot-editor">
+          Button {selectedSlot + 1} plays
+          <select
+            value={state.soundboardSlots[selectedSlot] ?? ''}
+            onChange={(event) => onAssignSlot(selectedSlot, event.target.value || null)}
+          >
+            <option value="">— nothing (empty) —</option>
+            {state.soundboard.map((sound) => (
+              <option key={sound.id} value={sound.id}>
+                {sound.name}
+              </option>
+            ))}
+          </select>
         </label>
-        <button type="submit">Add</button>
-      </form>
-      {soundUploading && <p>Uploading sound…</p>}
-      {soundUploadError && <p role="alert">{soundUploadError}</p>}
+      )}
+
+      <p className="tab-section-label">Add a sound (shared with everyone)</p>
+      <AddSoundForm onAdd={onUploadSound} />
     </div>
   );
 }

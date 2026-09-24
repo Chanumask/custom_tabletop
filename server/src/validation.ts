@@ -1,7 +1,11 @@
 import {
   MAX_PLAYER_NAME_LENGTH,
+  MAX_SOUND_NAME_LENGTH,
   SOUNDBOARD_SLOT_COUNT,
+  isHttpUrl,
   isPlayerColorId,
+  type SoundboardAssignRequest,
+  type SoundRemoveRequest,
   type PlayerUpdateRequest,
   type SessionJoinRequest,
   type SessionLeaveRequest,
@@ -424,6 +428,8 @@ export function parseSoundUploadRequest(payload: unknown): SoundUploadRequest | 
     !isNonEmptyString(soundId) ||
     !isNonEmptyString(name) ||
     !isNonEmptyString(url) ||
+    url.length > MAX_URL_LENGTH ||
+    !isHttpUrl(url.trim()) ||
     !isOptionalSlotIndex(slotIndex)
   ) {
     return null;
@@ -433,10 +439,51 @@ export function parseSoundUploadRequest(payload: unknown): SoundUploadRequest | 
     sessionId: sessionId.trim(),
     playerId: playerId.trim(),
     soundId: soundId.trim(),
-    name: name.trim(),
+    // Long file names/titles are shortened rather than refused — the name
+    // is a label, not an identifier.
+    name: name.trim().slice(0, MAX_SOUND_NAME_LENGTH),
     url: url.trim(),
     slotIndex,
   };
+}
+
+const MAX_URL_LENGTH = 2048;
+
+export function parseSoundboardAssignRequest(payload: unknown): SoundboardAssignRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, slotIndex, soundId } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    slotIndex === undefined ||
+    !isOptionalSlotIndex(slotIndex) ||
+    (soundId !== null && !isNonEmptyString(soundId))
+  ) {
+    return null;
+  }
+
+  return {
+    sessionId: sessionId.trim(),
+    playerId: playerId.trim(),
+    slotIndex,
+    soundId: soundId === null ? null : soundId.trim(),
+  };
+}
+
+export function parseSoundRemoveRequest(payload: unknown): SoundRemoveRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, soundId } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || !isNonEmptyString(soundId)) {
+    return null;
+  }
+
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), soundId: soundId.trim() };
 }
 
 export function parsePlayerMuteRequest(payload: unknown): PlayerMuteRequest | null {

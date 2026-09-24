@@ -62,9 +62,14 @@ export interface SoundState {
   name: string;
   /** Empty for a built-in synthesized preset — the client plays it locally
    * from its own tone catalog, keyed by `id` (see client/src/sounds.ts).
-   * A server URL (from a player's upload) otherwise. */
+   * Otherwise an absolute http(s) URL: an uploaded file, a direct link to
+   * an audio file, or a YouTube link (played as a visible clip — see
+   * youtube.ts's `parseYouTubeUrl`). */
   url: string;
   playing: boolean;
+  /** Who added it — they (or the host) may remove it again. null for the
+   * built-in presets, which only the host can remove. */
+  addedBy: string | null;
 }
 
 /**
@@ -75,9 +80,9 @@ export interface SoundState {
  * (frequency/waveform/duration stay client-only).
  */
 export const BUILTIN_SOUND_PRESETS: SoundState[] = [
-  { id: 'bell', name: 'Bell', url: '', playing: false },
-  { id: 'drum', name: 'Drum', url: '', playing: false },
-  { id: 'alert', name: 'Alert', url: '', playing: false },
+  { id: 'bell', name: 'Bell', url: '', playing: false, addedBy: null },
+  { id: 'drum', name: 'Drum', url: '', playing: false, addedBy: null },
+  { id: 'alert', name: 'Alert', url: '', playing: false, addedBy: null },
 ];
 
 export interface Player {

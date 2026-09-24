@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { SoundState } from '@custom-tabletop/shared';
-import { SOUNDBOARD_SLOT_COUNT } from '@custom-tabletop/shared';
+import { SOUNDBOARD_SLOT_COUNT, parseYouTubeUrl } from '@custom-tabletop/shared';
 import { soundboardSlotOffset } from './soundboardLayout.js';
 
 /** The room's east wall, the same back corner the old floor-standing
@@ -15,7 +15,11 @@ export const SOUNDBOARD_WALL_POSITION = { x: 4.9, z: -3.0 };
 export const SOUNDBOARD_RANGE = 2.4;
 
 const PANEL_THICKNESS = 0.06;
-const PANEL_HEIGHT = 1.5;
+// Tall enough for four rows of buttons *plus* a name label under each.
+const PANEL_HEIGHT = 1.62;
+/** The button grid sits a little above the panel's center, leaving room
+ * for the bottom row's labels. */
+const GRID_Y_SHIFT = 0.04;
 const PANEL_WIDTH = 1.9;
 const BUTTON_SIZE = 0.26;
 const BUTTON_DEPTH = 0.06;
@@ -27,6 +31,56 @@ const EMPTY_COLOR = 0x3a3226;
 const FILLED_COLORS = Array.from({ length: SOUNDBOARD_SLOT_COUNT }, (_, i) =>
   new THREE.Color().setHSL(i / SOUNDBOARD_SLOT_COUNT, 0.55, 0.5).getHex(),
 );
+
+const LABEL_CANVAS_WIDTH = 1024;
+const LABEL_FONT_PX = 24;
+/** Space between a button's bottom edge and its label's center (metres). */
+const LABEL_GAP = 0.045;
+/** How wide a label may get before it's shortened with an ellipsis (metres)
+ * — a little under the column spacing so neighbours never touch. */
+const COL_LABEL_WIDTH = 0.38;
+
+/** `text`, shortened with an ellipsis until it fits `maxWidth` pixels. */
+function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (ctx.measureText(text).width <= maxWidth) {
+    return text;
+  }
+  let fitted = text;
+  while (fitted.length > 1 && ctx.measureText(`${fitted}…`).width > maxWidth) {
+    fitted = fitted.slice(0, -1);
+  }
+  return `${fitted.trimEnd()}…`;
+}
+
+/** A small "SOUNDBOARD" plaque above the panel, so the board reads as what
+ * it is from across the room. */
+function createSign(): THREE.Mesh {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 96;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#2b2018';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#c9a15a';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(6, 6, canvas.width - 12, canvas.height - 12);
+    ctx.fillStyle = '#e9cf98';
+    ctx.font = '700 46px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SOUNDBOARD', canvas.width / 2, canvas.height / 2 + 2);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sign = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.9, 0.17),
+    new THREE.MeshStandardMaterial({ map: texture, roughness: 0.7 }),
+  );
+  sign.rotation.y = -Math.PI / 2;
+  sign.position.set(-0.01, PANEL_HEIGHT / 2 + 0.16, 0);
+  return sign;
+}
 
 /**
  * A wall-mounted 4x4 grid of physical buttons (Milestone 8 follow-up,
@@ -45,6 +99,8 @@ export class SoundboardWall {
   private readonly buttonMeshes: THREE.Mesh[] = [];
   private readonly raycaster = new THREE.Raycaster();
   private slots: (string | null)[] = [];
+  private readonly labelCanvas = document.createElement('canvas');
+  private readonly labelTexture: THREE.CanvasTexture;
 
   constructor(scene: THREE.Scene, floorY: number) {
     this.group.name = 'soundboard-wall';
@@ -55,6 +111,30 @@ export class SoundboardWall {
     );
     this.group.add(panel);
 
+    // Button labels: one canvas covering the panel's room-facing side,
+    // redrawn on every sync (the sound names under each button).
+    this.labelCanvas.width = LABEL_CANVAS_WIDTH;
+    this.labelCanvas.height = Math.round(LABEL_CANVAS_WIDTH * (PANEL_HEIGHT / PANEL_WIDTH));
+    this.labelTexture = new THREE.CanvasTexture(this.labelCanvas);
+    this.labelTexture.colorSpace = THREE.SRGBColorSpace;
+    this.labelTexture.anisotropy = 4;
+    const labels = new THREE.Mesh(
+      new THREE.PlaneGeometry(PANEL_WIDTH, PANEL_HEIGHT),
+      new THREE.MeshStandardMaterial({
+        map: this.labelTexture,
+        transparent: true,
+        roughness: 0.9,
+      }),
+    );
+    // A plane faces +Z; turning it -90° about Y faces it into the room
+    // (-X), with the canvas's left-to-right running along +Z — the
+    // viewer's own left-to-right when facing this (east) wall.
+    labels.rotation.y = -Math.PI / 2;
+    labels.position.x = -(PANEL_THICKNESS / 2 + 0.002);
+    this.group.add(labels);
+
+    this.group.add(createSign());
+
     for (let index = 0; index < SOUNDBOARD_SLOT_COUNT; index += 1) {
       const offset = soundboardSlotOffset(index);
       if (!offset) {
@@ -64,7 +144,11 @@ export class SoundboardWall {
         new THREE.BoxGeometry(BUTTON_DEPTH, BUTTON_SIZE, BUTTON_SIZE),
         new THREE.MeshStandardMaterial({ color: EMPTY_COLOR, roughness: 0.4 }),
       );
-      button.position.set(-(PANEL_THICKNESS / 2 + BUTTON_DEPTH / 2), offset.y, offset.z);
+      button.position.set(
+        -(PANEL_THICKNESS / 2 + BUTTON_DEPTH / 2),
+        offset.y + GRID_Y_SHIFT,
+        offset.z,
+      );
       this.group.add(button);
       this.buttons.set(button, index);
       this.buttonMeshes.push(button);
@@ -80,17 +164,57 @@ export class SoundboardWall {
    * exist. */
   sync(soundboard: SoundState[], slots: (string | null)[]): void {
     this.slots = slots;
-    const knownSoundIds = new Set(soundboard.map((sound) => sound.id));
+    const byId = new Map(soundboard.map((sound) => [sound.id, sound]));
     for (const button of this.buttonMeshes) {
       const index = this.buttons.get(button);
       if (index === undefined) {
         continue;
       }
       const soundId = slots[index];
-      const filled = soundId !== null && soundId !== undefined && knownSoundIds.has(soundId);
+      const filled = soundId !== null && soundId !== undefined && byId.has(soundId);
       const material = button.material as THREE.MeshStandardMaterial;
       material.color.setHex(filled ? FILLED_COLORS[index]! : EMPTY_COLOR);
     }
+    this.drawLabels((index) => {
+      const soundId = slots[index];
+      return soundId ? (byId.get(soundId) ?? null) : null;
+    });
+  }
+
+  private drawLabels(soundAt: (index: number) => SoundState | null): void {
+    const ctx = this.labelCanvas.getContext('2d');
+    if (!ctx) {
+      return;
+    }
+    const { width, height } = this.labelCanvas;
+    const pxPerMetre = width / PANEL_WIDTH;
+    ctx.clearRect(0, 0, width, height);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (let index = 0; index < SOUNDBOARD_SLOT_COUNT; index += 1) {
+      const offset = soundboardSlotOffset(index);
+      if (!offset) {
+        continue;
+      }
+      const sound = soundAt(index);
+      const centerX = (offset.z + PANEL_WIDTH / 2) * pxPerMetre;
+      const labelY = offset.y + GRID_Y_SHIFT - BUTTON_SIZE / 2 - LABEL_GAP;
+      const centerY = (PANEL_HEIGHT / 2 - labelY) * pxPerMetre;
+      const maxWidth = (COL_LABEL_WIDTH * pxPerMetre) | 0;
+
+      if (sound) {
+        const prefix = sound.url && parseYouTubeUrl(sound.url) ? '▶ ' : '';
+        ctx.font = `600 ${LABEL_FONT_PX}px system-ui, sans-serif`;
+        ctx.fillStyle = '#f3e6d3';
+        ctx.fillText(fitText(ctx, prefix + sound.name, maxWidth), centerX, centerY);
+      } else {
+        ctx.font = `italic ${LABEL_FONT_PX - 4}px system-ui, sans-serif`;
+        ctx.fillStyle = 'rgba(243, 230, 211, 0.4)';
+        ctx.fillText('+ empty', centerX, centerY);
+      }
+    }
+    this.labelTexture.needsUpdate = true;
   }
 
   getSlotSoundId(index: number): string | null {
@@ -117,7 +241,9 @@ export class SoundboardWall {
     for (const child of this.group.children) {
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose();
-        (child.material as THREE.Material).dispose();
+        const material = child.material as THREE.MeshStandardMaterial;
+        material.map?.dispose();
+        material.dispose();
       }
     }
     this.buttons.clear();

@@ -21,6 +21,8 @@ import {
   type DiceRemoveResponse,
   type SoundPlayResponse,
   type SoundUploadResponse,
+  type SoundboardAssignResponse,
+  type SoundRemoveResponse,
   type PlayerMuteResponse,
   type PlayerUnmuteResponse,
   type ObjectInteractResponse,
@@ -45,6 +47,8 @@ import {
   parseDiceRemoveRequest,
   parseSoundPlayRequest,
   parseSoundUploadRequest,
+  parseSoundboardAssignRequest,
+  parseSoundRemoveRequest,
   parsePlayerMuteRequest,
   parsePlayerUnmuteRequest,
   parseObjectInteractRequest,
@@ -634,7 +638,58 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           request.name,
           request.url,
           request.slotIndex,
+          request.playerId,
         );
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+        }
+      },
+    );
+
+    // Open to any player, like the wall board itself — reassign or clear a
+    // button. Ack + full broadcast.
+    socket.on(
+      SocketEvent.SoundboardAssign,
+      (payload: unknown, ack?: (response: SoundboardAssignResponse) => void) => {
+        const request = parseSoundboardAssignRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, slotIndex, and soundId are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+
+        const result = sessions.assignSoundboardSlot(
+          request.sessionId,
+          request.slotIndex,
+          request.soundId,
+        );
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+        }
+      },
+    );
+
+    // Whoever added a sound (or the host) can remove it; see
+    // SessionStore.removeSound.
+    socket.on(
+      SocketEvent.SoundRemove,
+      (payload: unknown, ack?: (response: SoundRemoveResponse) => void) => {
+        const request = parseSoundRemoveRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and soundId are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+
+        const result = sessions.removeSound(request.sessionId, request.playerId, request.soundId);
         ack?.(result);
         if (result.ok) {
           io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);

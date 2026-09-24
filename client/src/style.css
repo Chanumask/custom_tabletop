@@ -289,6 +289,166 @@ body {
   min-width: 0;
 }
 
+/* Soundboard (Sound tab): kind badges, the wall-button grid, add form. */
+.sound-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sound-kind {
+  flex: none;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sound-kind-youtube {
+  background: rgba(214, 48, 38, 0.8);
+}
+
+.icon-button {
+  min-width: 1.6rem;
+  font-weight: 700;
+}
+
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.25rem;
+}
+
+.slot-cell {
+  height: 2.1rem;
+  padding: 0.15rem;
+  overflow: hidden;
+  border: 1px solid rgba(243, 230, 211, 0.2);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(243, 230, 211, 0.45);
+  font: inherit;
+  font-size: 0.62rem;
+  line-height: 1.1;
+  cursor: pointer;
+}
+
+.slot-cell.filled {
+  background: rgba(201, 161, 90, 0.22);
+  color: #f3e6d3;
+}
+
+.slot-cell.selected {
+  border-color: #f3e6d3;
+  box-shadow: 0 0 0 1px #f3e6d3;
+}
+
+.add-sound {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.add-sound-note {
+  margin: 0;
+  text-align: center;
+}
+
+.add-sound-error {
+  margin: 0;
+  color: #ff9c8a;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.soundboard-assign-menu {
+  width: 21rem;
+}
+
+.soundboard-assign-menu .assign-existing,
+.soundboard-assign-menu .add-sound,
+.soundboard-assign-menu .add-sound form,
+.soundboard-assign-menu label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.soundboard-assign-menu-divider {
+  margin: 0;
+  color: rgba(243, 230, 211, 0.6);
+  font-size: 0.8rem;
+}
+
+.assign-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* The soundboard's YouTube clip card (YouTubeClip.tsx) — YouTube's own
+ * visible player, bottom-left, for every player at once. */
+.youtube-clip {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  width: 356px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: rgba(20, 14, 10, 0.95);
+  color: #f3e6d3;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  z-index: 15;
+}
+
+.youtube-clip-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem 0.4rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.youtube-clip-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.youtube-clip-by {
+  flex: none;
+  color: rgba(243, 230, 211, 0.6);
+}
+
+.youtube-clip-close {
+  flex: none;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.youtube-clip-player {
+  width: 356px;
+  height: 200px;
+  background: #000;
+}
+
 /* Rejected-action notices (useToasts.ts) — bottom-center, click to dismiss. */
 .toasts {
   position: fixed;

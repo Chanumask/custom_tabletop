@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { Socket } from 'socket.io-client';
 import {
@@ -106,6 +106,8 @@ export interface RoomViewProps {
    * menu) also assigns the sound to that physical button in the same round
    * trip. */
   onUploadSound: (name: string, url: string, slotIndex?: number) => void;
+  /** Put an existing sound on a wall button, or clear it (null). */
+  onAssignSlot: (slotIndex: number, soundId: string | null) => void;
 }
 
 function promptFor(
@@ -120,8 +122,8 @@ function promptFor(
   }
   if (boardTarget) {
     return boardTarget.soundName
-      ? `Press ${keyLabel} to play "${boardTarget.soundName}"`
-      : `Press ${keyLabel} to add a sound to this button`;
+      ? `Press ${keyLabel} to play "${boardTarget.soundName}" · Shift+${keyLabel} to change it`
+      : `Press ${keyLabel} to put a sound on this button`;
   }
   if (nearestId === 'light') {
     return `Press ${keyLabel} to switch the light on/off`;
@@ -172,6 +174,7 @@ export function RoomView({
   onPlaySound,
   onObjectInteract,
   onUploadSound,
+  onAssignSlot,
 }: RoomViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FirstPersonController | null>(null);
@@ -221,6 +224,9 @@ export function RoomView({
   const [drawTool, setDrawTool] = useState<DrawTool>('pen');
   const [drawColor, setDrawColor] = useState(DEFAULT_DRAW_COLOR);
   const [drawWidth, setDrawWidth] = useState(DEFAULT_DRAW_WIDTH);
+  // Stable identity so the assign menu's Escape listener isn't re-registered
+  // on every RoomView render.
+  const closeAssignMenu = useCallback(() => setAssignSlotIndex(null), []);
   const drawToolRef = useRef<DrawTool>(drawTool);
   const drawColorRef = useRef(drawColor);
   const drawWidthRef = useRef(drawWidth);
@@ -472,6 +478,19 @@ export function RoomView({
       controller.controls.addEventListener('unlock', () => setLocked(false));
       controllerRef.current = controller;
 
+      // Dev-only automation hook: browsers refuse pointer lock to scripted
+      // clicks, so automated/live verification (docs/decisions.md, M8)
+      // drives the camera through this instead. Compiled out of production
+      // builds by Vite's `import.meta.env.DEV` constant.
+      if (import.meta.env.DEV) {
+        (window as unknown as { __tabletop?: unknown }).__tabletop = {
+          camera,
+          controller,
+          scene,
+          renderer,
+        };
+      }
+
       // Reconciles a rejoin/reload while GameState already has this player
       // seated (a lingering flag — a disconnect doesn't clear it, same as
       // every other per-player status): without this, the fresh controller
@@ -620,9 +639,10 @@ export function RoomView({
         const targetedSlot = boardTargetSlotRef.current;
         if (targetedSlot !== null) {
           const soundId = soundboardWallRef.current?.getSlotSoundId(targetedSlot) ?? null;
-          if (soundId) {
+          if (soundId && !event.shiftKey) {
             onPlaySoundRef.current(soundId);
           } else {
+            // Empty button, or Shift+interact on a filled one: configure it.
             controller.controls.unlock();
             setAssignSlotIndex(targetedSlot);
           }
@@ -775,11 +795,18 @@ export function RoomView({
       )}
       {assignSlotIndex !== null && (
         <SoundboardAssignMenu
-          onAssign={(name, url) => {
+          slotIndex={assignSlotIndex}
+          soundboard={soundboard}
+          currentSoundId={soundboardSlots[assignSlotIndex] ?? null}
+          onAssignExisting={(soundId) => {
+            onAssignSlot(assignSlotIndex, soundId);
+            setAssignSlotIndex(null);
+          }}
+          onAddNew={(name, url) => {
             onUploadSoundRef.current(name, url, assignSlotIndex);
             setAssignSlotIndex(null);
           }}
-          onClose={() => setAssignSlotIndex(null)}
+          onClose={closeAssignMenu}
         />
       )}
       {seated && (

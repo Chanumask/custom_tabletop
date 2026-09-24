@@ -72,30 +72,29 @@ function playTone(params: ToneParams): void {
   oscillator.stop(ctx.currentTime + durationSeconds);
 }
 
-function playUploadedAudio(url: string): void {
+function playAudioFile(url: string): Promise<void> {
   const audio = new Audio(url);
   audio.volume = masterVolume;
-  void audio.play().catch((error: unknown) => {
-    console.error('Failed to play uploaded sound:', error);
-  });
+  return audio.play();
 }
 
 /**
- * Plays one soundboard entry (Milestone 8): a built-in preset (`url` empty
- * — synthesized locally via `TONE_PARAMS`, matched by `id`) or a player's
- * uploaded file (`url` set — played through a plain `<audio>` element).
- * Silently does nothing for an unrecognized built-in id (shouldn't happen
- * since the server only ever hands back ids it put there itself, but this
- * stays a no-op rather than a throw either way).
+ * Plays one soundboard entry: a built-in preset (`url` empty — synthesized
+ * locally via `TONE_PARAMS`, matched by `id`) or an audio file (an upload
+ * or a direct link — played through a plain `<audio>` element). YouTube
+ * clips never come through here — they're shown in a visible player
+ * instead (YouTubeClip.tsx). Resolves once playback starts; rejects if it
+ * can't (a dead link, a blocked autoplay), so the caller can tell the
+ * player instead of leaving them wondering why nothing was heard.
  */
-export function playSound(entry: SoundState): void {
+export function playSound(entry: SoundState): Promise<void> {
   if (entry.url) {
-    playUploadedAudio(entry.url);
-    return;
+    return playAudioFile(entry.url);
   }
 
   const params = TONE_PARAMS[entry.id];
   if (params) {
     playTone(params);
   }
+  return Promise.resolve();
 }

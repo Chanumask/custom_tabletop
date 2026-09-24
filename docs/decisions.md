@@ -6,6 +6,19 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-24 — Soundboard links: validated before adding, YouTube as a *visible* embedded clip, board management
+
+**Decided** (change request #1: "a YouTube link produced no audio"). Root cause: the link path passed any URL straight to an `<audio>` element; a YouTube URL is an HTML page, so playback failed and the error only reached the console — everyone just heard nothing.
+
+1. **YouTube is supported only through YouTube's own embedded player, shown visibly** (`YouTubeClip.tsx`, official IFrame Player API). YouTube's API developer policies prohibit separating/isolating a video's audio and playing content "from a background player … not displayed in the page", as well as downloading/caching content — so an invisible audio-only YouTube "sound" is ruled out regardless of technique, and the earlier (same-day) refusal to build extraction still stands. A visible player is compliant, so pressing a YouTube soundboard entry pops up a small card (≥200px tall, YouTube branding/controls intact) for every player, starting at the link's `t=`, "played by <name>", closing on end/error/×. This refines rather than reverses the earlier session-menu decision: that one ruled out *fetching/transcoding/proxying* video-site audio; this streams nothing through the app.
+2. **Every link is checked before it's added** (`client/src/soundLinks.ts`, dependency-injected so its logic is unit-tested): a YouTube link is looked up via YouTube's public oEmbed endpoint (gives the title, and 401/403/404 reveal non-embeddable/missing videos up front); any other link must actually load as audio in the browser (`loadedmetadata` probe) or it's refused with an explanation. The server additionally refuses non-http(s) URLs. Playback failures of file/link audio now surface as a toast.
+3. **The board is manageable, not append-only**: `soundboard:assign` puts any existing sound on any wall button or clears it (open to all, like the wall); `sound:remove` deletes an entry and clears it from the wall (only whoever added it — new `SoundState.addedBy` — or the host). The wall's assign menu gained "pick a sound already on the board", and Shift+interact on a filled button opens it to change/clear that button. The Sound tab shows kind badges (Tone/File/Link/YouTube) and a 4×4 editor mirroring the wall.
+4. **The wall board now labels its buttons** (sound names drawn on a canvas texture under each button, ▶ for clips, "+ empty" otherwise) plus a "SOUNDBOARD" plaque — a 16-button board with no labels was unusable beyond memorization. Panel grew 1.5 → 1.62 m to fit the bottom row's labels.
+
+**Verified:** `shared/src/youtube.test.ts` (URL/timestamp parsing, 23 cases), `client/src/soundLinks.test.ts` (8), `soundKind.test.ts`, `soundName.test.ts` (word-boundary shortening), `server/src/soundAndMute.test.ts` (+3: non-http link refused, assign/reassign/clear, remove permissions + wall cleanup). Live two-tab check (Chrome): a YouTube link was validated via oEmbed and named from the video; Bob pressing Play opened the visible clip card on **both** tabs starting at 43 s, "played by Bob"; a web-page link was refused with the explanation and nothing added; a real audio link was accepted and, instrumenting `HTMLMediaElement.play`, playback *started* on both tabs; assigning the clip to button 6 from Bob's tab appeared on Alice's grid; non-owner Bob saw no remove buttons while host Alice saw all; the 3D wall showed correct, correctly-oriented labels. 350 tests, lint/format/build clean.
+
+---
+
 ## 2026-09-24 — Player colors: six unique colors per session, pre-join peek, live profile edits, invite links, toasts
 
 **Decided** (change request #3 prerequisite + user answer "players should be able to change their colors"). The change request assumed the join screen already had a 6-color picker — it didn't (avatar colors were a hash of the player id), so this built it.

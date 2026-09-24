@@ -510,6 +510,7 @@ export class SessionStore {
     name: string,
     url: string,
     slotIndex?: number,
+    addedBy: string | null = null,
   ): GameStateMutationResult {
     const state = this.sessions.get(sessionId);
     if (!state) {
@@ -519,10 +520,49 @@ export class SessionStore {
       return { ok: false, error: 'A sound with that id already exists.' };
     }
 
-    state.soundboard.push({ id: soundId, name, url, playing: false });
+    state.soundboard.push({ id: soundId, name, url, playing: false, addedBy });
     if (slotIndex !== undefined && slotIndex >= 0 && slotIndex < state.soundboardSlots.length) {
       state.soundboardSlots[slotIndex] = soundId;
     }
+    return { ok: true, state };
+  }
+
+  /** Any player: put an existing sound on a wall button, or clear it (null). */
+  assignSoundboardSlot(
+    sessionId: string,
+    slotIndex: number,
+    soundId: string | null,
+  ): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    if (slotIndex < 0 || slotIndex >= state.soundboardSlots.length) {
+      return { ok: false, error: 'No such button.' };
+    }
+    if (soundId !== null && !state.soundboard.some((sound) => sound.id === soundId)) {
+      return { ok: false, error: 'Sound not found.' };
+    }
+    state.soundboardSlots[slotIndex] = soundId;
+    return { ok: true, state };
+  }
+
+  /** Whoever added a sound, or the host, can remove it — from the list and
+   * from every wall button showing it. */
+  removeSound(sessionId: string, actorId: string, soundId: string): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const sound = state.soundboard.find((candidate) => candidate.id === soundId);
+    if (!sound) {
+      return { ok: false, error: 'Sound not found.' };
+    }
+    if (sound.addedBy !== actorId && state.hostId !== actorId) {
+      return { ok: false, error: 'Only whoever added a sound, or the host, can remove it.' };
+    }
+    state.soundboard = state.soundboard.filter((candidate) => candidate.id !== soundId);
+    state.soundboardSlots = state.soundboardSlots.map((slot) => (slot === soundId ? null : slot));
     return { ok: true, state };
   }
 }

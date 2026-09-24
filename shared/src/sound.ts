@@ -55,6 +55,36 @@ export interface SoundUploadRequest {
 
 export type SoundUploadResponse = { ok: true; state: GameState } | { ok: false; error: string };
 
+/** Longest sound name the soundboard accepts (fits a wall-button label). */
+export const MAX_SOUND_NAME_LENGTH = 40;
+
+/**
+ * soundboard:assign — put an existing soundboard entry on a wall button,
+ * or clear the button (`soundId: null`). Open to any player, like the wall
+ * itself; ack + full broadcast.
+ */
+export interface SoundboardAssignRequest {
+  sessionId: string;
+  playerId: string;
+  slotIndex: number;
+  soundId: string | null;
+}
+
+export type SoundboardAssignResponse =
+  { ok: true; state: GameState } | { ok: false; error: string };
+
+/**
+ * sound:remove — delete an entry from the soundboard (and from any wall
+ * button showing it). Allowed for whoever added it, or the host.
+ */
+export interface SoundRemoveRequest {
+  sessionId: string;
+  playerId: string;
+  soundId: string;
+}
+
+export type SoundRemoveResponse = { ok: true; state: GameState } | { ok: false; error: string };
+
 /**
  * Request/response payload shapes for player:mute/player:unmute. Not purely
  * host-gated: a player can always mute/unmute *themselves* (self-service,
