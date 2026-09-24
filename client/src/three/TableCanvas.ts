@@ -6,11 +6,15 @@ import { computeCoverRect } from './imageFit.js';
  * (and the server's stroke-width bounds) is expressed in. Unchanged since
  * Milestone 5, so stored drawings and the wire format are unaffected. */
 export const TABLE_CANVAS_SIZE = 1024;
-/** Actual backing pixels per logical unit: the texture is rendered at 2x so
- * an uploaded map stays crisp on a 2m table viewed full-screen, not just the
- * strokes on top of it. */
-const RESOLUTION_SCALE = 2;
-const BACKGROUND_COLOR = '#e8dcc0'; // blank parchment — a scene with no backgroundImage yet
+/** The texture's actual pixel size — rendered at 2x the logical size so an
+ * uploaded map stays crisp on a 2m table viewed full-screen, not just the
+ * strokes on top of it. Also the resolution map images are baked at by the
+ * crop dialog, so they're drawn 1:1. */
+export const TABLE_TEXTURE_PIXELS = 2048;
+const RESOLUTION_SCALE = TABLE_TEXTURE_PIXELS / TABLE_CANVAS_SIZE;
+/** Blank parchment — the table with no map, and what shows around a map
+ * image that doesn't cover the whole table (see MapCropDialog). */
+export const TABLE_PARCHMENT = '#e8dcc0';
 
 export interface StrokeStyle {
   color: string;
@@ -85,7 +89,7 @@ export class TableCanvas {
     }
 
     this.lastPoint.clear();
-    this.ctx.fillStyle = BACKGROUND_COLOR;
+    this.ctx.fillStyle = TABLE_PARCHMENT;
     this.ctx.fillRect(0, 0, TABLE_CANVAS_SIZE, TABLE_CANVAS_SIZE);
     if (image) {
       // The crop dialog (MapCropDialog.tsx) already produces a square image

@@ -6,6 +6,18 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-24 — Map crop/preview dialog bakes the framing into the uploaded image; uploads named by validated type
+
+**Decided** (change request #2, second half).
+
+1. **The crop dialog outputs a finished square image** (2048 px JPEG, the table texture's native size) that goes through the existing upload + `scene:update` path — no crop parameters in shared state, no server change. Chosen over storing `{scale, x, y}` alongside the background URL: that would need a new state shape, validation, and every client re-deriving the framing, for no benefit (re-cropping just means opening the dialog on the original again). A pasted image link goes through the same dialog and is re-hosted as an upload, so the table no longer depends on the original site staying up (and the table's WebGL texture already required the image to be CORS-loadable).
+2. **Default framing is "fit whole image"** — the request's stated goal was that nothing important gets cut off; the empty area shows the same parchment as a blank table. "Fill table" and "Center" are one click away; zoom (logarithmic slider, or wheel anchored on the cursor) and drag-to-pan cover everything in between. Only uniform scaling exists, so aspect ratio is always preserved. The geometry is a pure, tested module (`client/src/mapFit.ts`).
+3. **Uploaded files are stored with an extension derived from their validated mimetype**, never the client's file name, and served with `X-Content-Type-Options: nosniff` — previously a file named `evil.html` declared as `image/png` would have been stored and served as HTML from the server's origin.
+
+**Verified:** `mapFit.test.ts` (8), `uploads.test.ts` (+1: `evil.html` declared as PNG is stored as `.png`, served as `image/png` with `nosniff`). Live (Chrome): a 1600×900 red/green/blue test image opened fitted with parchment letterboxing; confirming produced a table texture whose pixels match the source exactly (red 193,57,43 vs #c0392b; green 39,174,97 vs #27ae60; blue 41,127,184 vs #2980b9; parchment above/below), and the Map tab's thumbnail updated. 
+
+---
+
 ## 2026-09-24 — Room rework: square table, a furnished Blender room, gameplay geometry read from the model, true-color table surface
 
 **Decided** (change requests #2 and #4).

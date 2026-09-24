@@ -80,6 +80,22 @@ describe('Upload routes (Milestone 8)', () => {
     expect(served.status).toBe(200);
   });
 
+  it("names the stored file by its validated type, never the client's own file name", async () => {
+    // A file claiming to be a PNG but named like a web page must not be
+    // stored — and so served — as .html.
+    const response = await fetch(`${url}/uploads/images`, {
+      method: 'POST',
+      body: fileFormData(tinyPngBytes(), 'evil.html', 'image/png'),
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { url: string };
+    expect(body.url).toMatch(/\.png$/);
+
+    const served = await fetch(`${url}${body.url}`);
+    expect(served.headers.get('content-type')).toContain('image/png');
+    expect(served.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
   it('rejects an audio upload with a disallowed mime type', async () => {
     const response = await fetch(`${url}/uploads/sounds`, {
       method: 'POST',

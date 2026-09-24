@@ -11,17 +11,26 @@ const UPLOADS_ROOT = path.join(import.meta.dirname, '..', 'uploads');
 
 const IMAGE_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 const SOUND_MAX_BYTES = 8 * 1024 * 1024; // 8 MB
-const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
-const ALLOWED_AUDIO_TYPES = new Set([
-  'audio/mpeg',
-  'audio/wav',
-  'audio/x-wav',
-  'audio/ogg',
-  'audio/webm',
-  'audio/mp4',
-]);
+// Allowed mimetype -> the extension the stored file gets. The extension is
+// derived from the (allowlisted) type, never taken from the client's own
+// file name: `express.static` serves by extension, so "evil.html" declared
+// as image/png must not end up stored — and served — as HTML.
+const IMAGE_TYPES: Record<string, string> = {
+  'image/png': '.png',
+  'image/jpeg': '.jpg',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
+const AUDIO_TYPES: Record<string, string> = {
+  'audio/mpeg': '.mp3',
+  'audio/wav': '.wav',
+  'audio/x-wav': '.wav',
+  'audio/ogg': '.ogg',
+  'audio/webm': '.webm',
+  'audio/mp4': '.m4a',
+};
 
-function makeUpload(subdir: string, maxBytes: number, allowedTypes: Set<string>) {
+function makeUpload(subdir: string, maxBytes: number, types: Record<string, string>) {
   const dir = path.join(UPLOADS_ROOT, subdir);
   fs.mkdirSync(dir, { recursive: true });
 
@@ -29,13 +38,12 @@ function makeUpload(subdir: string, maxBytes: number, allowedTypes: Set<string>)
     storage: multer.diskStorage({
       destination: dir,
       filename: (_req, file, cb) => {
-        const ext = path.extname(file.originalname).slice(0, 10); // caps an absurd extension
-        cb(null, `${randomUUID()}${ext}`);
+        cb(null, `${randomUUID()}${types[file.mimetype] ?? ''}`);
       },
     }),
     limits: { fileSize: maxBytes },
     fileFilter: (_req, file, cb) => {
-      cb(null, allowedTypes.has(file.mimetype));
+      cb(null, file.mimetype in types);
     },
   });
 }
@@ -53,9 +61,18 @@ function makeUpload(subdir: string, maxBytes: number, allowedTypes: Set<string>)
  */
 export function registerUploadRoutes(app: Express): void {
   fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
-  app.use('/uploads', express.static(UPLOADS_ROOT));
+  app.use(
+    '/uploads',
+    express.static(UPLOADS_ROOT, {
+      setHeaders: (res) => {
+        // Belt and braces with the extension rule above: never let a
+        // browser second-guess an uploaded file's declared type.
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+      },
+    }),
+  );
 
-  const imageUpload = makeUpload('images', IMAGE_MAX_BYTES, ALLOWED_IMAGE_TYPES);
+  const imageUpload = makeUpload('images', IMAGE_MAX_BYTES, IMAGE_TYPES);
   app.post('/uploads/images', imageUpload.single('file'), (req, res) => {
     if (!req.file) {
       res
@@ -66,7 +83,7 @@ export function registerUploadRoutes(app: Express): void {
     res.json({ url: `/uploads/images/${req.file.filename}` });
   });
 
-  const soundUpload = makeUpload('sounds', SOUND_MAX_BYTES, ALLOWED_AUDIO_TYPES);
+  const soundUpload = makeUpload('sounds', SOUND_MAX_BYTES, AUDIO_TYPES);
   app.post('/uploads/sounds', soundUpload.single('file'), (req, res) => {
     if (!req.file) {
       res.status(400).json({ error: 'No valid audio file provided (mp3/wav/ogg/webm, max 8MB).' });

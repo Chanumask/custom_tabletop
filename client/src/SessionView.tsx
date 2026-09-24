@@ -10,6 +10,7 @@ import { ColorPicker } from './ColorPicker.js';
 import type { ToastKind } from './useToasts.js';
 import { uploadImage } from './uploads.js';
 import { AddSoundForm } from './AddSoundForm.js';
+import { MapCropDialog, type MapSource } from './MapCropDialog.js';
 import { SOUND_KIND_LABEL, soundKind } from './soundKind.js';
 import { useSettings } from './useSettings.js';
 import { formatKeyCode } from './keyLabel.js';
@@ -286,56 +287,71 @@ function MapTab({
   onSetMapBackground: (url: string) => void;
 }) {
   const activeScene = state.scenes.find((scene) => scene.id === state.activeSceneId);
-  const [backgroundUrl, setBackgroundUrl] = useState('');
-  const [mapUploadError, setMapUploadError] = useState<string | null>(null);
-  const [mapUploading, setMapUploading] = useState(false);
-
-  function handleSetMap(event: FormEvent) {
-    event.preventDefault();
-    onSetMapBackground(backgroundUrl.trim());
-  }
-
-  async function handleMapFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) {
-      return;
-    }
-    setMapUploading(true);
-    setMapUploadError(null);
-    try {
-      const url = await uploadImage(file);
-      onSetMapBackground(url);
-    } catch (error) {
-      setMapUploadError(error instanceof Error ? error.message : 'Upload failed.');
-    } finally {
-      setMapUploading(false);
-    }
-  }
+  const current = activeScene?.backgroundImage ?? '';
+  const [link, setLink] = useState('');
+  const [source, setSource] = useState<MapSource | null>(null);
 
   if (!isHost) {
     return <p className="tab-empty-note">Only the host can change the map.</p>;
   }
 
+  function handleFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) {
+      setSource({ kind: 'file', file });
+    }
+  }
+
+  function handleLink(event: FormEvent) {
+    event.preventDefault();
+    const trimmed = link.trim();
+    if (trimmed) {
+      setSource({ kind: 'url', url: trimmed });
+    }
+  }
+
+  async function handleConfirm(image: Blob) {
+    const url = await uploadImage(new File([image], 'map.jpg', { type: 'image/jpeg' }));
+    onSetMapBackground(url);
+    setSource(null);
+    setLink('');
+  }
+
   return (
     <div>
-      <form onSubmit={handleSetMap}>
+      <div className="map-current">
+        {current ? (
+          <img src={current} alt="Current map" className="map-thumb" />
+        ) : (
+          <div className="map-thumb map-thumb-empty">No map yet — blank parchment</div>
+        )}
+      </div>
+      <label className="file-label">
+        Upload a map image
+        <input type="file" accept="image/*" onChange={handleFile} />
+      </label>
+      <form onSubmit={handleLink}>
         <label>
-          Map background URL
+          or paste an image link
           <input
-            value={backgroundUrl}
-            onChange={(event) => setBackgroundUrl(event.target.value)}
-            placeholder={activeScene?.backgroundImage || 'leave blank for a plain map'}
+            value={link}
+            onChange={(event) => setLink(event.target.value)}
+            placeholder="https://…/map.png"
           />
         </label>
-        <button type="submit">Set map</button>
+        <button type="submit" disabled={!link.trim()}>
+          Preview
+        </button>
       </form>
-      <label>
-        or upload an image
-        <input type="file" accept="image/*" onChange={(event) => void handleMapFileChange(event)} />
-      </label>
-      {mapUploading && <p>Uploading map…</p>}
-      {mapUploadError && <p role="alert">{mapUploadError}</p>}
+      {current && (
+        <button type="button" onClick={() => onSetMapBackground('')}>
+          Clear map
+        </button>
+      )}
+      {source && (
+        <MapCropDialog source={source} onConfirm={handleConfirm} onCancel={() => setSource(null)} />
+      )}
     </div>
   );
 }
