@@ -13,6 +13,15 @@ export const SocketEvent = {
    * state actually reaches clients) — added in Milestone 2.
    */
   SessionState: 'session:state',
+  /** Host-only: hand the host role to another player. */
+  SessionTransferHost: 'session:transfer-host',
+  /**
+   * Server -> client, no payload: this connection's player identity was
+   * just claimed by a newer connection (the same tab reconnecting on a new
+   * socket, or a duplicated tab) — this socket no longer speaks for that
+   * player and should drop back to the join screen.
+   */
+  SessionReplaced: 'session:replaced',
 
   SceneCreate: 'scene:create',
   SceneChange: 'scene:change',

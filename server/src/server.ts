@@ -1,12 +1,14 @@
 import cors from 'cors';
 import express from 'express';
 import { createServer, type Server as HttpServer } from 'node:http';
-import { Server as SocketIoServer } from 'socket.io';
+import { Server as SocketIoServer, type Socket } from 'socket.io';
 import {
   ConnectionEvent,
+  SESSION_ENDED_ERROR,
   SocketEvent,
   type SessionJoinResponse,
   type SessionLeaveResponse,
+  type SessionTransferHostResponse,
   type SceneCreateResponse,
   type SceneChangeResponse,
   type SceneUpdateResponse,
@@ -23,6 +25,7 @@ import { SessionStore } from './sessionStore.js';
 import {
   parseSessionJoinRequest,
   parseSessionLeaveRequest,
+  parseSessionTransferHostRequest,
   parsePlayerMoveRequest,
   parseSceneCreateRequest,
   parseSceneChangeRequest,
@@ -47,12 +50,44 @@ export interface AppServer {
   io: SocketIoServer;
 }
 
+export interface AppServerOptions {
+  /** How long a dropped player keeps their spot (and shows as
+   * "reconnecting") before being removed as if they'd left. Long enough to
+   * ride out a reload or a network blip; short enough that a closed tab
+   * doesn't leave a ghost standing in the room. */
+  disconnectGraceMs?: number;
+}
+
+const DEFAULT_DISCONNECT_GRACE_MS = 45_000;
+
+/** Every acked event's rejection when the socket isn't joined to the
+ * payload's session as the payload's player — see `actsAs` below. */
+const NOT_JOINED_AS_PLAYER = 'Not joined to this session as that player.';
+
+interface SocketIdentity {
+  sessionId: string;
+  playerId: string;
+}
+
+function playerKey(sessionId: string, playerId: string): string {
+  return `${sessionId}\u0000${playerId}`;
+}
+
 /**
  * Builds (but does not start listening on) the Express + Socket.IO server.
  * Split out from src/index.ts so tests can spin up a real server on an
  * ephemeral port instead of mocking the transport.
+ *
+ * Identity model (docs/decisions.md, "identity binding"): a socket's player
+ * identity is fixed by its own successful `session:join` and remembered
+ * here, server-side. Every later event is checked against that binding —
+ * the `playerId`/`sessionId` fields inside a payload are never trusted on
+ * their own, since player ids are public (every client sees them in
+ * GameState) and a forged payload could otherwise claim to be the host.
  */
-export function createAppServer(): AppServer {
+export function createAppServer(options: AppServerOptions = {}): AppServer {
+  const disconnectGraceMs = options.disconnectGraceMs ?? DEFAULT_DISCONNECT_GRACE_MS;
+
   const app = express();
   app.use(cors());
 
@@ -68,9 +103,82 @@ export function createAppServer(): AppServer {
   });
 
   const sessions = new SessionStore();
+  /** socket.id -> the identity that socket joined as. */
+  const identities = new Map<string, SocketIdentity>();
+  /** playerKey -> the socket currently speaking for that player. */
+  const activeSocketByPlayer = new Map<string, string>();
+  /** playerKey -> pending "remove after the grace period" timer. */
+  const removalTimers = new Map<string, NodeJS.Timeout>();
+
+  const broadcastState = (sessionId: string) => {
+    const state = sessions.get(sessionId);
+    if (state) {
+      io.to(sessionId).emit(SocketEvent.SessionState, state);
+    }
+  };
+
+  const cancelRemoval = (key: string) => {
+    const timer = removalTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      removalTimers.delete(key);
+    }
+  };
+
+  /** Stops `socket` speaking for whatever player it was bound to. With
+   * `markAway`, the player also shows as disconnected and is scheduled for
+   * removal after the grace period (a dropped connection) — without it, the
+   * caller is handling the player's fate itself (an explicit leave). */
+  const unbind = (socket: Socket, markAway: boolean) => {
+    const identity = identities.get(socket.id);
+    identities.delete(socket.id);
+    if (!identity) {
+      return;
+    }
+    socket.leave(identity.sessionId);
+
+    const key = playerKey(identity.sessionId, identity.playerId);
+    if (activeSocketByPlayer.get(key) !== socket.id) {
+      return; // already superseded by a newer connection for the same player
+    }
+    activeSocketByPlayer.delete(key);
+    if (!markAway) {
+      return;
+    }
+
+    if (sessions.setConnected(identity.sessionId, identity.playerId, false)) {
+      broadcastState(identity.sessionId);
+    }
+    cancelRemoval(key);
+    const timer = setTimeout(() => {
+      removalTimers.delete(key);
+      const result = sessions.removeIfDisconnected(identity.sessionId, identity.playerId);
+      if (result.removed) {
+        broadcastState(identity.sessionId);
+      }
+    }, disconnectGraceMs);
+    timer.unref();
+    removalTimers.set(key, timer);
+  };
+
+  http.on('close', () => {
+    removalTimers.forEach((timer) => clearTimeout(timer));
+    removalTimers.clear();
+  });
 
   io.on('connection', (socket) => {
     console.log(`[socket] connected: ${socket.id}`);
+
+    /** Whether this socket joined `sessionId` as `playerId`. */
+    const actsAs = (sessionId: string, playerId: string): boolean => {
+      const identity = identities.get(socket.id);
+      return identity?.sessionId === sessionId && identity.playerId === playerId;
+    };
+    /** Identity for events whose payload carries no playerId. */
+    const playerIn = (sessionId: string): string | null => {
+      const identity = identities.get(socket.id);
+      return identity?.sessionId === sessionId ? identity.playerId : null;
+    };
 
     socket.on(ConnectionEvent.Ping, (payload: unknown) => {
       socket.emit(ConnectionEvent.Pong, payload);
@@ -81,11 +189,51 @@ export function createAppServer(): AppServer {
       (payload: unknown, ack?: (response: SessionJoinResponse) => void) => {
         const request = parseSessionJoinRequest(payload);
         if (!request) {
-          ack?.({ ok: false, error: 'sessionId, playerId, and playerName are required.' });
+          ack?.({
+            ok: false,
+            error: 'sessionId, playerId, playerName, and playerToken are required.',
+          });
+          return;
+        }
+        if (request.resume && !sessions.get(request.sessionId)) {
+          ack?.({ ok: false, error: SESSION_ENDED_ERROR });
+          return;
+        }
+        if (!sessions.authorizeJoin(request.sessionId, request.playerId, request.playerToken)) {
+          ack?.({ ok: false, error: 'That player identity belongs to someone else.' });
           return;
         }
 
-        const state = sessions.join(request.sessionId, request.playerId, request.playerName);
+        // Switching sessions (or re-sending join on the same socket) —
+        // release whatever this socket spoke for before.
+        const previous = identities.get(socket.id);
+        if (
+          previous &&
+          (previous.sessionId !== request.sessionId || previous.playerId !== request.playerId)
+        ) {
+          unbind(socket, true);
+        }
+
+        // A newer connection for the same player takes over from an older
+        // one (the same tab on a fresh socket, or a duplicated tab).
+        const key = playerKey(request.sessionId, request.playerId);
+        const supersededId = activeSocketByPlayer.get(key);
+        if (supersededId && supersededId !== socket.id) {
+          identities.delete(supersededId);
+          const superseded = io.sockets.sockets.get(supersededId);
+          superseded?.leave(request.sessionId);
+          superseded?.emit(SocketEvent.SessionReplaced);
+        }
+        cancelRemoval(key);
+
+        const state = sessions.join(
+          request.sessionId,
+          request.playerId,
+          request.playerName,
+          request.playerToken,
+        );
+        identities.set(socket.id, { sessionId: request.sessionId, playerId: request.playerId });
+        activeSocketByPlayer.set(key, socket.id);
         socket.join(request.sessionId);
 
         ack?.({ ok: true, state });
@@ -101,13 +249,43 @@ export function createAppServer(): AppServer {
           ack?.({ ok: false, error: 'sessionId and playerId are required.' });
           return;
         }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
 
+        unbind(socket, false);
+        cancelRemoval(playerKey(request.sessionId, request.playerId));
         const state = sessions.leave(request.sessionId, request.playerId);
-        socket.leave(request.sessionId);
         ack?.({ ok: true });
 
         if (state) {
           io.to(request.sessionId).emit(SocketEvent.SessionState, state);
+        }
+      },
+    );
+
+    socket.on(
+      SocketEvent.SessionTransferHost,
+      (payload: unknown, ack?: (response: SessionTransferHostResponse) => void) => {
+        const request = parseSessionTransferHostRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and targetPlayerId are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+
+        const result = sessions.transferHost(
+          request.sessionId,
+          request.playerId,
+          request.targetPlayerId,
+        );
+        ack?.(result);
+        if (result.ok) {
+          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
         }
       },
     );
@@ -118,7 +296,7 @@ export function createAppServer(): AppServer {
     // "Performance") rather than round-tripped or folded into session:state.
     socket.on(SocketEvent.PlayerMove, (payload: unknown) => {
       const request = parsePlayerMoveRequest(payload);
-      if (!request) {
+      if (!request || !actsAs(request.sessionId, request.playerId)) {
         return;
       }
 
@@ -144,6 +322,10 @@ export function createAppServer(): AppServer {
           ack?.({ ok: false, error: 'sessionId, playerId, sceneId, and name are required.' });
           return;
         }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
 
         const result = sessions.createScene(
           request.sessionId,
@@ -167,6 +349,10 @@ export function createAppServer(): AppServer {
           ack?.({ ok: false, error: 'sessionId, playerId, and sceneId are required.' });
           return;
         }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
 
         const result = sessions.changeScene(request.sessionId, request.playerId, request.sceneId);
         ack?.(result);
@@ -187,6 +373,10 @@ export function createAppServer(): AppServer {
           });
           return;
         }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
 
         const result = sessions.updateScene(request.sessionId, request.playerId, request.sceneId, {
           name: request.name,
@@ -204,7 +394,7 @@ export function createAppServer(): AppServer {
     // "Performance"). Not host-gated: any player can draw.
     socket.on(SocketEvent.DrawingStart, (payload: unknown) => {
       const request = parseDrawingStartRequest(payload);
-      if (!request) {
+      if (!request || !actsAs(request.sessionId, request.playerId)) {
         return;
       }
 
@@ -224,7 +414,8 @@ export function createAppServer(): AppServer {
 
     socket.on(SocketEvent.DrawingUpdate, (payload: unknown) => {
       const request = parseDrawingUpdateRequest(payload);
-      if (!request) {
+      const actorId = request ? playerIn(request.sessionId) : null;
+      if (!request || !actorId) {
         return;
       }
 
@@ -232,6 +423,7 @@ export function createAppServer(): AppServer {
         request.sessionId,
         request.drawingId,
         request.point,
+        actorId,
       );
       if (updated) {
         socket.to(request.sessionId).emit(SocketEvent.DrawingUpdate, request);
@@ -240,7 +432,7 @@ export function createAppServer(): AppServer {
 
     socket.on(SocketEvent.DrawingEnd, (payload: unknown) => {
       const request = parseDrawingEndRequest(payload);
-      if (!request || !sessions.get(request.sessionId)) {
+      if (!request || !playerIn(request.sessionId)) {
         return;
       }
 
@@ -249,7 +441,7 @@ export function createAppServer(): AppServer {
 
     socket.on(SocketEvent.DrawingDelete, (payload: unknown) => {
       const request = parseDrawingDeleteRequest(payload);
-      if (!request) {
+      if (!request || !playerIn(request.sessionId)) {
         return;
       }
 
@@ -269,6 +461,10 @@ export function createAppServer(): AppServer {
         const request = parseDiceSpawnRequest(payload);
         if (!request) {
           ack?.({ ok: false, error: 'sessionId, playerId, diceId, and position are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
           return;
         }
 
@@ -293,6 +489,10 @@ export function createAppServer(): AppServer {
           ack?.({ ok: false, error: 'sessionId, playerId, and diceId are required.' });
           return;
         }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
 
         const result = sessions.rollDice(request.sessionId, request.diceId);
         ack?.(result);
@@ -308,6 +508,10 @@ export function createAppServer(): AppServer {
         const request = parseDiceRemoveRequest(payload);
         if (!request) {
           ack?.({ ok: false, error: 'sessionId, playerId, and diceId are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
           return;
         }
 
@@ -334,8 +538,8 @@ export function createAppServer(): AppServer {
           ack?.({ ok: false, error: 'sessionId, playerId, and soundId are required.' });
           return;
         }
-        if (!sessions.get(request.sessionId)) {
-          ack?.({ ok: false, error: 'Session not found.' });
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
           return;
         }
         if (!sessions.hasSound(request.sessionId, request.soundId)) {
@@ -361,6 +565,10 @@ export function createAppServer(): AppServer {
         const request = parseSoundUploadRequest(payload);
         if (!request) {
           ack?.({ ok: false, error: 'sessionId, playerId, soundId, name, and url are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
           return;
         }
 
@@ -389,6 +597,10 @@ export function createAppServer(): AppServer {
           ack?.({ ok: false, error: 'sessionId, playerId, and targetPlayerId are required.' });
           return;
         }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
 
         const result = sessions.setMuted(
           request.sessionId,
@@ -409,6 +621,10 @@ export function createAppServer(): AppServer {
         const request = parsePlayerUnmuteRequest(payload);
         if (!request) {
           ack?.({ ok: false, error: 'sessionId, playerId, and targetPlayerId are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
           return;
         }
 
@@ -438,6 +654,10 @@ export function createAppServer(): AppServer {
           ack?.({ ok: false, error: 'sessionId, playerId, and objectId are required.' });
           return;
         }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
 
         let result: ObjectInteractResponse;
         switch (request.objectId) {
@@ -460,10 +680,10 @@ export function createAppServer(): AppServer {
 
     socket.on('disconnect', (reason) => {
       console.log(`[socket] disconnected: ${socket.id} (${reason})`);
-      // No session cleanup here, by design: a dropped connection keeps its
-      // Player record in the session so the same identity (a client-side
-      // playerId) can rejoin later without creating a duplicate. See
-      // docs/decisions.md ("disconnect vs. explicit leave").
+      // A dropped connection doesn't remove the player immediately — they
+      // show as "reconnecting" and keep their spot for the grace period, so
+      // a reload or network blip rejoins seamlessly (docs/decisions.md).
+      unbind(socket, true);
     });
   });
 

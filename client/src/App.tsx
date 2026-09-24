@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import {
+  SESSION_ENDED_ERROR,
   SocketEvent,
   type GameState,
   type SessionJoinResponse,
   type SessionLeaveResponse,
-  type SceneUpdateResponse,
-  type DiceSpawnResponse,
-  type DiceRollResponse,
-  type DiceRemoveResponse,
   type SoundPlayRequest,
-  type SoundPlayResponse,
-  type SoundUploadResponse,
-  type PlayerMuteResponse,
-  type PlayerUnmuteResponse,
-  type ObjectInteractResponse,
 } from '@custom-tabletop/shared';
 import { createSocket } from './socket.js';
 import { connectionStatusLabel, type ConnectionStatus } from './connectionStatus.js';
-import { getOrCreatePlayerId } from './playerIdentity.js';
+import { getOrCreatePlayerId, getOrCreatePlayerToken } from './playerIdentity.js';
+import {
+  clearLastJoin,
+  loadLastJoin,
+  loadRememberedName,
+  rememberName,
+  saveLastJoin,
+  type JoinIntent,
+} from './joinMemory.js';
 import { JoinForm } from './JoinForm.js';
 import { SessionView } from './SessionView.js';
 import { RoomView } from './three/RoomView.js';
@@ -28,25 +28,27 @@ import { randomDiceSpawnPosition } from './diceSpawn.js';
 import { playSound, setMasterVolume } from './sounds.js';
 import { useSettings } from './useSettings.js';
 
-interface JoinIntent {
-  playerName: string;
-  sessionId: string;
-}
+type AckResponse = { ok: true } | { ok: false; error: string };
 
 export function App() {
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
-  // Set once a join succeeds; re-used to auto-rejoin after a reconnect
-  // (dropped tab/network blip), not just on the user's first submit.
-  const lastJoinRef = useRef<JoinIntent | null>(null);
+  // Set once a join succeeds (and persisted per tab, see joinMemory.ts);
+  // re-used to auto-rejoin after a reconnect or a page reload, not just on
+  // the user's first submit.
+  const lastJoinRef = useRef<JoinIntent | null>(loadLastJoin(window.sessionStorage));
+  // True while an automatic rejoin is in flight, so a reload shows
+  // "rejoining…" instead of flashing the join form.
+  const [rejoining, setRejoining] = useState(() => lastJoinRef.current !== null);
   // Mirrors `gameState` for the SoundPlay listener below, which is registered
   // once inside the mount effect and would otherwise close over a stale
   // (possibly null, possibly outdated) gameState when a sound:play broadcast
   // arrives later — including for sounds uploaded after that closure formed.
   const gameStateRef = useRef<GameState | null>(null);
   const [playerId] = useState(() => getOrCreatePlayerId(window.sessionStorage));
+  const [playerToken] = useState(() => getOrCreatePlayerToken(window.sessionStorage));
   const { settings } = useSettings();
 
   useEffect(() => {
@@ -60,23 +62,43 @@ export function App() {
     setMasterVolume(settings.masterVolume);
   }, [settings.masterVolume]);
 
+  const forgetSession = useCallback((error: string | null) => {
+    lastJoinRef.current = null;
+    clearLastJoin(window.sessionStorage);
+    setGameState(null);
+    setRejoining(false);
+    setJoinError(error);
+  }, []);
+
+  /** `resume`: an automatic rejoin (reload/reconnect) — must not recreate a
+   * session that has since ended (see SessionJoinRequest.resume). */
   const joinSession = useCallback(
-    (socket: Socket, playerName: string, sessionId: string) => {
+    (socket: Socket, playerName: string, sessionId: string, resume: boolean) => {
       setJoinError(null);
       socket.emit(
         SocketEvent.SessionJoin,
-        { sessionId, playerId, playerName },
+        { sessionId, playerId, playerName, playerToken, resume },
         (response: SessionJoinResponse) => {
+          setRejoining(false);
           if (response.ok) {
-            lastJoinRef.current = { playerName, sessionId };
+            const intent = { playerName, sessionId };
+            lastJoinRef.current = intent;
+            saveLastJoin(window.sessionStorage, intent);
+            rememberName(window.localStorage, playerName);
             setGameState(response.state);
+          } else if (resume) {
+            forgetSession(
+              response.error === SESSION_ENDED_ERROR
+                ? `Session ${sessionId} has ended — host a new one or join another.`
+                : response.error,
+            );
           } else {
             setJoinError(response.error);
           }
         },
       );
     },
-    [playerId],
+    [playerId, playerToken, forgetSession],
   );
 
   useEffect(() => {
@@ -87,12 +109,20 @@ export function App() {
       setStatus('connected');
       const lastJoin = lastJoinRef.current;
       if (lastJoin) {
-        joinSession(socket, lastJoin.playerName, lastJoin.sessionId);
+        joinSession(socket, lastJoin.playerName, lastJoin.sessionId, true);
       }
     });
 
     socket.on(SocketEvent.SessionState, (state: GameState) => {
       setGameState((current) => (current?.sessionId === state.sessionId ? state : current));
+    });
+
+    // This tab's player identity was claimed by a newer connection (a
+    // duplicated tab sharing the same sessionStorage, typically) — this tab
+    // no longer speaks for that player, so it drops back to the join screen
+    // instead of silently sending events the server now ignores.
+    socket.on(SocketEvent.SessionReplaced, () => {
+      forgetSession('You joined this session from another tab, so this one was disconnected.');
     });
 
     // Every client — including the host who triggered it — plays the sound
@@ -114,11 +144,29 @@ export function App() {
     return () => {
       socket.disconnect();
     };
-  }, [joinSession]);
+  }, [joinSession, forgetSession]);
+
+  /** Emits a session-scoped action (sessionId + playerId filled in) and logs
+   * a rejection — the shared shape of every ack'd request below. */
+  function sendAction(event: string, fields: Record<string, unknown>, failure: string) {
+    const socket = socketRef.current;
+    if (!socket || !gameState) {
+      return;
+    }
+    socket.emit(
+      event,
+      { sessionId: gameState.sessionId, playerId, ...fields },
+      (response: AckResponse) => {
+        if (!response.ok) {
+          console.error(`${failure}:`, response.error);
+        }
+      },
+    );
+  }
 
   function handleJoin(playerName: string, sessionId: string) {
     if (socketRef.current) {
-      joinSession(socketRef.current, playerName, sessionId);
+      joinSession(socketRef.current, playerName, sessionId, false);
     }
   }
 
@@ -135,181 +183,59 @@ export function App() {
         if (!response.ok) {
           console.error('Failed to leave session:', response.error);
         }
-        lastJoinRef.current = null;
-        setGameState(null);
+        forgetSession(null);
       },
     );
   }
 
-  function handleSetMapBackground(backgroundImage: string) {
-    const socket = socketRef.current;
-    if (!socket || !gameState) {
-      return;
-    }
-
-    socket.emit(
+  const handleSetMapBackground = (backgroundImage: string) =>
+    sendAction(
       SocketEvent.SceneUpdate,
-      {
-        sessionId: gameState.sessionId,
-        playerId,
-        sceneId: gameState.activeSceneId,
-        backgroundImage,
-      },
-      (response: SceneUpdateResponse) => {
-        if (!response.ok) {
-          console.error('Failed to update the map:', response.error);
-        }
-      },
+      { sceneId: gameState?.activeSceneId, backgroundImage },
+      'Failed to update the map',
     );
-  }
 
-  function handleSpawnDie() {
-    const socket = socketRef.current;
-    if (!socket || !gameState) {
-      return;
-    }
-
-    socket.emit(
+  const handleSpawnDie = () =>
+    sendAction(
       SocketEvent.DiceSpawn,
       {
-        sessionId: gameState.sessionId,
-        playerId,
         diceId: crypto.randomUUID(),
         position: randomDiceSpawnPosition(PLACEHOLDER_ROOM_LAYOUT, DIE_SIZE),
       },
-      (response: DiceSpawnResponse) => {
-        if (!response.ok) {
-          console.error('Failed to spawn a die:', response.error);
-        }
-      },
+      'Failed to spawn a die',
     );
-  }
 
-  function handleRollDie(diceId: string) {
-    const socket = socketRef.current;
-    if (!socket || !gameState) {
-      return;
-    }
+  const handleRollDie = (diceId: string) =>
+    sendAction(SocketEvent.DiceRoll, { diceId }, 'Failed to roll the die');
 
-    socket.emit(
-      SocketEvent.DiceRoll,
-      { sessionId: gameState.sessionId, playerId, diceId },
-      (response: DiceRollResponse) => {
-        if (!response.ok) {
-          console.error('Failed to roll the die:', response.error);
-        }
-      },
-    );
-  }
+  const handleRemoveDie = (diceId: string) =>
+    sendAction(SocketEvent.DiceRemove, { diceId }, 'Failed to remove the die');
 
-  function handleRemoveDie(diceId: string) {
-    const socket = socketRef.current;
-    if (!socket || !gameState) {
-      return;
-    }
+  const handlePlaySound = (soundId: string) =>
+    sendAction(SocketEvent.SoundPlay, { soundId }, 'Failed to play sound');
 
-    socket.emit(
-      SocketEvent.DiceRemove,
-      { sessionId: gameState.sessionId, playerId, diceId },
-      (response: DiceRemoveResponse) => {
-        if (!response.ok) {
-          console.error('Failed to remove the die:', response.error);
-        }
-      },
-    );
-  }
-
-  function handlePlaySound(soundId: string) {
-    const socket = socketRef.current;
-    if (!socket || !gameState) {
-      return;
-    }
-
-    socket.emit(
-      SocketEvent.SoundPlay,
-      { sessionId: gameState.sessionId, playerId, soundId },
-      (response: SoundPlayResponse) => {
-        if (!response.ok) {
-          console.error('Failed to play sound:', response.error);
-        }
-      },
-    );
-  }
-
-  function handleUploadSound(name: string, url: string, slotIndex?: number) {
-    const socket = socketRef.current;
-    if (!socket || !gameState) {
-      return;
-    }
-
-    socket.emit(
+  const handleUploadSound = (name: string, url: string, slotIndex?: number) =>
+    sendAction(
       SocketEvent.SoundUpload,
-      {
-        sessionId: gameState.sessionId,
-        playerId,
-        soundId: crypto.randomUUID(),
-        name,
-        url,
-        slotIndex,
-      },
-      (response: SoundUploadResponse) => {
-        if (!response.ok) {
-          console.error('Failed to upload sound:', response.error);
-        }
-      },
+      { soundId: crypto.randomUUID(), name, url, slotIndex },
+      'Failed to upload sound',
     );
-  }
 
-  function handleObjectInteract(objectId: string) {
-    const socket = socketRef.current;
-    if (!socket || !gameState) {
-      return;
-    }
+  const handleObjectInteract = (objectId: string) =>
+    sendAction(SocketEvent.ObjectInteract, { objectId }, 'Failed to interact');
 
-    socket.emit(
-      SocketEvent.ObjectInteract,
-      { sessionId: gameState.sessionId, playerId, objectId },
-      (response: ObjectInteractResponse) => {
-        if (!response.ok) {
-          console.error('Failed to interact:', response.error);
-        }
-      },
+  const handleMutePlayer = (targetPlayerId: string) =>
+    sendAction(SocketEvent.PlayerMute, { targetPlayerId }, 'Failed to mute player');
+
+  const handleUnmutePlayer = (targetPlayerId: string) =>
+    sendAction(SocketEvent.PlayerUnmute, { targetPlayerId }, 'Failed to unmute player');
+
+  const handleTransferHost = (targetPlayerId: string) =>
+    sendAction(
+      SocketEvent.SessionTransferHost,
+      { targetPlayerId },
+      'Failed to hand over the host role',
     );
-  }
-
-  function handleMutePlayer(targetPlayerId: string) {
-    const socket = socketRef.current;
-    if (!socket || !gameState) {
-      return;
-    }
-
-    socket.emit(
-      SocketEvent.PlayerMute,
-      { sessionId: gameState.sessionId, playerId, targetPlayerId },
-      (response: PlayerMuteResponse) => {
-        if (!response.ok) {
-          console.error('Failed to mute player:', response.error);
-        }
-      },
-    );
-  }
-
-  function handleUnmutePlayer(targetPlayerId: string) {
-    const socket = socketRef.current;
-    if (!socket || !gameState) {
-      return;
-    }
-
-    socket.emit(
-      SocketEvent.PlayerUnmute,
-      { sessionId: gameState.sessionId, playerId, targetPlayerId },
-      (response: PlayerUnmuteResponse) => {
-        if (!response.ok) {
-          console.error('Failed to unmute player:', response.error);
-        }
-      },
-    );
-  }
 
   const activeScene = gameState?.scenes.find((scene) => scene.id === gameState.activeSceneId);
 
@@ -331,21 +257,25 @@ export function App() {
           onObjectInteract={handleObjectInteract}
           onUploadSound={handleUploadSound}
         />
-        <div className="session-overlay">
-          <SessionView
-            state={gameState}
-            playerId={playerId}
-            onLeave={handleLeave}
-            onSetMapBackground={handleSetMapBackground}
-            onSpawnDie={handleSpawnDie}
-            onRollDie={handleRollDie}
-            onRemoveDie={handleRemoveDie}
-            onPlaySound={handlePlaySound}
-            onUploadSound={handleUploadSound}
-            onMutePlayer={handleMutePlayer}
-            onUnmutePlayer={handleUnmutePlayer}
-          />
-        </div>
+        <SessionView
+          state={gameState}
+          playerId={playerId}
+          onLeave={handleLeave}
+          onSetMapBackground={handleSetMapBackground}
+          onSpawnDie={handleSpawnDie}
+          onRollDie={handleRollDie}
+          onRemoveDie={handleRemoveDie}
+          onPlaySound={handlePlaySound}
+          onUploadSound={handleUploadSound}
+          onMutePlayer={handleMutePlayer}
+          onUnmutePlayer={handleUnmutePlayer}
+          onTransferHost={handleTransferHost}
+        />
+        {status !== 'connected' && (
+          <div className="connection-banner" role="status">
+            Connection lost — reconnecting…
+          </div>
+        )}
       </main>
     );
   }
@@ -353,8 +283,24 @@ export function App() {
   return (
     <main className="pre-join">
       <h1>Custom Tabletop</h1>
-      <p>{connectionStatusLabel(status)}</p>
-      <JoinForm disabled={status !== 'connected'} error={joinError} onJoin={handleJoin} />
+      <p>
+        {rejoining && lastJoinRef.current
+          ? `Rejoining session ${lastJoinRef.current.sessionId}…`
+          : connectionStatusLabel(status)}
+      </p>
+      {rejoining && (
+        <button type="button" onClick={() => forgetSession(null)}>
+          Cancel
+        </button>
+      )}
+      {!rejoining && (
+        <JoinForm
+          disabled={status !== 'connected'}
+          error={joinError}
+          initialName={loadRememberedName(window.localStorage)}
+          onJoin={handleJoin}
+        />
+      )}
     </main>
   );
 }

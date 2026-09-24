@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import { SocketEvent, type SessionJoinResponse } from '@custom-tabletop/shared';
+import { withTestToken } from './testSupport.js';
 import { createAppServer, type AppServer } from './server.js';
 
 function joinAck(client: ClientSocket, payload: unknown): Promise<SessionJoinResponse> {
-  return new Promise((resolve) => client.emit(SocketEvent.SessionJoin, payload, resolve));
+  return new Promise((resolve) =>
+    client.emit(SocketEvent.SessionJoin, withTestToken(payload), resolve),
+  );
 }
 
 function connect(url: string): Promise<ClientSocket> {

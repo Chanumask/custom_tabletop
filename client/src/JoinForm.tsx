@@ -4,11 +4,13 @@ import { generateSessionCode } from './sessionCode.js';
 export interface JoinFormProps {
   disabled: boolean;
   error: string | null;
+  /** Pre-filled so a returning player doesn't retype their name. */
+  initialName: string;
   onJoin: (playerName: string, sessionId: string) => void;
 }
 
-export function JoinForm({ disabled, error, onJoin }: JoinFormProps) {
-  const [name, setName] = useState('');
+export function JoinForm({ disabled, error, initialName, onJoin }: JoinFormProps) {
+  const [name, setName] = useState(initialName);
   const [sessionId, setSessionId] = useState('');
 
   function handleSubmit(event: FormEvent) {

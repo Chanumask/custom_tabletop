@@ -99,6 +99,13 @@ export interface Player {
    * client/src/three/PlayerAvatars.ts), not a position change: the server
    * never moves a seated player's `position`. */
   seated: boolean;
+
+  /** Live presence: false while this player's connection is dropped but
+   * still inside the server's reconnect grace period (a reload, a network
+   * blip). Everyone else sees them as "reconnecting" instead of a frozen,
+   * silently-present ghost; if the grace period runs out they're removed
+   * from the session exactly as if they'd left (see docs/decisions.md). */
+  connected: boolean;
 }
 
 export interface Scene {

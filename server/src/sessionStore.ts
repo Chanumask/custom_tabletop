@@ -31,12 +31,30 @@ export type GameStateMutationResult = { ok: true; state: GameState } | { ok: fal
  *   at a departed player, and callers must treat that as "no active host"
  *   rather than assume it always resolves to a real player.
  * - Rejoining with a playerId already in the session is a no-op merge, not
- *   a duplicate — this is what makes reconnect work.
+ *   a duplicate — this is what makes reconnect work. Because playerIds are
+ *   public (broadcast in every GameState), a rejoin must also present the
+ *   same secret credential the player first joined with (`authorizeJoin`),
+ *   kept here — never in GameState, so it's never broadcast.
+ * - When the host leaves, the host role passes to the longest-present
+ *   remaining player (preferring a connected one) rather than dangling at
+ *   an absent id with nobody able to perform host actions.
  */
 export class SessionStore {
   private sessions = new Map<string, GameState>();
+  /** sessionId -> playerId -> the secret credential that player joined with. */
+  private credentials = new Map<string, Map<string, string>>();
 
-  join(sessionId: string, playerId: string, playerName: string): GameState {
+  /** Whether `credential` may (re)join `sessionId` as `playerId`: always true
+   * for a brand-new player id, and for an existing one only with the same
+   * credential it originally joined with. A player joined without any
+   * credential (only possible via direct store calls, e.g. unit tests) has
+   * nothing to check against and is allowed. */
+  authorizeJoin(sessionId: string, playerId: string, credential: string): boolean {
+    const known = this.credentials.get(sessionId)?.get(playerId);
+    return known === undefined || known === credential;
+  }
+
+  join(sessionId: string, playerId: string, playerName: string, credential?: string): GameState {
     let state = this.sessions.get(sessionId);
 
     if (!state) {
@@ -44,12 +62,25 @@ export class SessionStore {
       this.sessions.set(sessionId, state);
     }
 
-    const alreadyPresent = state.players.some((player) => player.id === playerId);
-    if (!alreadyPresent) {
+    const existing = state.players.find((player) => player.id === playerId);
+    if (existing) {
+      existing.connected = true;
+    } else {
       state.players.push(createPlayer(playerId, playerName));
     }
     // Rejoining with the same playerId intentionally doesn't rename the
-    // existing Player record — name changes aren't a Milestone-2 concern.
+    // existing Player record — renaming is its own explicit action.
+
+    if (credential !== undefined) {
+      let sessionCredentials = this.credentials.get(sessionId);
+      if (!sessionCredentials) {
+        sessionCredentials = new Map();
+        this.credentials.set(sessionId, sessionCredentials);
+      }
+      if (!sessionCredentials.has(playerId)) {
+        sessionCredentials.set(playerId, credential);
+      }
+    }
 
     return state;
   }
@@ -62,13 +93,69 @@ export class SessionStore {
     }
 
     state.players = state.players.filter((player) => player.id !== playerId);
+    this.credentials.get(sessionId)?.delete(playerId);
 
     if (state.players.length === 0) {
       this.sessions.delete(sessionId);
+      this.credentials.delete(sessionId);
       return undefined;
     }
 
+    if (state.hostId === playerId) {
+      const successor = state.players.find((player) => player.connected) ?? state.players[0]!;
+      state.hostId = successor.id;
+    }
+
     return state;
+  }
+
+  /** Marks a player's live presence (see `Player.connected`). Returns the
+   * new state, or undefined for an unknown session/player. */
+  setConnected(sessionId: string, playerId: string, connected: boolean): GameState | undefined {
+    const state = this.sessions.get(sessionId);
+    const player = state?.players.find((candidate) => candidate.id === playerId);
+    if (!state || !player) {
+      return undefined;
+    }
+    player.connected = connected;
+    return state;
+  }
+
+  /** The end of a reconnect grace period: removes the player exactly like
+   * `leave` would, but only if they're *still* disconnected — a player who
+   * came back in the meantime is left alone. `removed: false` means nothing
+   * changed. */
+  removeIfDisconnected(
+    sessionId: string,
+    playerId: string,
+  ): { removed: boolean; state: GameState | undefined } {
+    const player = this.sessions
+      .get(sessionId)
+      ?.players.find((candidate) => candidate.id === playerId);
+    if (!player || player.connected) {
+      return { removed: false, state: this.sessions.get(sessionId) };
+    }
+    return { removed: true, state: this.leave(sessionId, playerId) };
+  }
+
+  /** Host-only: hands the host role to another player in the session. */
+  transferHost(
+    sessionId: string,
+    actorId: string,
+    targetPlayerId: string,
+  ): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    if (state.hostId !== actorId) {
+      return { ok: false, error: 'Only the host can hand over the host role.' };
+    }
+    if (!state.players.some((player) => player.id === targetPlayerId)) {
+      return { ok: false, error: 'Player not found.' };
+    }
+    state.hostId = targetPlayerId;
+    return { ok: true, state };
   }
 
   get(sessionId: string): GameState | undefined {
@@ -191,13 +278,20 @@ export class SessionStore {
 
   /** Appends a point to an in-progress stroke. Returns false (no-op) if the
    * drawingId isn't found — a late point for an already-deleted stroke is a
-   * normal race, not an error. */
-  appendDrawingPoint(sessionId: string, drawingId: string, point: Point2D): boolean {
+   * normal race, not an error — or if `actorId` isn't the stroke's own
+   * author (only the player drawing a stroke can extend it; erasing any
+   * stroke stays open to everyone via `deleteDrawing`). */
+  appendDrawingPoint(
+    sessionId: string,
+    drawingId: string,
+    point: Point2D,
+    actorId: string,
+  ): boolean {
     const state = this.sessions.get(sessionId);
     const drawing = state?.scenes
       .flatMap((scene) => scene.drawings)
       .find((candidate) => candidate.id === drawingId);
-    if (!drawing) {
+    if (!drawing || drawing.playerId !== actorId) {
       return false;
     }
 
@@ -405,5 +499,6 @@ function createPlayer(id: string, name: string): Player {
     rotationY: 0,
     muted: false,
     seated: false,
+    connected: true,
   };
 }

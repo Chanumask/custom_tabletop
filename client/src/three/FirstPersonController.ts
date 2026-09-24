@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { resolveMovement, type RoomBounds, type TableBounds } from './collision.js';
 import { PLAYER_RADIUS } from './RoomLayout.js';
+import { isTypingTarget } from '../keyboard.js';
 
 const MOVE_SPEED = 3; // metres/second, walking pace
 
@@ -50,11 +51,22 @@ export class FirstPersonController {
   private standingState: { position: THREE.Vector3; quaternion: THREE.Quaternion } | null = null;
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    if (isTypingTarget(event.target)) {
+      return; // typing "w" into a text field must not queue up a walk
+    }
     this.pressedKeys.add(event.code);
   };
 
   private readonly handleKeyUp = (event: KeyboardEvent): void => {
     this.pressedKeys.delete(event.code);
+  };
+
+  // A key held while focus leaves the page (alt-tab, clicking into another
+  // window) never gets its keyup here, which would otherwise leave the
+  // player walking on their own after they come back. Same on releasing
+  // pointer lock: whatever was held stops counting.
+  private readonly releaseAllKeys = (): void => {
+    this.pressedKeys.clear();
   };
 
   constructor(options: FirstPersonControllerOptions) {
@@ -68,11 +80,15 @@ export class FirstPersonController {
   connect(): void {
     document.addEventListener('keydown', this.handleKeyDown);
     document.addEventListener('keyup', this.handleKeyUp);
+    window.addEventListener('blur', this.releaseAllKeys);
+    this.controls.addEventListener('unlock', this.releaseAllKeys);
   }
 
   dispose(): void {
     document.removeEventListener('keydown', this.handleKeyDown);
     document.removeEventListener('keyup', this.handleKeyUp);
+    window.removeEventListener('blur', this.releaseAllKeys);
+    this.controls.removeEventListener('unlock', this.releaseAllKeys);
     this.pressedKeys.clear();
     this.controls.unlock();
   }

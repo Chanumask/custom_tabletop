@@ -39,6 +39,7 @@ import { SoundboardWall } from './SoundboardWall.js';
 import { nearestInteractable, type Interactable } from './interaction.js';
 import { findStrokeNear } from './eraser.js';
 import { formatKeyCode } from '../keyLabel.js';
+import { isInteractKeyPress } from '../keyboard.js';
 import { SoundboardAssignMenu } from '../SoundboardAssignMenu.js';
 
 const ROOM_GLTF_URL = '/models/room.glb';
@@ -600,7 +601,7 @@ export function RoomView({
       // see the raycastFromCamera call in the animate loop below for why the
       // board needs a different targeting model than a single toggle does.
       handleInteractKey = (event: KeyboardEvent) => {
-        if (event.code !== interactKeyRef.current) {
+        if (!isInteractKeyPress(event, interactKeyRef.current)) {
           return;
         }
         // The assign-sound overlay is a normal DOM form; while it's open,

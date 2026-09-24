@@ -53,6 +53,89 @@ describe('SessionStore', () => {
     expect(store.leave('nope', 'p1')).toBeUndefined();
   });
 
+  it('a new player starts connected', () => {
+    const store = new SessionStore();
+    const state = store.join('abc', 'p1', 'Alice');
+    expect(state.players[0]?.connected).toBe(true);
+  });
+
+  it('rejoining as an existing player requires the credential it first joined with', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice', 'secret-1');
+
+    expect(store.authorizeJoin('abc', 'p1', 'secret-1')).toBe(true);
+    expect(store.authorizeJoin('abc', 'p1', 'someone-elses-guess')).toBe(false);
+    // A brand-new player id has nothing to check against yet.
+    expect(store.authorizeJoin('abc', 'p2', 'anything')).toBe(true);
+  });
+
+  it("a player's credential is forgotten once they leave", () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice', 'secret-1');
+    store.join('abc', 'p2', 'Bob', 'secret-2');
+    store.leave('abc', 'p2');
+
+    expect(store.authorizeJoin('abc', 'p2', 'fresh-secret')).toBe(true);
+  });
+
+  it('setConnected flips presence, and a rejoin marks the player connected again', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+
+    expect(store.setConnected('abc', 'p1', false)?.players[0]?.connected).toBe(false);
+    expect(store.join('abc', 'p1', 'Alice').players[0]?.connected).toBe(true);
+  });
+
+  it('removeIfDisconnected removes a still-disconnected player but spares one who came back', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+    store.join('abc', 'p3', 'Carol');
+    store.setConnected('abc', 'p2', false);
+    store.setConnected('abc', 'p3', false);
+    store.join('abc', 'p3', 'Carol'); // Carol reconnected in time
+
+    expect(store.removeIfDisconnected('abc', 'p2').removed).toBe(true);
+    expect(store.removeIfDisconnected('abc', 'p3').removed).toBe(false);
+    expect(store.get('abc')?.players.map((player) => player.id)).toEqual(['p1', 'p3']);
+  });
+
+  it('the host leaving hands the host role to the longest-present connected player', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+    store.join('abc', 'p3', 'Carol');
+    store.setConnected('abc', 'p2', false);
+
+    expect(store.leave('abc', 'p1')?.hostId).toBe('p3');
+  });
+
+  it('the host leaving falls back to a disconnected player if nobody else is connected', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+    store.setConnected('abc', 'p2', false);
+
+    expect(store.leave('abc', 'p1')?.hostId).toBe('p2');
+  });
+
+  it('transferHost hands the host role over, host-only', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+
+    expect(store.transferHost('abc', 'p2', 'p2')).toEqual({
+      ok: false,
+      error: 'Only the host can hand over the host role.',
+    });
+    expect(store.transferHost('abc', 'p1', 'nobody')).toEqual({
+      ok: false,
+      error: 'Player not found.',
+    });
+    const result = store.transferHost('abc', 'p1', 'p2');
+    expect(result.ok && result.state.hostId).toBe('p2');
+  });
+
   it('move updates an existing player position and rotation in place', () => {
     const store = new SessionStore();
     store.join('abc', 'p1', 'Alice');
@@ -180,7 +263,7 @@ describe('SessionStore', () => {
     const sceneId = state.scenes[0]!.id;
     store.startDrawing('abc', sceneId, 'd1', 'p1', { x: 0, y: 0 }, '#241a12', 5);
 
-    const appended = store.appendDrawingPoint('abc', 'd1', { x: 5, y: 5 });
+    const appended = store.appendDrawingPoint('abc', 'd1', { x: 5, y: 5 }, 'p1');
     expect(appended).toBe(true);
     expect(store.get('abc')?.scenes[0]?.drawings[0]?.points).toEqual([
       { x: 0, y: 0 },
@@ -191,7 +274,18 @@ describe('SessionStore', () => {
   it('appendDrawingPoint for an unknown drawing is a no-op that returns false', () => {
     const store = new SessionStore();
     store.join('abc', 'p1', 'Alice');
-    expect(store.appendDrawingPoint('abc', 'nope', { x: 0, y: 0 })).toBe(false);
+    expect(store.appendDrawingPoint('abc', 'nope', { x: 0, y: 0 }, 'p1')).toBe(false);
+  });
+
+  it("appendDrawingPoint refuses to extend another player's stroke", () => {
+    const store = new SessionStore();
+    const state = store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+    const sceneId = state.scenes[0]!.id;
+    store.startDrawing('abc', sceneId, 'd1', 'p1', { x: 0, y: 0 }, '#241a12', 5);
+
+    expect(store.appendDrawingPoint('abc', 'd1', { x: 9, y: 9 }, 'p2')).toBe(false);
+    expect(store.get('abc')?.scenes[0]?.drawings[0]?.points).toEqual([{ x: 0, y: 0 }]);
   });
 
   it('deleteDrawing removes just that stroke from the scene', () => {

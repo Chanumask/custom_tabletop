@@ -8,6 +8,7 @@ function makePlayer(
   position = { x: 0, y: 1.7, z: 0 },
   rotationY = 0,
   seated = false,
+  connected = true,
 ): Player {
   return {
     id,
@@ -17,6 +18,7 @@ function makePlayer(
     rotationY,
     muted: false,
     seated,
+    connected,
   };
 }
 
@@ -96,6 +98,22 @@ describe('PlayerAvatars', () => {
 
     const mesh = group.getObjectByName('avatar-p2') as THREE.Mesh;
     expect(mesh.scale.y).toBe(1);
+  });
+
+  it('a reconnecting player fades to a ghost, and back to solid once they return', () => {
+    const scene = new THREE.Scene();
+    const avatars = new PlayerAvatars(scene);
+    const group = scene.getObjectByName('player-avatars') as THREE.Group;
+    const origin = { x: 0, y: 1.7, z: 0 };
+
+    avatars.sync([makePlayer('p1'), makePlayer('p2', origin, 0, false, false)], 'p1');
+    const material = (group.getObjectByName('avatar-p2') as THREE.Mesh)
+      .material as THREE.MeshStandardMaterial;
+    expect(material.transparent).toBe(true);
+    expect(material.opacity).toBeLessThan(1);
+
+    avatars.sync([makePlayer('p1'), makePlayer('p2', origin, 0, false, true)], 'p1');
+    expect(material.opacity).toBe(1);
   });
 
   it('dispose removes the avatar group from the scene', () => {

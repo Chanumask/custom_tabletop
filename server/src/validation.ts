@@ -2,6 +2,7 @@ import {
   SOUNDBOARD_SLOT_COUNT,
   type SessionJoinRequest,
   type SessionLeaveRequest,
+  type SessionTransferHostRequest,
   type PlayerMoveRequest,
   type SceneCreateRequest,
   type SceneChangeRequest,
@@ -67,21 +68,60 @@ function isOptionalSlotIndex(value: unknown): value is number | undefined {
   );
 }
 
+// A generous cap — a real token is a UUID — so a malicious payload can't
+// park an arbitrarily large string in server memory.
+const MAX_TOKEN_LENGTH = 200;
+
 export function parseSessionJoinRequest(payload: unknown): SessionJoinRequest | null {
   if (typeof payload !== 'object' || payload === null) {
     return null;
   }
 
-  const { sessionId, playerId, playerName } = payload as Record<string, unknown>;
+  const { sessionId, playerId, playerName, playerToken, resume } = payload as Record<
+    string,
+    unknown
+  >;
   if (
     !isNonEmptyString(sessionId) ||
     !isNonEmptyString(playerId) ||
-    !isNonEmptyString(playerName)
+    !isNonEmptyString(playerName) ||
+    !isNonEmptyString(playerToken) ||
+    playerToken.length > MAX_TOKEN_LENGTH ||
+    (resume !== undefined && typeof resume !== 'boolean')
   ) {
     return null;
   }
 
-  return { sessionId: sessionId.trim(), playerId: playerId.trim(), playerName: playerName.trim() };
+  return {
+    sessionId: sessionId.trim(),
+    playerId: playerId.trim(),
+    playerName: playerName.trim(),
+    playerToken,
+    ...(resume === undefined ? {} : { resume }),
+  };
+}
+
+export function parseSessionTransferHostRequest(
+  payload: unknown,
+): SessionTransferHostRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, targetPlayerId } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    !isNonEmptyString(targetPlayerId)
+  ) {
+    return null;
+  }
+
+  return {
+    sessionId: sessionId.trim(),
+    playerId: playerId.trim(),
+    targetPlayerId: targetPlayerId.trim(),
+  };
 }
 
 export function parseSessionLeaveRequest(payload: unknown): SessionLeaveRequest | null {

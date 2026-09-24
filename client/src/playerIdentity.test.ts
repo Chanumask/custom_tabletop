@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getOrCreatePlayerId, type IdStorage } from './playerIdentity.js';
+import { getOrCreatePlayerId, getOrCreatePlayerToken, type IdStorage } from './playerIdentity.js';
 
 function fakeStorage(): IdStorage {
   const data = new Map<string, string>();
@@ -21,5 +21,15 @@ describe('getOrCreatePlayerId', () => {
     const idA = getOrCreatePlayerId(fakeStorage());
     const idB = getOrCreatePlayerId(fakeStorage());
     expect(idA).not.toBe(idB);
+  });
+});
+
+describe('getOrCreatePlayerToken', () => {
+  it('persists a secret distinct from the public player id', () => {
+    const storage = fakeStorage();
+    const id = getOrCreatePlayerId(storage);
+    const token = getOrCreatePlayerToken(storage);
+    expect(token).not.toBe(id);
+    expect(getOrCreatePlayerToken(storage)).toBe(token);
   });
 });

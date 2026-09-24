@@ -19,6 +19,7 @@ export interface SessionViewProps {
   onUploadSound: (name: string, url: string) => void;
   onMutePlayer: (targetPlayerId: string) => void;
   onUnmutePlayer: (targetPlayerId: string) => void;
+  onTransferHost: (targetPlayerId: string) => void;
 }
 
 type TabId = 'players' | 'map' | 'dice' | 'soundboard' | 'settings';
@@ -49,6 +50,7 @@ export function SessionView({
   onUploadSound,
   onMutePlayer,
   onUnmutePlayer,
+  onTransferHost,
 }: SessionViewProps) {
   const isHost = playerId === state.hostId;
   const [activeTab, setActiveTab] = useState<TabId>('players');
@@ -86,6 +88,7 @@ export function SessionView({
             isHost={isHost}
             onMutePlayer={onMutePlayer}
             onUnmutePlayer={onUnmutePlayer}
+            onTransferHost={onTransferHost}
           />
         )}
         {activeTab === 'map' && (
@@ -118,33 +121,47 @@ function PlayersTab({
   isHost,
   onMutePlayer,
   onUnmutePlayer,
+  onTransferHost,
 }: {
   state: GameState;
   playerId: string;
   isHost: boolean;
   onMutePlayer: (targetPlayerId: string) => void;
   onUnmutePlayer: (targetPlayerId: string) => void;
+  onTransferHost: (targetPlayerId: string) => void;
 }) {
   return (
     <ul className="player-list">
       {state.players.map((player) => {
-        const canModerate = player.id === playerId || isHost;
+        const isSelf = player.id === playerId;
+        const canModerate = isSelf || isHost;
+        const canPromote = isHost && !isSelf && player.connected;
         return (
-          <li key={player.id}>
+          <li key={player.id} className={player.connected ? undefined : 'player-away'}>
             <span>
               {player.name}
               {player.id === state.hostId && ' (host)'}
-              {player.id === playerId && ' (you)'}
+              {isSelf && ' (you)'}
               {player.muted && ' (muted)'}
+              {!player.connected && ' (reconnecting…)'}
             </span>
-            {canModerate && (
-              <button
-                type="button"
-                onClick={() => (player.muted ? onUnmutePlayer(player.id) : onMutePlayer(player.id))}
-              >
-                {player.muted ? 'Unmute' : 'Mute'}
-              </button>
-            )}
+            <span className="player-actions">
+              {canPromote && (
+                <button type="button" onClick={() => onTransferHost(player.id)}>
+                  Make host
+                </button>
+              )}
+              {canModerate && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    player.muted ? onUnmutePlayer(player.id) : onMutePlayer(player.id)
+                  }
+                >
+                  {player.muted ? 'Unmute' : 'Mute'}
+                </button>
+              )}
+            </span>
           </li>
         );
       })}
@@ -342,8 +359,12 @@ function SettingsTab() {
       return;
     }
 
+    // Capture phase + stopPropagation: while rebinding, the pressed key
+    // belongs to this capture alone — it must not also reach the room's own
+    // (document-level, bubble-phase) interact/movement listeners.
     const handleKeyDown = (event: KeyboardEvent) => {
       event.preventDefault();
+      event.stopPropagation();
       if (event.code === 'Escape') {
         setRebinding(false);
         return;
@@ -357,8 +378,8 @@ function SettingsTab() {
       setRebinding(false);
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [rebinding, updateSettings]);
 
   return (

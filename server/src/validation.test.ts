@@ -24,8 +24,14 @@ describe('parseSessionJoinRequest', () => {
       sessionId: ' abc ',
       playerId: ' p1 ',
       playerName: ' Alice ',
+      playerToken: 'secret',
     });
-    expect(result).toEqual({ sessionId: 'abc', playerId: 'p1', playerName: 'Alice' });
+    expect(result).toEqual({
+      sessionId: 'abc',
+      playerId: 'p1',
+      playerName: 'Alice',
+      playerToken: 'secret',
+    });
   });
 
   it.each([
@@ -34,10 +40,13 @@ describe('parseSessionJoinRequest', () => {
     ['a string'],
     [42],
     [{}],
-    [{ sessionId: 'abc', playerId: 'p1', playerName: '' }],
-    [{ sessionId: '   ', playerId: 'p1', playerName: 'Alice' }],
-    [{ sessionId: 'abc', playerId: 123, playerName: 'Alice' }],
-    [{ sessionId: 'abc', playerName: 'Alice' }],
+    [{ sessionId: 'abc', playerId: 'p1', playerName: '', playerToken: 't' }],
+    [{ sessionId: '   ', playerId: 'p1', playerName: 'Alice', playerToken: 't' }],
+    [{ sessionId: 'abc', playerId: 123, playerName: 'Alice', playerToken: 't' }],
+    [{ sessionId: 'abc', playerName: 'Alice', playerToken: 't' }],
+    [{ sessionId: 'abc', playerId: 'p1', playerName: 'Alice' }],
+    [{ sessionId: 'abc', playerId: 'p1', playerName: 'Alice', playerToken: '' }],
+    [{ sessionId: 'abc', playerId: 'p1', playerName: 'Alice', playerToken: 'x'.repeat(201) }],
   ])('rejects malformed payload %#', (payload) => {
     expect(parseSessionJoinRequest(payload)).toBeNull();
   });

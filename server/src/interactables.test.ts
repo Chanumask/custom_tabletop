@@ -5,10 +5,13 @@ import {
   type SessionJoinResponse,
   type ObjectInteractResponse,
 } from '@custom-tabletop/shared';
+import { withTestToken } from './testSupport.js';
 import { createAppServer, type AppServer } from './server.js';
 
 function joinAck(client: ClientSocket, payload: unknown): Promise<SessionJoinResponse> {
-  return new Promise((resolve) => client.emit(SocketEvent.SessionJoin, payload, resolve));
+  return new Promise((resolve) =>
+    client.emit(SocketEvent.SessionJoin, withTestToken(payload), resolve),
+  );
 }
 
 function interactAck(client: ClientSocket, payload: unknown): Promise<ObjectInteractResponse> {

@@ -56,6 +56,18 @@ function applyTransform(
   mesh.rotation.y = rotationY;
 }
 
+// A player inside the server's reconnect grace period (docs/decisions.md)
+// fades to a translucent "ghost" rather than standing there looking fully
+// present while nobody's actually behind them.
+const AWAY_OPACITY = 0.3;
+
+function applyPresence(mesh: THREE.Mesh, connected: boolean): void {
+  const material = mesh.material as THREE.MeshStandardMaterial;
+  material.transparent = !connected;
+  material.opacity = connected ? 1 : AWAY_OPACITY;
+  material.depthWrite = connected;
+}
+
 /**
  * Placeholder capsule avatars for every *other* connected player (never the
  * local player, who sees the room through their own camera instead).
@@ -90,6 +102,7 @@ export class PlayerAvatars {
         this.group.add(mesh);
       }
       applyTransform(mesh, player.position, player.rotationY, player.seated);
+      applyPresence(mesh, player.connected);
     }
 
     for (const [playerId, mesh] of this.meshes) {
