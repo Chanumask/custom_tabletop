@@ -69,11 +69,12 @@ Version control, docs structure, and the Claude Code workflow.
 - The seated table view also carries a small drawing toolbar — pen color/size and an eraser (`client/src/three/eraser.ts`, reusing the `drawing:delete` event from Milestone 5) — a follow-up user request once the sit-down mode existed. `Drawing` gained per-stroke `color`/`width`.
 - **Exit check:** a player walks up to an interactable and triggers it; the effect is visible to everyone in the session. **✅** — proven by `server/src/interactables.test.ts` (break-round verified) and confirmed live in a real two-tab browser check (light toggle and seated-avatar squash both visible on the other tab; soundboard console buttons correctly gated to the host, same as the 2D panel; the drawing toolbar's color and eraser verified against the table's raw canvas pixel data) — including catching and fixing two real bugs live (a prompt-text update bug and a latent `drawing:delete` remote-redraw bug), see `docs/decisions.md`.
 
-## M9 — Host authority hardening
+## M9 — Host authority hardening ✅
 
-- Server-side validation for every host-gated action from the spec: scene create/change/delete, dice spawn/remove, player mute, player positions, join/leave, and any interactables added in M8 — a client can't do any of these by local manipulation alone.
-- Cross-browser pass: Chrome, Edge, Firefox required; Safari best-effort.
-- **Exit check:** a manually-forged client event for a host-only action is rejected by the server and has no effect.
+- An audit pass, not a new feature — every action host-gated server-side already had its check from the milestone that introduced it; this milestone proved the coverage rather than adding it. **The original spec's "needs validation" list (dice spawn/remove, player positions, join/leave) is *not* the same as "is host-gated"** — those three are deliberately open to any player (M4/M6 decisions) and only need malformed-payload rejection, which they already had. The actually host-gated set, confirmed complete: `scene:create`, `scene:change`, `scene:update`, `sound:play`, `player:mute`/`player:unmute` (of another player — self-mute is open).
+- Two real gaps closed: `scene:create` and `scene:change` had no live socket-level test proving a forged non-host request is rejected (only `scene:update` and `sound:play`/`player:mute` did); `player:unmute` had no test coverage at all. All closed in `server/src/hostAuthority.test.ts`. A minor related gap (no socket-level malformed-`drawing:start` test, unlike every other event family) closed alongside it.
+- Cross-browser pass: Chrome, Edge, Firefox required; Safari best-effort. **Not performed** — this environment's browser automation tooling drives Chrome only. Logged as an accepted, unverified gap rather than skipped silently; see `docs/decisions.md`.
+- **Exit check:** a manually-forged client event for a host-only action is rejected by the server and has no effect. **✅ (server-side)** — proven by `server/src/hostAuthority.test.ts`, break-round verified. Cross-browser rendering/input behavior is unverified, per above.
 
 ## M10 — Performance & polish
 

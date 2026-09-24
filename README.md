@@ -4,7 +4,7 @@ A browser-based virtual tabletop for running tabletop RPG sessions with friends:
 
 ## Status
 
-**Milestones 1–8 done**, plus a file-uploads extension. A host and players can: walk around the room and see each other live; swap the table's map background by URL or file upload and draw on it together; spawn/roll/remove dice; play sounds from a shared soundboard (built-in tones or uploaded files) via a 2D panel or a physical in-room console; flip the room's light switch; and sit down at the table for a full-screen, square top-down view of it with a pen/eraser drawing toolbar. Remaining: Milestone 9 (host authority hardening — an audit pass) and Milestone 10 (performance & polish). Full detail in [docs/overview.md](docs/overview.md) and [docs/roadmap.md](docs/roadmap.md).
+**Milestones 1–9 done**, plus a file-uploads extension. A host and players can: walk around the room and see each other live; swap the table's map background by URL or file upload and draw on it together; spawn/roll/remove dice; play sounds from a shared soundboard (built-in tones or uploaded files) via a 2D panel or a physical in-room console; flip the room's light switch; and sit down at the table for a full-screen, square top-down view of it with a pen/eraser drawing toolbar. Every host-only action (map/scene changes, playing a sound, muting another player) is now proven, server-side, to reject a non-host. Remaining: Milestone 10 (performance & polish) — the last of the original ten. **Known gap:** Milestone 9's cross-browser pass (Edge, Firefox) wasn't performed; only Chrome has been tested. Full detail in [docs/overview.md](docs/overview.md) and [docs/roadmap.md](docs/roadmap.md).
 
 ## Running it locally
 

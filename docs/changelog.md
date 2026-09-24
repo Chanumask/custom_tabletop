@@ -6,6 +6,38 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-24 (Milestone 9) — Host authority hardening: an audit pass, two real coverage gaps closed
+
+**Asked** (user): "continue" — picked up the M8 session's handover, starting Milestone 9.
+
+### What landed
+
+- **No new feature** — this milestone audited existing host-gating coverage rather than adding any. Re-read `roadmap.md`'s M9 description against the actual code and found it stale: it named `dice:spawn/remove`, player positions, and join/leave as host-gated, but those were deliberately settled as **open to any player** back in Milestone 4/6 — the original spec's "needs server-side validation" list was never the same thing as "needs a host check." The real host-gated set: `scene:create`, `scene:change`, `scene:update`, `sound:play`, `player:mute`/`player:unmute` of another player.
+- **`server/src/hostAuthority.test.ts`** (new) — closes the two real gaps the audit found: `scene:create` and `scene:change` had never been proven at the socket level (only `scene:update` and `sound:play`/`player:mute` had a live "forged non-host request is rejected" test; `scene:create` only had a `SessionStore`-level unit test, and `scene:change` had no rejection test at any level). Also added `player:unmute`'s first test coverage at all (it shares `setMuted`'s host-gating logic with `player:mute`, which was already well-tested, but the event itself never had its own test), and a socket-level malformed-`drawing:start` test (every other event family already had one; `drawing:*` only had unit-level coverage).
+- `docs/roadmap.md`'s M9 entry corrected to name the actual host-gated actions instead of the stale spec-derived list.
+- Branch `feat/host-authority-hardening`, squash-merged into local `main`. **Not pushed.**
+
+### Checked
+
+- **The M9 exit-check test** (`server/src/hostAuthority.test.ts`, 4 tests): a non-host's forged `scene:create`/`scene:change` are each rejected while the host's own succeed; a non-host cannot unmute another player while the host can; a malformed `drawing:start` doesn't crash the server. Break-round done on both new host-gate checks together (disabled, confirmed both tests correctly fail, restored).
+- Full `sanity-check` (lint/format/build/test, 212 tests across all 3 workspaces — up from 208) clean.
+- **The roadmap's other M9 ask — a cross-browser pass (Chrome, Edge, Firefox) — could not be performed**: this environment's browser automation tooling drives Chrome only. Logged as an accepted, unverified gap in `docs/decisions.md` rather than silently skipped, with a grep-based sanity check (no vendor-prefixed or Chrome-specific APIs anywhere in `client/src`) offered as partial, non-substitute reassurance.
+- Dev server processes: none were started this session — all work was server-side test coverage, no browser verification needed or performed.
+
+### Next session
+
+Milestone 9 is done. Only Milestone 10 (performance & polish) remains from the original roadmap. Paste-to-start prompt:
+
+> Start Milestone 10: performance & polish. Confirm delta-only updates (player:move, drawing:*) actually hold under real load — no accidental full-state re-broadcast creeping in. Basic error/disconnect UX (what a player sees if the server drops, or if their session no longer exists). Session cleanup on empty session (already implemented since Milestone 2 — verify it still holds). Otherwise, this is the milestone for whatever playtesting the earlier ones surfaces, so a real playtest pass (as a user, not just automated checks) is probably the most valuable first step.
+
+- **Branch:** `main` — none open. `feat/host-authority-hardening` merged and deleted.
+- **State:** M1–M9 all done, plus the file-uploads extension. Every host-gated action now has live socket-level proof of rejection, not just unit-level or incidental coverage.
+- **Do next:** Milestone 10 per [docs/roadmap.md](roadmap.md) — the last milestone on the original roadmap. After that, revisit `docs/roadmap.md`'s "Later, out of scope for now" section with the user (map presets, wall drawing/pen tool, a fuller interactive map-fit tool) if there's appetite to keep building past the original ten milestones.
+- **Watch for:** the cross-browser gap from this session (Edge/Firefox never actually driven, Chrome-only tooling) — if M10's polish pass turns up a real cross-browser concern, or if different tooling becomes available, that's the natural place to close it. Everything else from prior sessions' "watch for" notes (Chrome Pointer Lock automation restriction, the PATH-after-install gotcha, automated-click coordinate precision) still applies if browser verification resumes in M10.
+- **Environment:** nothing running — no dev server was started this session.
+
+---
+
 ## 2026-09-24 (Milestone 8) — Room interactables: sit down at a full-screen table with a drawing toolbar, flip the light switch, play sounds from a physical console
 
 **Asked** (user): "continue" — picked up the file-uploads session's handover, starting Milestone 8. Two design questions asked and answered before implementation (`AskUserQuestion`): what the interactable(s) should be, and how a player triggers one. The user specified something bigger than the roadmap's one-line placeholder: the table switching between "wander the room" and "sit at the table" modes, a toggleable light, and — explicitly offered as optional, "cook something cool and funny up for this" — a physical soundboard console with large clickable buttons. All three landed. Trigger method: proximity + a keypress (E). A follow-up ask mid-session, after seeing the seated view working, added two refinements: the seated table view should be full-screen (square, not widescreen-cropped), and it needs a small drawing toolbar (pen color/size, an eraser) since that's the natural place to draw precisely. Also flagged: a light-toggle concern, re-verified live and confirmed already working correctly.
