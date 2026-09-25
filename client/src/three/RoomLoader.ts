@@ -5,6 +5,8 @@ import { preloadRoom } from '../roomAssets.js';
 import type { Obstacle } from './collision.js';
 import type { Seat } from './avatarMotion.js';
 import { PLACEHOLDER_ROOM_LAYOUT, type RoomLayout, type TableSurface } from './RoomLayout.js';
+import { TableChairs } from './tableChairs.js';
+import { MIN_CHAIRS } from '@custom-tabletop/shared';
 
 export interface RoomAsset {
   object3D: THREE.Object3D;
@@ -15,8 +17,12 @@ export interface RoomAsset {
   whiteboardSurface: THREE.Mesh | null;
   /** Hidden while seated: it hangs right where the top-down camera sits. */
   chandelier: THREE.Object3D | null;
-  /** Where seated players' characters sit (every `Chair_*`), facing the table. */
+  /** Where seated players' characters sit, facing the table — one per
+   * chair currently at it, indexed by seat (kept current by `chairs`). */
   seats: Seat[];
+  /** The chairs, set out for however many players there are
+   * (tableChairs.ts); null for a model without the eight `Chair_*`. */
+  chairs: TableChairs | null;
   /** The console TV's screen rectangle (`TV_Screen`) — where shared
    * YouTube clips play. */
   tvScreen: THREE.Mesh | null;
@@ -65,10 +71,13 @@ export function describeRoom(
   root.updateMatrixWorld(true);
 
   const obstacles: Obstacle[] = [];
+  const colliders: { node: THREE.Object3D; obstacle: Obstacle }[] = [];
   root.traverse((node) => {
     if (node.name.startsWith(COLLIDER_PREFIX)) {
       const box = boxOf(node);
-      obstacles.push({ minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z });
+      const obstacle = { minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z };
+      obstacles.push(obstacle);
+      colliders.push({ node, obstacle });
       node.visible = false;
     }
   });
@@ -89,16 +98,20 @@ export function describeRoom(
   const floorBox = floor ? boxOf(floor) : null;
   const ceiling = root.getObjectByName('Ceiling');
 
-  // Sorted by name, so a seat's index (Player.seatIndex) always means the
-  // same chair. Each faces straight across its side of the table — with two
-  // chairs to a side, facing the table's centre would angle them inward.
+  // The chairs come and go with the players (tableChairs.ts): four to start.
+  const seats: Seat[] = [];
+  const tableChairs = TableChairs.fromRoom(root, table.center, colliders, seats);
+  tableChairs?.apply(MIN_CHAIRS);
+  // A model without the eight pairs: every `Chair_*` is a fixed seat, sorted
+  // by name so a seat index always means the same chair. Each faces
+  // straight across its side of the table.
   const chairs: { name: string; at: THREE.Vector3 }[] = [];
   root.traverse((node) => {
-    if (node.name.startsWith('Chair_')) {
+    if (!tableChairs && node.name.startsWith('Chair_')) {
       chairs.push({ name: node.name, at: node.getWorldPosition(new THREE.Vector3()) });
     }
   });
-  const seats: Seat[] = chairs
+  const fixedSeats: Seat[] = chairs
     .sort((a, b) => a.name.localeCompare(b.name))
     .map(({ at }) => {
       const dx = table.center.x - at.x;
@@ -110,6 +123,7 @@ export function describeRoom(
         yaw: alongZ ? Math.atan2(0, dz) : Math.atan2(dx, 0),
       };
     });
+  if (!tableChairs) seats.push(...fixedSeats);
 
   const flames: THREE.Mesh[] = [];
   const glowSpots: THREE.Vector3[] = [];
@@ -146,6 +160,7 @@ export function describeRoom(
     whiteboardSurface: whiteboard instanceof THREE.Mesh ? whiteboard : null,
     chandelier: root.getObjectByName('Chandelier') ?? null,
     seats,
+    chairs: tableChairs,
     tvScreen: tvScreen instanceof THREE.Mesh ? tvScreen : null,
     windowViews,
     fireSpot: fire ? fire.getWorldPosition(new THREE.Vector3()) : null,

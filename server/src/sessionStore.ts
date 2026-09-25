@@ -17,6 +17,8 @@ import {
   CLIP_LOCKED_ERROR,
   SECRET_DICE_HOST_ONLY_ERROR,
   DEFAULT_PERMISSIONS,
+  chairCount,
+  settleSeats,
   MAX_SCENES_PER_SESSION,
   HOST_ONLY_ERROR,
   REMOVED_FROM_TABLE_ERROR,
@@ -267,6 +269,8 @@ export class SessionStore {
     const hostName =
       state.players.find((player) => player.id === state.hostId)?.name ?? leaving?.name ?? null;
     state.players = state.players.filter((player) => player.id !== playerId);
+    // One player fewer, maybe one chair fewer: nobody keeps sitting on it.
+    settleSeats(state.players, chairCount(state.players.length));
     delete state.minis[playerId];
     // Their secret dice would otherwise linger, seen by no one.
     state.dice = state.dice.filter((die) => !(die.hidden && die.ownerId === playerId));
@@ -839,6 +843,9 @@ export class SessionStore {
       player.seatIndex = null;
       return { ok: true, state };
     }
+    if (seatIndex !== undefined && seatIndex >= chairCount(state.players.length)) {
+      return { ok: false, error: 'That chair isn’t at the table any more — try again.' };
+    }
     if (
       seatIndex !== undefined &&
       state.players.some(
@@ -1192,6 +1199,9 @@ function normalizeRestoredState(sessionId: string, saved: GameState): GameState 
     state.activeSceneId = state.scenes[0]!.id;
   }
   state.players = (saved.players ?? []).map((player) => ({ ...player, connected: false }));
+  // Seat numbers from an older save may point at chairs this table
+  // doesn't have (or were numbered differently): settle them.
+  settleSeats(state.players, chairCount(state.players.length));
   state.permissions = { ...base.permissions, ...saved.permissions };
   const slots = saved.soundboardSlots ?? base.soundboardSlots;
   state.soundboardSlots = Array.from({ length: SOUNDBOARD_SLOT_COUNT }, (_, i) => slots[i] ?? null);

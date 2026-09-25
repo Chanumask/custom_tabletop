@@ -123,12 +123,12 @@ export interface Player {
    * client/src/three/PlayerAvatars.ts), not a position change: the server
    * never moves a seated player's `position`. */
   seated: boolean;
-  /** Which of the room's chairs they sit on (an index into the model's
-   * `Chair_*` seats), or null — standing, or no chair was free. Chosen by
-   * the sitting player's client (the nearest free chair), kept unique by
-   * the server, and stable until they stand: every client shows the same
-   * player on the same chair, and nobody gets moved when someone else
-   * sits down. */
+  /** Which chair they sit on (a seat index — seats.ts `SEAT_SLOTS`; the
+   * table has `chairCount(players)` of them), or null — standing, or no
+   * chair was free. Chosen by the sitting player's client (the nearest
+   * free chair), kept unique by the server, and stable until they stand —
+   * unless their chair goes away when the table gets smaller, when the
+   * server moves them to a free one (`settleSeats`). */
   seatIndex: number | null;
 
   /** Live presence: false while this player's connection is dropped but
