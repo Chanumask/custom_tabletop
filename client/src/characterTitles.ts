@@ -8,4 +8,6 @@ export const CHARACTER_TITLES: Record<PlayerColorId, string> = {
   yellow: 'the Explorer',
   purple: 'the Rebel',
   orange: 'the Rocker',
+  pink: 'the Witch',
+  teal: 'the Drifter',
 };

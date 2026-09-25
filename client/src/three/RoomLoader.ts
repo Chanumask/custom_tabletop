@@ -88,18 +88,27 @@ export function describeRoom(
   const floorBox = floor ? boxOf(floor) : null;
   const ceiling = root.getObjectByName('Ceiling');
 
-  const seats: Seat[] = [];
+  // Sorted by name, so a seat's index (Player.seatIndex) always means the
+  // same chair. Each faces straight across its side of the table — with two
+  // chairs to a side, facing the table's centre would angle them inward.
+  const chairs: { name: string; at: THREE.Vector3 }[] = [];
   root.traverse((node) => {
     if (node.name.startsWith('Chair_')) {
-      const at = new THREE.Vector3();
-      node.getWorldPosition(at);
-      seats.push({
-        x: at.x,
-        z: at.z,
-        yaw: Math.atan2(table.center.x - at.x, table.center.z - at.z),
-      });
+      chairs.push({ name: node.name, at: node.getWorldPosition(new THREE.Vector3()) });
     }
   });
+  const seats: Seat[] = chairs
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(({ at }) => {
+      const dx = table.center.x - at.x;
+      const dz = table.center.z - at.z;
+      const alongZ = Math.abs(dz) >= Math.abs(dx);
+      return {
+        x: at.x,
+        z: at.z,
+        yaw: alongZ ? Math.atan2(0, dz) : Math.atan2(dx, 0),
+      };
+    });
 
   const flames: THREE.Mesh[] = [];
   const glowSpots: THREE.Vector3[] = [];

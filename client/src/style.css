@@ -1061,9 +1061,14 @@ button.primary {
   gap: 0.6rem;
 }
 
+/* Up to 2.1rem, shrinking evenly (and staying round) when eight don't fit
+ * a narrow phone. */
 .join-card .color-swatch {
-  width: 2.1rem;
-  height: 2.1rem;
+  flex: 0 1 2.1rem;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  aspect-ratio: 1;
 }
 
 .code-row {
@@ -2375,4 +2380,14 @@ button.primary {
   width: 1.75rem;
   height: 1.75rem;
   color: rgba(243, 230, 211, 0.55);
+}
+
+/* Eight swatches in the session menu's profile row: a touch smaller. */
+.profile-editor .color-picker {
+  gap: 0.3rem;
+}
+
+.profile-editor .color-swatch {
+  width: 1.45rem;
+  height: 1.45rem;
 }

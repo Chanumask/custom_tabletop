@@ -89,7 +89,7 @@ function bone(model: THREE.Object3D, name: string): THREE.Object3D | null {
 
 /**
  * Character avatars for every *other* player (the local player sees through
- * their own camera instead) — one of six distinct character models, picked
+ * their own camera instead) — one of eight distinct character models, picked
  * by the player's color, with the shirt tinted to it.
  *
  * Membership, color, presence, name and seating come from `sync` (driven by

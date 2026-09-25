@@ -11,10 +11,10 @@ import {
 } from './index.js';
 
 describe('shared/player colors', () => {
-  it('offers six distinct colors, capping a session at six players', () => {
-    expect(new Set(PLAYER_COLORS.map((color) => color.id)).size).toBe(6);
-    expect(new Set(PLAYER_COLORS.map((color) => color.hex)).size).toBe(6);
-    expect(MAX_PLAYERS_PER_SESSION).toBe(6);
+  it('offers eight distinct colors, capping a session at eight players', () => {
+    expect(new Set(PLAYER_COLORS.map((color) => color.id)).size).toBe(8);
+    expect(new Set(PLAYER_COLORS.map((color) => color.hex)).size).toBe(8);
+    expect(MAX_PLAYERS_PER_SESSION).toBe(8);
   });
 
   it('recognizes only real color ids', () => {
