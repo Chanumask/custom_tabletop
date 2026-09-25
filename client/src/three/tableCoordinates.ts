@@ -55,3 +55,35 @@ export function canvasToWorld(
   const local = canvasToTableLocal(point, table.halfWidth, table.halfDepth, canvasSize);
   return { x: table.center.x + local.x, y: table.height, z: table.center.z + local.z };
 }
+
+/** A pixel rectangle: min inclusive, max exclusive. */
+export interface PixelRect {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/**
+ * The canvas pixels a stroke segment from `from` to `to` (logical units)
+ * of `width` can touch — padded for the round cap and antialiasing, scaled
+ * to pixels and kept inside the canvas. Null when it misses the canvas. What
+ * `TableCanvas.flush` uploads instead of the whole texture.
+ */
+export function segmentPixelRect(
+  from: Point2D,
+  to: Point2D,
+  width: number,
+  scale: number,
+  canvasPixels: number,
+): PixelRect | null {
+  const pad = width / 2 + 2;
+  const clamp = (value: number) => Math.min(canvasPixels, Math.max(0, value));
+  const rect = {
+    minX: clamp(Math.floor((Math.min(from.x, to.x) - pad) * scale)),
+    minY: clamp(Math.floor((Math.min(from.y, to.y) - pad) * scale)),
+    maxX: clamp(Math.ceil((Math.max(from.x, to.x) + pad) * scale)),
+    maxY: clamp(Math.ceil((Math.max(from.y, to.y) + pad) * scale)),
+  };
+  return rect.maxX > rect.minX && rect.maxY > rect.minY ? rect : null;
+}

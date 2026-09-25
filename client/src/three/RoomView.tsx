@@ -1326,6 +1326,7 @@ export function RoomView({
           soundboardWallRef.current?.update(delta);
           decorRef.current?.update(delta, timer.getElapsed());
           outside?.render(renderer, camera, delta, timer.getElapsed());
+          tableCanvasRef.current?.flush(renderer);
           renderer.render(scene, camera);
           tvRef.current?.render(
             camera,
