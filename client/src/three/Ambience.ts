@@ -5,8 +5,8 @@ import type { RoomAsset } from './RoomLoader.js';
  * Everything that makes the room feel lived-in and warm, beyond its static
  * geometry: a crackling fire with drifting sparks and a flickering light,
  * candle flames that flicker and glow, fairy lights twinkling along the
- * beams, a starry night outside the window, and dust drifting through the
- * lamplight. Glows are additive halo sprites/points rather than a bloom
+ * beams, and dust drifting through the lamplight (the night outside the
+ * windows is its own world: outside/OutsideWorld.ts). Glows are additive halo sprites/points rather than a bloom
  * post-process — a post-process would tone-map the whole frame, including
  * the table's map, which must stay in its true colors.
  *
@@ -34,7 +34,6 @@ export class Ambience {
     for (const spot of room.glowSpots) this.addHalo(spot, 0.32, 0xffb866, 0.5, glow);
     if (room.chandelier) this.buildChandelierGlow(room.chandelier, glow);
     if (room.beams.length > 0) this.buildFairyLights(room.beams, glow);
-    if (room.windowView) this.buildWindow(room.windowView);
     this.buildDust(room);
   }
 
@@ -407,87 +406,6 @@ export class Ambience {
     });
   }
 
-  // --- The night outside the window ------------------------------------
-
-  private buildWindow(pane: THREE.Mesh) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 900;
-    const texture = this.keep(new THREE.CanvasTexture(canvas));
-    texture.colorSpace = THREE.SRGBColorSpace;
-    pane.material = this.keep(new THREE.MeshBasicMaterial({ map: texture, toneMapped: false }));
-    const stars = Array.from({ length: 170 }, () => ({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height * 0.72,
-      r: Math.random() < 0.08 ? 1.9 : 0.6 + Math.random() * 1.1,
-      phase: Math.random() * Math.PI * 2,
-      speed: 0.5 + Math.random() * 2,
-    }));
-    const hills = makeHills(canvas.width);
-    const paint = (time: number) => {
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      const { width: w, height: h } = canvas;
-      const sky = ctx.createLinearGradient(0, 0, 0, h);
-      sky.addColorStop(0, '#060a1c');
-      sky.addColorStop(0.55, '#0f1a3a');
-      sky.addColorStop(0.85, '#22305a');
-      sky.addColorStop(1, '#2b3560');
-      ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, w, h);
-      for (const star of stars) {
-        const twinkle = this.reducedMotion
-          ? 0.8
-          : 0.55 + 0.45 * Math.sin(time * star.speed + star.phase);
-        ctx.globalAlpha = twinkle;
-        ctx.fillStyle = '#fff6e0';
-        ctx.beginPath();
-        ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      // The moon, with a soft halo.
-      const mx = w * 0.72;
-      const my = h * 0.24;
-      const halo = ctx.createRadialGradient(mx, my, 20, mx, my, 190);
-      halo.addColorStop(0, 'rgba(255, 244, 214, 0.35)');
-      halo.addColorStop(1, 'rgba(255, 244, 214, 0)');
-      ctx.fillStyle = halo;
-      ctx.fillRect(mx - 200, my - 200, 400, 400);
-      ctx.fillStyle = '#fbf1d6';
-      ctx.beginPath();
-      ctx.arc(mx, my, 46, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(200, 188, 160, 0.35)';
-      for (const [dx, dy, r] of [
-        [-12, -8, 9],
-        [14, 10, 6],
-        [4, -18, 5],
-      ] as const) {
-        ctx.beginPath();
-        ctx.arc(mx + dx, my + dy, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // Rolling hills and a few pines against the sky.
-      ctx.fillStyle = '#0a0f1f';
-      ctx.beginPath();
-      ctx.moveTo(0, h);
-      for (const [x, y] of hills) ctx.lineTo(x, h - y);
-      ctx.lineTo(w, h);
-      ctx.fill();
-      texture.needsUpdate = true;
-    };
-    paint(0);
-    let sinceRepaint = 0;
-    this.updaters.push((dt, time) => {
-      sinceRepaint += dt;
-      if (sinceRepaint > 0.35 && !this.reducedMotion) {
-        sinceRepaint = 0;
-        paint(time);
-      }
-    });
-  }
-
   // --- Dust in the lamplight -------------------------------------------
 
   private buildDust(room: RoomAsset) {
@@ -665,17 +583,4 @@ function makePointsMaterial(
     depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
-}
-
-/** Two layers of rolling hills with a few pine silhouettes. */
-function makeHills(width: number): [number, number][] {
-  const out: [number, number][] = [];
-  for (let x = 0; x <= width; x += 8) {
-    let y = 120 + 40 * Math.sin(x / 170) + 22 * Math.sin(x / 61 + 1.3);
-    // Pines: sharp spikes here and there.
-    const pine = Math.abs(((x + 37) % 97) - 48);
-    if (x % 3 === 0 && pine < 14) y += (14 - pine) * 4.5;
-    out.push([x, y]);
-  }
-  return out;
 }

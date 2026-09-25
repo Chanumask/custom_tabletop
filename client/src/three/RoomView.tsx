@@ -55,6 +55,7 @@ import { DiceManager, TUMBLE_SECONDS } from './DiceManager.js';
 import { playDiceClatter, playPingSound } from '../sounds.js';
 import { TablePings } from './TablePings.js';
 import { Ambience } from './Ambience.js';
+import { OutsideWorld } from './outside/OutsideWorld.js';
 import { FireAmbience } from '../fireAmbience.js';
 import { TV_PLAYER_HEIGHT, TV_PLAYER_WIDTH, TvScreen } from './TvScreen.js';
 import { ClipControls, YouTubeClip, YouTubeEmbed, type ClipView } from '../YouTubeClip.js';
@@ -73,7 +74,7 @@ import {
   type RoomLamp,
 } from './RoomLamp.js';
 import { SoundboardWall } from './SoundboardWall.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { nearestInteractable, type Interactable } from './interaction.js';
 import { findStrokeNear } from './eraser.js';
 import { formatKeyCode } from '../keyLabel.js';
@@ -714,6 +715,7 @@ export function RoomView({
 
     let tableDrawing: TableDrawing | null = null;
     let brassEnv: THREE.Texture | null = null;
+    let outside: OutsideWorld | null = null;
     let chandelier: THREE.Object3D | null = null;
     // Everything a full table redraw should paint, read at paint time (see
     // TableCanvas.redraw) so strokes drawn while a map image loads survive.
@@ -769,6 +771,10 @@ export function RoomView({
         ambience.setRoomLightsOn(lightOnRef.current);
         ambience.setViewport(renderer.domElement.clientHeight, camera.fov);
         ambienceRef.current = ambience;
+        outside = new OutsideWorld(
+          room.windowViews,
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        );
 
         // The fire's crackle: needs a user gesture to start (browser audio
         // policy) — the first click or key press in the room does it.
@@ -880,6 +886,7 @@ export function RoomView({
             scene,
             renderer,
             avatars,
+            outside,
           };
         }
 
@@ -1274,6 +1281,7 @@ export function RoomView({
           updateFireAudio?.(delta);
           avatarsRef.current?.update(delta);
           soundboardWallRef.current?.update(delta);
+          outside?.render(renderer, camera, delta, timer.getElapsed());
           renderer.render(scene, camera);
           tvRef.current?.render(
             camera,
@@ -1448,6 +1456,7 @@ export function RoomView({
       soundboardWallRef.current?.dispose();
       soundboardWallRef.current = null;
       brassEnv?.dispose();
+      outside?.dispose();
       whiteboardCanvasRef.current?.dispose();
       whiteboardCanvasRef.current = null;
       roomLightsRef.current = null;
