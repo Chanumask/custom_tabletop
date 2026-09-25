@@ -9,6 +9,9 @@ services:
     image: custom-tabletop:latest
     pull_policy: build
     restart: unless-stopped
+    # A uid of its own: the image's `node` user (1000) is an existing
+    # account on the VPS, which would own the uploads folder.
+    user: '10001:10001'
     environment:
       CORS_ORIGIN: https://tabletop.murri.me
       # Trust Nginx Proxy Manager (a private docker address) for the real

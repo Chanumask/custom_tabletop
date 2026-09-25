@@ -34,7 +34,7 @@ rm -rf "$APP_DIR/src"
 mv "$APP_DIR/src.new" "$APP_DIR/src"
 echo "$COMMIT" > "$APP_DIR/src/REVISION"
 mkdir -p "$APP_DIR/uploads"
-chown 1000:1000 "$APP_DIR/uploads" # the container's `node` user
+chown 10001:10001 "$APP_DIR/uploads" # the container's own uid (compose `user:`)
 cp "$APP_DIR/src/deploy/docker-compose.yml" "$APP_DIR/docker-compose.yml"
 
 cd "$APP_DIR"

@@ -15,9 +15,9 @@ The game runs at **https://tabletop.murri.me** on the owner's VPS (`ssh root@mur
   /srv/apps/tabletop/
     docker-compose.yml   ← copied from deploy/docker-compose.yml on every deploy
     src/                 ← the deployed commit's source (REVISION holds the hash)
-    uploads/             ← uploaded maps and sounds (volume, owned by uid 1000)
+    uploads/             ← uploaded maps and sounds (volume, owned by uid 10001)
   ```
-- **Sandboxed for a shared box** (critical services run next to it): 512 MB memory, 1 CPU, a PID limit, a read-only root filesystem (writes only to the uploads volume and a tmpfs `/tmp`), all capabilities dropped, no-new-privileges, and logs capped at 3 × 10 MB.
+- **Sandboxed for a shared box** (critical services run next to it): its own uid (10001, no account on the VPS; the image's `node` user is uid 1000, which is an existing account there), 512 MB memory, 1 CPU, a PID limit, a read-only root filesystem (writes only to the uploads volume and a tmpfs `/tmp`), all capabilities dropped, no-new-privileges, and logs capped at 3 × 10 MB.
 
 ## Environment (set in `deploy/docker-compose.yml`)
 
