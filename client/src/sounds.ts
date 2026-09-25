@@ -25,8 +25,24 @@ const TONE_PARAMS: Record<string, ToneParams> = {
 // policy uniformly regardless of when a tone is first triggered.
 let sharedContext: AudioContext | null = null;
 
-export function getAudioContext(): AudioContext {
-  sharedContext ??= new AudioContext();
+type AudioContextConstructor = new () => AudioContext;
+
+/** The shared audio context — or null in a browser without Web Audio (some
+ * embedded/test WebKit builds, older Safari without the unprefixed name
+ * falls back to `webkitAudioContext`): sounds then just don't play,
+ * instead of throwing. */
+export function getAudioContext(): AudioContext | null {
+  if (!sharedContext) {
+    const scope = globalThis as {
+      AudioContext?: AudioContextConstructor;
+      webkitAudioContext?: AudioContextConstructor;
+    };
+    const Context = scope.AudioContext ?? scope.webkitAudioContext;
+    if (!Context) {
+      return null;
+    }
+    sharedContext = new Context();
+  }
   return sharedContext;
 }
 
@@ -54,6 +70,9 @@ export function setMasterVolume(volume: number): void {
 
 function playTone(params: ToneParams): void {
   const ctx = getAudioContext();
+  if (!ctx) {
+    return;
+  }
   if (ctx.state === 'suspended') {
     void ctx.resume();
   }
@@ -117,6 +136,9 @@ export function playDiceClatter(diceCount: number, durationSeconds: number): voi
     return;
   }
   const ctx = getAudioContext();
+  if (!ctx) {
+    return;
+  }
   if (ctx.state === 'suspended') {
     void ctx.resume();
   }
@@ -161,6 +183,9 @@ export function playPingSound(): void {
     return;
   }
   const ctx = getAudioContext();
+  if (!ctx) {
+    return;
+  }
   if (ctx.state === 'suspended') {
     void ctx.resume();
   }
