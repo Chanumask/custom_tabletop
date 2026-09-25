@@ -1,0 +1,43 @@
+# Custom Tabletop on the VPS — copied to /srv/apps/tabletop/docker-compose.yml
+# by scripts/deploy.sh, next to ./src (a checkout of this repo) and
+# ./uploads. Nginx Proxy Manager reaches it over the shared `murrinet`
+# network as http://tabletop:3001; no port is published on the host.
+# Details: docs/engineering/deployment.md.
+services:
+  tabletop:
+    build: ./src
+    image: custom-tabletop:latest
+    pull_policy: build
+    restart: unless-stopped
+    environment:
+      CORS_ORIGIN: https://tabletop.murri.me
+      # Trust Nginx Proxy Manager (a private docker address) for the real
+      # client IP — the upload rate limit is per player, not per proxy.
+      TRUST_PROXY: uniquelocal
+      UPLOADS_MAX_MB: '2048'
+      UPLOADS_MAX_AGE_HOURS: '24'
+    volumes:
+      - ./uploads:/data/uploads
+    networks:
+      - murrinet
+    # A good neighbour on a shared box: bounded memory, CPU, processes and
+    # logs; a read-only filesystem apart from the uploads volume.
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+networks:
+  murrinet:
+    external: true

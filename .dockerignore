@@ -1,0 +1,15 @@
+# Only package manifests, shared/, server/ and client/ go into the image.
+.git
+.claude
+**/node_modules
+**/dist
+blender
+docs
+e2e
+scripts
+deploy
+test-results
+playwright-report
+server/uploads
+**/*.test.ts
+*.md

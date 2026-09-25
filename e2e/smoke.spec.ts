@@ -38,33 +38,31 @@ async function roomLoaded(page: Page) {
   await expect(page.locator('.room-loading')).toHaveCount(0, { timeout: 60_000 });
 }
 
-/** Waits for the room to finish loading, then measures how bright a
- * freshly rendered frame is — a black frame means nothing rendered. */
+/** Waits for the room to finish loading, then measures how bright the
+ * room looks in a real screenshot — a black frame means nothing rendered.
+ * (A screenshot rather than reading the canvas back: it works in every
+ * engine and in production builds, which have no debug hooks.) */
 async function roomBrightness(page: Page): Promise<number> {
   await roomLoaded(page);
-  return page.evaluate(() => {
-    const hook = (
-      window as unknown as {
-        __tabletop?: {
-          renderer: { render(s: unknown, c: unknown): void; domElement: HTMLCanvasElement };
-          scene: unknown;
-          camera: unknown;
-        };
-      }
-    ).__tabletop;
-    if (!hook) return -1;
-    hook.renderer.render(hook.scene, hook.camera);
-    const source = hook.renderer.domElement;
-    const probe = document.createElement('canvas');
-    probe.width = 64;
-    probe.height = 40;
-    const ctx = probe.getContext('2d')!;
-    ctx.drawImage(source, 0, 0, probe.width, probe.height);
-    const data = ctx.getImageData(0, 0, probe.width, probe.height).data;
-    let sum = 0;
-    for (let i = 0; i < data.length; i += 4) sum += data[i]! + data[i + 1]! + data[i + 2]!;
-    return sum / (data.length / 4) / 3;
-  });
+  await page.waitForTimeout(500); // a few frames after the loading card goes
+  const png = await page.locator('.room-view canvas').screenshot();
+  return page.evaluate(
+    async (dataUrl) => {
+      const image = new Image();
+      image.src = dataUrl;
+      await image.decode();
+      const probe = document.createElement('canvas');
+      probe.width = 64;
+      probe.height = 40;
+      const ctx = probe.getContext('2d')!;
+      ctx.drawImage(image, 0, 0, probe.width, probe.height);
+      const data = ctx.getImageData(0, 0, probe.width, probe.height).data;
+      let sum = 0;
+      for (let i = 0; i < data.length; i += 4) sum += data[i]! + data[i + 1]! + data[i + 2]!;
+      return sum / (data.length / 4) / 3;
+    },
+    `data:image/png;base64,${png.toString('base64')}`,
+  );
 }
 
 test('a host can open a table and the room renders', async ({ page, browserName }) => {

@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import { createServer, type Server as HttpServer } from 'node:http';
+import path from 'node:path';
 import { Server as SocketIoServer, type Socket } from 'socket.io';
 import {
   ConnectionEvent,
@@ -69,6 +70,7 @@ import {
   parseWhiteboardWriteRequest,
 } from './validation.js';
 import { registerUploadRoutes } from './uploads.js';
+import type { StoragePolicy } from './uploadStorage.js';
 
 export interface AppServer {
   http: HttpServer;
@@ -81,6 +83,20 @@ export interface AppServerOptions {
    * ride out a reload or a network blip; short enough that a closed tab
    * doesn't leave a ghost standing in the room. */
   disconnectGraceMs?: number;
+  /** Where uploaded maps/sounds are stored (default: server/uploads). */
+  uploadsDir?: string;
+  /** Upload storage cap and cleanup (default: uploadStorage.ts). */
+  uploadPolicy?: StoragePolicy;
+  /** Uploads per client IP per window (default: uploads.ts). */
+  uploadRateLimit?: { limit: number; windowMs: number };
+  /** A built client (client/dist) to serve from the same origin — how a
+   * deployment runs: one container, one port. Unset in dev (Vite serves). */
+  clientDist?: string;
+  /** Allowed browser origin(s) for REST and Socket.IO (default: any). */
+  corsOrigin?: string;
+  /** Express's "trust proxy" setting, so behind a reverse proxy the upload
+   * rate limit sees each player's real IP, not the proxy's. */
+  trustProxy?: string;
 }
 
 const DEFAULT_DISCONNECT_GRACE_MS = 45_000;
@@ -124,21 +140,36 @@ function playerKey(sessionId: string, playerId: string): string {
 export function createAppServer(options: AppServerOptions = {}): AppServer {
   const disconnectGraceMs = options.disconnectGraceMs ?? DEFAULT_DISCONNECT_GRACE_MS;
 
+  const corsOrigin = options.corsOrigin ?? '*';
   const app = express();
-  app.use(cors());
+  app.disable('x-powered-by');
+  if (options.trustProxy) {
+    app.set('trust proxy', options.trustProxy);
+  }
+  app.use(cors({ origin: corsOrigin }));
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
   });
 
-  registerUploadRoutes(app);
-
-  const http = createServer(app);
-  const io = new SocketIoServer(http, {
-    cors: { origin: '*' },
+  const sessions = new SessionStore();
+  const stopUploadSweeps = registerUploadRoutes(app, {
+    root: options.uploadsDir,
+    policy: options.uploadPolicy,
+    inUse: () => sessions.referencedUploads(),
+    rateLimit: options.uploadRateLimit,
   });
 
-  const sessions = new SessionStore();
+  if (options.clientDist) {
+    serveClient(app, options.clientDist);
+  }
+
+  const http = createServer(app);
+  http.on('close', stopUploadSweeps);
+  const io = new SocketIoServer(http, {
+    cors: { origin: corsOrigin },
+  });
+
   /** socket.id -> the identity that socket joined as. */
   const identities = new Map<string, SocketIdentity>();
   /** playerKey -> the socket currently speaking for that player. */
@@ -959,4 +990,32 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
   });
 
   return { http, io };
+}
+
+/**
+ * The built client, served by this same server in production. Vite's
+ * content-hashed `assets/` never change under a name, so browsers keep them
+ * for a year; everything else (index.html, the room model, characters) is
+ * revalidated on each load, a cheap 304 when nothing changed — a redeploy
+ * shows up on the next reload.
+ */
+function serveClient(app: express.Express, clientDist: string): void {
+  const root = path.resolve(clientDist);
+  app.use(
+    express.static(root, {
+      index: 'index.html',
+      setHeaders: (res, filePath) => {
+        const inAssets = path.relative(root, filePath).startsWith(`assets${path.sep}`);
+        res.setHeader(
+          'Cache-Control',
+          inAssets ? 'public, max-age=31536000, immutable' : 'no-cache',
+        );
+      },
+    }),
+  );
+  // Any other page path (the app has one page) gets the app itself.
+  app.get(/^\/(?!uploads\/|socket\.io\/|health$).*/, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(path.join(root, 'index.html'));
+  });
 }
