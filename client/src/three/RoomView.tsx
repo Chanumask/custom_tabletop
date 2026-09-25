@@ -24,6 +24,7 @@ import {
   type SoundState,
   type PlayerEmoteRequest,
   type SoundPlayRequest,
+  type RoomTheme,
   type WhiteboardLine,
   EMOTES,
   WHITEBOARD_LINE_COUNT,
@@ -56,6 +57,7 @@ import { playDiceClatter, playPingSound } from '../sounds.js';
 import { TablePings } from './TablePings.js';
 import { Ambience } from './Ambience.js';
 import { OutsideWorld } from './outside/OutsideWorld.js';
+import { HalloweenDecor } from './HalloweenDecor.js';
 import { FireAmbience } from '../fireAmbience.js';
 import { TV_PLAYER_HEIGHT, TV_PLAYER_WIDTH, TvScreen } from './TvScreen.js';
 import { ClipControls, YouTubeClip, YouTubeEmbed, type ClipView } from '../YouTubeClip.js';
@@ -193,6 +195,8 @@ export interface RoomViewProps {
   onUploadSound: (name: string, url: string, slotIndex?: number) => void;
   /** Put an existing sound on a wall button, or clear it (null). */
   onAssignSlot: (slotIndex: number, soundId: string | null) => void;
+  /** How the room (and the night outside) is dressed — the host's choice. */
+  theme: RoomTheme;
   /** Whether this player may draw on the map / use sounds (host.ts). */
   canDraw: boolean;
   canUseSounds: boolean;
@@ -296,6 +300,7 @@ export function RoomView({
   onAssignSlot,
   canDraw,
   canUseSounds,
+  theme,
   onNotify,
   whiteboard,
   onWriteWhiteboard,
@@ -312,6 +317,16 @@ export function RoomView({
   const tableCanvasRef = useRef<TableCanvas | null>(null);
   const activeSceneRef = useRef<GameScene>(activeScene);
   const lastRedrawnSignatureRef = useRef<string>('');
+  const themeRef = useRef(theme);
+  const outsideRef = useRef<OutsideWorld | null>(null);
+  const decorRef = useRef<HalloweenDecor | null>(null);
+  // The host's theme: the night outside, the decorations, the fairy lights.
+  useEffect(() => {
+    themeRef.current = theme;
+    outsideRef.current?.setTheme(theme);
+    decorRef.current?.setVisible(theme === 'halloween');
+    ambienceRef.current?.setTheme(theme);
+  }, [theme]);
   const canDrawRef = useRef(canDraw);
   const canUseSoundsRef = useRef(canUseSounds);
   useEffect(() => {
@@ -599,6 +614,7 @@ export function RoomView({
     const handleResize = () => {
       applyViewportSize(camera, renderer, container, controllerRef.current?.seatedView === 'table');
       ambienceRef.current?.setViewport(renderer.domElement.clientHeight, camera.fov);
+      decorRef.current?.setViewport(renderer.domElement.clientHeight, camera.fov);
     };
     window.addEventListener('resize', handleResize);
 
@@ -730,6 +746,7 @@ export function RoomView({
       const topDown = view === 'table';
       applyViewportSize(camera, renderer, container, topDown);
       ambienceRef.current?.setViewport(renderer.domElement.clientHeight, camera.fov);
+      decorRef.current?.setViewport(renderer.domElement.clientHeight, camera.fov);
       if (chandelier) {
         chandelier.visible = !topDown;
       }
@@ -775,6 +792,17 @@ export function RoomView({
           room.windowViews,
           window.matchMedia('(prefers-reduced-motion: reduce)').matches,
         );
+        outsideRef.current = outside;
+        const decor = new HalloweenDecor(
+          scene,
+          room,
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        );
+        decor.setViewport(renderer.domElement.clientHeight, camera.fov);
+        decorRef.current = decor;
+        outside.setTheme(themeRef.current);
+        decor.setVisible(themeRef.current === 'halloween');
+        ambience.setTheme(themeRef.current);
 
         // The fire's crackle: needs a user gesture to start (browser audio
         // policy) — the first click or key press in the room does it.
@@ -1281,6 +1309,7 @@ export function RoomView({
           updateFireAudio?.(delta);
           avatarsRef.current?.update(delta);
           soundboardWallRef.current?.update(delta);
+          decorRef.current?.update(delta, timer.getElapsed());
           outside?.render(renderer, camera, delta, timer.getElapsed());
           renderer.render(scene, camera);
           tvRef.current?.render(
@@ -1457,6 +1486,9 @@ export function RoomView({
       soundboardWallRef.current = null;
       brassEnv?.dispose();
       outside?.dispose();
+      outsideRef.current = null;
+      decorRef.current?.dispose();
+      decorRef.current = null;
       whiteboardCanvasRef.current?.dispose();
       whiteboardCanvasRef.current = null;
       roomLightsRef.current = null;

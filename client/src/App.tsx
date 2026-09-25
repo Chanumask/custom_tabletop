@@ -633,6 +633,7 @@ export function App() {
             onObjectInteract={handleObjectInteract}
             onUploadSound={handleUploadSound}
             onAssignSlot={handleAssignSlot}
+            theme={gameState.theme ?? 'classic'}
             canDraw={mayUse(gameState, playerId, 'draw')}
             canUseSounds={mayUse(gameState, playerId, 'sounds')}
             onNotify={toast}

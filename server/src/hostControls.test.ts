@@ -223,6 +223,29 @@ describe('host controls', () => {
   });
 });
 
+describe('the Halloween theme', () => {
+  it('the host dresses the room; everyone gets it, and a late joiner too', async () => {
+    const alice = await connect();
+    const bob = await connect();
+    await join(alice, 'alice');
+    await join(bob, 'bob');
+    expect(await host(bob, 'bob', { action: 'theme', theme: 'halloween' })).toEqual({
+      ok: false,
+      error: HOST_ONLY_ERROR,
+    });
+    const seen = next<SessionPatch>(bob, SocketEvent.SessionPatch);
+    expect(await host(alice, 'alice', { action: 'theme', theme: 'halloween' })).toMatchObject({
+      ok: true,
+    });
+    expect((await seen).patch.theme).toBe('halloween');
+    const late = await join(await connect(), 'carol');
+    expect(late.ok && late.state.theme).toBe('halloween');
+    expect(await host(alice, 'alice', { action: 'theme', theme: 'disco' })).toMatchObject({
+      ok: false,
+    });
+  });
+});
+
 describe('SessionStore host controls', () => {
   function table() {
     const store = new SessionStore();
@@ -275,8 +298,10 @@ describe('SessionStore host controls', () => {
     const older: Partial<GameState> = { ...saved.state };
     delete older.locked;
     delete older.permissions;
+    delete older.theme;
     const restored = new SessionStore().restore({ ...saved, state: older as GameState });
     expect(restored.locked).toBe(false);
     expect(restored.permissions).toEqual({ draw: true, sounds: true });
+    expect(restored.theme).toBe('classic');
   });
 });

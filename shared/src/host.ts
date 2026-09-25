@@ -17,6 +17,11 @@ export type TablePermission = keyof TablePermissions;
 
 export const DEFAULT_PERMISSIONS: TablePermissions = { draw: true, sounds: true };
 
+/** How the room is dressed (docs/decisions.md, "Halloween"): the host's
+ * choice, the same for everyone — the world outside the windows too. */
+export const ROOM_THEMES = ['classic', 'halloween'] as const;
+export type RoomTheme = (typeof ROOM_THEMES)[number];
+
 /** What "clear" can sweep off: the active map's drawings, the whiteboard,
  * every die, or every mini. */
 export const CLEAR_TARGETS = ['drawings', 'whiteboard', 'dice', 'minis'] as const;
@@ -26,7 +31,8 @@ export type HostAction =
   | { action: 'lock'; locked: boolean }
   | { action: 'permission'; permission: TablePermission; allowed: boolean }
   | { action: 'remove'; targetPlayerId: string }
-  | { action: 'clear'; target: ClearTarget };
+  | { action: 'clear'; target: ClearTarget }
+  | { action: 'theme'; theme: RoomTheme };
 
 export type HostActionRequest = { sessionId: string; playerId: string } & HostAction;
 

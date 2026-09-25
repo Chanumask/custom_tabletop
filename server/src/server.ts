@@ -672,7 +672,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
             ? sessions.setLocked(sessionId, playerId, request.locked)
             : request.action === 'permission'
               ? sessions.setPermission(sessionId, playerId, request.permission, request.allowed)
-              : sessions.clearTable(sessionId, playerId, request.target);
+              : request.action === 'theme'
+                ? sessions.setTheme(sessionId, playerId, request.theme)
+                : sessions.clearTable(sessionId, playerId, request.target);
         ack?.(own(result));
         if (!result.ok) return;
         const changed: PatchKey | 'drawings' =
@@ -680,7 +682,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
             ? 'locked'
             : request.action === 'permission'
               ? 'permissions'
-              : request.target;
+              : request.action === 'theme'
+                ? 'theme'
+                : request.target;
         if (changed === 'drawings') {
           // Drawings only travel in full snapshots (SessionPatch).
           broadcastState(sessionId, result.state);

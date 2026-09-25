@@ -908,6 +908,23 @@ function HostTab({
 }) {
   return (
     <div className="host-tab">
+      <p className="host-section">The room</p>
+      <label className="settings-row">
+        <span>
+          Halloween night
+          <span className="row-hint">pumpkins, bats, a graveyard outside — for everyone</span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="switch"
+          checked={state.theme === 'halloween'}
+          onChange={(event) =>
+            onHostAction({ action: 'theme', theme: event.target.checked ? 'halloween' : 'classic' })
+          }
+        />
+      </label>
+
       <p className="host-section">The table</p>
       <label className="settings-row">
         <span>

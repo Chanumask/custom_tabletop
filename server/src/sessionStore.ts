@@ -21,6 +21,7 @@ import {
   REMOVED_FROM_TABLE_ERROR,
   TABLE_LOCKED_ERROR,
   type ClearTarget,
+  type RoomTheme,
   type TablePermission,
   type ClipAction,
   type Dice,
@@ -938,6 +939,25 @@ export class SessionStore {
     return { ok: true, state };
   }
 
+  /** Host only: dress the room (and the night outside) for an occasion. */
+  setTheme(sessionId: string, actorId: string, theme: RoomTheme): GameStateMutationResult {
+    const table = this.asHost(sessionId, actorId);
+    if (!table.ok) return table;
+    const { state, host } = table;
+    if (state.theme !== theme) {
+      addSystemEntry(
+        state,
+        theme === 'halloween'
+          ? `${host.name} dressed the room for Halloween`
+          : state.theme === 'halloween'
+            ? `${host.name} took the Halloween decorations down`
+            : `${host.name} changed the room`,
+      );
+      state.theme = theme;
+    }
+    return { ok: true, state };
+  }
+
   /** Host only: remove another player from the table. They're kept out
    * for as long as the table runs. */
   removePlayer(
@@ -1171,6 +1191,7 @@ function createEmptySession(sessionId: string, hostId: string): GameState {
     minis: {},
     locked: false,
     permissions: { ...DEFAULT_PERMISSIONS },
+    theme: 'classic',
   };
 }
 
