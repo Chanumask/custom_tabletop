@@ -576,7 +576,7 @@ button.primary {
   justify-content: center;
   padding: 0.5rem;
   box-sizing: border-box;
-  background: #e8dcc0;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(104, 64, 28, 0.3)), #e6d4b0;
   color: #6b5a44;
   font-size: 0.75rem;
   text-align: center;
@@ -1901,4 +1901,388 @@ button.primary {
   margin: 0;
   color: rgba(243, 230, 211, 0.6);
   font-size: 0.85rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* In-game controls: the session menu, dialogs and the wall-board menu */
+/* share the join screen's palette instead of the browser's default    */
+/* buttons and fields. Everything is wrapped in :where() (specificity  */
+/* 0), so any component's own button style above still wins.           */
+/* ------------------------------------------------------------------ */
+
+/* On :root, not .game-shell: the dialogs are portaled to <body>. */
+:root {
+  --ink: #f3e6d3;
+  --ink-muted: rgba(243, 230, 211, 0.62);
+  --edge: rgba(243, 230, 211, 0.14);
+  --field: rgba(10, 7, 5, 0.55);
+  --gold: #d9a441;
+  --gold-bright: #f0c46a;
+  --danger: #e2775f;
+}
+
+.session-overlay {
+  box-sizing: border-box;
+  max-height: calc(100vh - 1.5rem);
+  overflow-y: auto;
+  border: 1px solid var(--edge);
+  border-radius: 14px;
+  background: rgba(24, 17, 12, 0.86);
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(8px);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(243, 230, 211, 0.2) transparent;
+}
+
+.session-overlay.collapsed {
+  width: auto;
+  padding: 0.5rem 0.55rem 0.5rem 0.85rem;
+}
+
+.session-code {
+  white-space: nowrap;
+}
+
+.invite-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+}
+
+.invite-button svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.session-code strong {
+  color: var(--gold-bright);
+  letter-spacing: 0.06em;
+}
+
+.session-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.collapse-button {
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.collapse-button:hover {
+  background: rgba(243, 230, 211, 0.1);
+  color: var(--ink);
+}
+
+.collapse-button svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 180ms ease;
+}
+
+.session-overlay.collapsed .collapse-button svg {
+  transform: rotate(180deg);
+}
+
+.tab-button.active {
+  border-color: rgba(240, 196, 106, 0.55);
+  background: rgba(240, 196, 106, 0.14);
+  color: var(--gold-bright);
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu) :where(button) {
+  padding: 0.32rem 0.7rem;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  background: rgba(243, 230, 211, 0.07);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    filter 120ms ease;
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu)
+  :where(button:hover:not(:disabled)) {
+  border-color: rgba(243, 230, 211, 0.3);
+  background: rgba(243, 230, 211, 0.14);
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu) :where(button:disabled) {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu) :where(button:focus-visible) {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 2px;
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu) :where(button.primary) {
+  border-color: transparent;
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  color: #2a1a0c;
+  font-weight: 800;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu)
+  :where(button.primary:hover:not(:disabled)) {
+  border-color: transparent;
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+  filter: brightness(1.08);
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu)
+  :where(input[type='text'], input[type='url'], input:not([type])) {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 0.42rem 0.6rem;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu) :where(input)::placeholder {
+  color: rgba(243, 230, 211, 0.3);
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu)
+  :where(input[type='text'], input[type='url'], input:not([type])):focus {
+  outline: none;
+  border-color: rgba(240, 196, 106, 0.7);
+  box-shadow: 0 0 0 3px rgba(217, 164, 65, 0.2);
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu, .drawing-toolbar)
+  :where(input[type='range'], input[type='checkbox']) {
+  accent-color: var(--gold);
+}
+
+/* "Choose file" as one of our buttons, the file name muted beside it. */
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu) :where(input[type='file']) {
+  max-width: 100%;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 0.75rem;
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu)
+  :where(input[type='file'])::file-selector-button {
+  margin-right: 0.5rem;
+  padding: 0.32rem 0.7rem;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  background: rgba(243, 230, 211, 0.07);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu)
+  :where(input[type='file'])::file-selector-button:hover {
+  background: rgba(243, 230, 211, 0.14);
+}
+
+.leave-button {
+  color: var(--danger);
+}
+
+.session-overlay .leave-button:hover {
+  border-color: rgba(226, 119, 95, 0.55);
+  background: rgba(226, 119, 95, 0.12);
+}
+
+.player-list li {
+  padding: 0.3rem 0.35rem 0.3rem 0.45rem;
+  border-radius: 8px;
+  background: rgba(243, 230, 211, 0.04);
+}
+
+.player-actions button,
+.sound-list button,
+.dice-list button {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.74rem;
+}
+
+.icon-button {
+  min-width: 1.7rem;
+  padding-inline: 0.3rem;
+  color: var(--ink-muted);
+}
+
+/* Settings: label on the left, control on the right. */
+.tab-panel .settings-row {
+  flex-direction: row;
+  text-align: left;
+}
+
+.settings-volume {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings-volume input {
+  width: 7.5rem;
+}
+
+.settings-volume output {
+  min-width: 2.4rem;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.settings-hint {
+  margin: -0.35rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+}
+
+/* A switch rather than a bare checkbox. */
+.switch {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 2.3rem;
+  height: 1.3rem;
+  margin: 0;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: rgba(243, 230, 211, 0.12);
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0.15rem;
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 50%;
+  background: var(--ink);
+  transform: translateY(-50%);
+  transition: left 160ms ease;
+}
+
+.switch:checked {
+  border-color: transparent;
+  background: linear-gradient(180deg, var(--gold-bright), var(--gold));
+}
+
+.switch:checked::after {
+  left: calc(100% - 1.1rem);
+  background: #2a1a0c;
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 2px;
+}
+
+.drawing-toolbar {
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: rgba(24, 17, 12, 0.82);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+}
+
+.drawing-toolbar button.active {
+  border-color: rgba(240, 196, 106, 0.6);
+  background: rgba(240, 196, 106, 0.18);
+  color: var(--gold-bright);
+}
+
+.drawing-toolbar input[type='color'] {
+  width: 2rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+
+.map-crop-dialog,
+.whiteboard-editor,
+.soundboard-assign-menu {
+  border: 1px solid var(--edge);
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu) :where(select) {
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 0.4rem 1.8rem 0.4rem 0.6rem;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f3e6d3' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")
+      no-repeat right 0.5rem center / 0.85rem,
+    var(--field);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  appearance: none;
+  cursor: pointer;
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu) :where(select):focus {
+  outline: none;
+  border-color: rgba(240, 196, 106, 0.7);
+  box-shadow: 0 0 0 3px rgba(217, 164, 65, 0.2);
+}
+
+:where(.session-overlay, .modal-backdrop, .soundboard-assign-menu) :where(option) {
+  background: #1e150f;
+  color: var(--ink);
+}
+
+.soundboard-assign-menu {
+  border-radius: 14px;
+  background: rgba(24, 17, 12, 0.94);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
 }

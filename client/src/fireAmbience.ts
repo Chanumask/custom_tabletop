@@ -33,6 +33,9 @@ export class FireAmbience {
       return;
     }
     const ctx = getAudioContext();
+    if (!ctx) {
+      return;
+    }
     this.ctx = ctx;
     if (ctx.state === 'suspended') void ctx.resume();
 

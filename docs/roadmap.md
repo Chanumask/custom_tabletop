@@ -107,13 +107,15 @@ The seven change requests from the owner's follow-up prompt, plus extras aimed a
 - **CR #7 Sync:** a four-player end-to-end socket test asserting every client converges to the same game.
 - **Extras:** real d4–d20 dice landing on the server's result; chat and a session log with `/roll` and speech bubbles; right-click pings; a host-set map grid; per-color spawn points.
 
-## M10 — Performance & polish
+## M10 — Performance & polish ✅
 
-- Confirm delta-only updates hold under real drawing/movement load (no full-state re-broadcast).
-- Code-split the ~930 KB bundle (three.js and the room) away from the join screen.
-- ~~Basic error/disconnect UX, session cleanup on empty session.~~ Done along the way: a reconnect banner and grace period, toasts for refused actions, and an empty session is deleted.
-- Milestone 9's cross-browser pass (Edge, Firefox), still not run: this environment only drives Chrome.
-- Whatever's left from playtesting the milestones above.
+Done 2026-09-25 (changelog: "The plan: seated look-around, the cozy room and TV, M10, cross-browser tests, a polish pass").
+
+- **Delta-only updates hold under load.** `session:patch` sends only the changed keys; full snapshots go only to joins and scene changes. `npm run load-test` (six players moving, drawing, rolling and chatting) measured ~13 KB/s per player (was ~29) and a biggest message of 8.9 KB (was 51 KB and growing), with ~1 ms acks.
+- **Code-split.** The join screen's bundle went from 992 KB to 211 KB (69 KB gzipped). The room's code and model preload behind the join form, with a progress card if they haven't arrived yet.
+- **Error/disconnect UX:** a reconnect banner and grace period, toasts for refused actions, and deletion of empty sessions (done along the way).
+- **Milestone 9's cross-browser pass.** `npm run test:e2e` runs Playwright smoke tests in Chromium, Firefox and WebKit, and in Edge on demand. It found and fixed a WebKit audio crash and a WebKit TV layer that can't composite (that TV now falls back to the corner player).
+- **Polish from a full visual and functional QA pass.** In-game controls in the join screen's palette, a collapsible menu, the parchment table, a highlight on the wall-board button you aim at, and clips that resume when moved. In the room: wall hotspots, the shield and the chandelier were fixed. It renders at 60 fps (1080p, 135 draw calls, ~160k triangles).
 
 ---
 

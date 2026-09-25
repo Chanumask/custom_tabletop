@@ -21,6 +21,11 @@ export interface ActiveClip {
 const CARD_WIDTH = 356;
 const CARD_HEIGHT = 200;
 
+/** Where the last clip was when its player went away — moving a clip
+ * between the TV and the corner card remounts the player, and it should
+ * carry on from there rather than start over. */
+let resumePoint: { key: number; seconds: number } | null = null;
+
 /**
  * YouTube's own embedded player for a clip, at a given size — visible, with
  * YouTube's branding and controls intact, never audio-only or hidden
@@ -66,6 +71,8 @@ export function YouTubeEmbed({
     const mount = document.createElement('div');
     host.appendChild(mount);
     let cancelled = false;
+    const start =
+      resumePoint?.key === clip.key ? Math.floor(resumePoint.seconds) : clip.startSeconds;
 
     loadYouTubeApi().then(
       (YT) => {
@@ -78,7 +85,7 @@ export function YouTubeEmbed({
           videoId: clip.videoId,
           playerVars: {
             autoplay: 1,
-            start: clip.startSeconds,
+            start,
             playsinline: 1,
             rel: 0,
           },
@@ -109,6 +116,14 @@ export function YouTubeEmbed({
 
     return () => {
       cancelled = true;
+      try {
+        const seconds = playerRef.current?.getCurrentTime() ?? 0;
+        if (seconds > 0) {
+          resumePoint = { key: clip.key, seconds };
+        }
+      } catch {
+        // Not ready yet: nothing to resume from.
+      }
       playerRef.current?.destroy();
       playerRef.current = null;
       host.replaceChildren();

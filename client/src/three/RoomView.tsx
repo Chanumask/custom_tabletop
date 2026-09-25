@@ -523,7 +523,8 @@ export function RoomView({
     configureRoomToneMapping(renderer);
     container.appendChild(renderer.domElement);
 
-    const clock = new THREE.Clock();
+    const timer = new THREE.Timer();
+    timer.connect(document);
 
     const handleResize = () => {
       applyViewportSize(camera, renderer, container, controllerRef.current?.seatedView === 'table');
@@ -709,7 +710,13 @@ export function RoomView({
         }
 
         if (room.tvScreen) {
-          const tv = new TvScreen(container, scene, room.tvScreen);
+          const tv = new TvScreen(container, scene, room.tvScreen, () => {
+            // This browser can't show the TV (TvScreen.verify): clips play
+            // in the corner player instead, picking up where they were.
+            tvRef.current = null;
+            tv.dispose();
+            if (!disposed) setTvElement(null);
+          });
           tvRef.current = tv;
           setTvElement(tv.element);
         }
@@ -1104,16 +1111,17 @@ export function RoomView({
         const lastSentPosition = new THREE.Vector3(Infinity, Infinity, Infinity);
         let lastSentYaw = Infinity;
 
-        const animate = () => {
+        const animate = (timestamp?: number) => {
           animationFrameId = requestAnimationFrame(animate);
+          timer.update(timestamp);
           // Capped: after the tab was hidden, the first frame's delta can be
           // seconds long — one huge step could carry the player past thin
           // furniture (collision checks where a step ends, not the path).
-          const delta = Math.min(clock.getDelta(), MAX_FRAME_SECONDS);
+          const delta = Math.min(timer.getDelta(), MAX_FRAME_SECONDS);
           controller.update(delta);
           diceManagerRef.current?.update(delta, camera);
           tablePings.update(delta);
-          ambienceRef.current?.update(delta, clock.elapsedTime);
+          ambienceRef.current?.update(delta, timer.getElapsed());
           updateFireAudio?.(delta);
           avatarsRef.current?.update(delta);
           renderer.render(scene, camera);
@@ -1121,7 +1129,7 @@ export function RoomView({
             camera,
             renderer.domElement.clientWidth,
             renderer.domElement.clientHeight,
-            clock.elapsedTime,
+            timer.getElapsed(),
             seatedViewRef.current !== 'table',
           );
 
@@ -1145,6 +1153,7 @@ export function RoomView({
               ? (soundboardWallRef.current?.raycastFromCamera(camera) ?? null)
               : null;
           boardTargetSlotRef.current = targetedSlot;
+          soundboardWallRef.current?.setTargeted(targetedSlot);
 
           let targetedDie: string | null = null;
           if (
@@ -1269,6 +1278,7 @@ export function RoomView({
         document.removeEventListener('keydown', handleViewKey);
       }
       cancelAnimationFrame(animationFrameId);
+      timer.dispose();
       controllerRef.current?.dispose();
       controllerRef.current = null;
       avatarsRef.current?.dispose();

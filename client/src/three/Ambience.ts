@@ -154,6 +154,14 @@ export class Ambience {
     );
     const emberMaterial =
       embers?.material instanceof THREE.MeshStandardMaterial ? embers.material : null;
+    // The ember bed as glowing coals — hot cracks between dark lumps —
+    // rather than one flat, evenly lit sheet (which reads as pale sand).
+    if (emberMaterial && embers?.geometry.getAttribute('uv')) {
+      emberMaterial.emissiveMap = this.keep(makeCoalTexture());
+      emberMaterial.emissive.setRGB(1, 0.36, 0.08);
+      emberMaterial.emissiveIntensity = 2.4;
+      emberMaterial.needsUpdate = true;
+    }
     const emberBase = emberMaterial?.emissiveIntensity ?? 1;
 
     // Sparks: a handful of points rising and fading, respawning at the logs.
@@ -256,6 +264,13 @@ export class Ambience {
       const center = cluster
         .reduce((sum, at) => sum.add(at), new THREE.Vector3())
         .divideScalar(cluster.length);
+      // Wall candles' average position lies on the wall itself, where
+      // inverse-square falloff paints a hard hotspot between the flames.
+      // Pull the light ~half a metre off the wall, toward the room's middle.
+      const inward = new THREE.Vector3(-center.x, 0, -center.z);
+      if (inward.lengthSq() > 1e-6) {
+        center.add(inward.normalize().multiplyScalar(0.55));
+      }
       return this.addLight(
         0xffa24d,
         0.6 + 0.25 * Math.min(cluster.length, 6),
@@ -294,8 +309,11 @@ export class Ambience {
       const materials = Array.isArray(node.material) ? node.material : [node.material];
       materials.forEach((material) => {
         if (material instanceof THREE.MeshStandardMaterial && /lamp/i.test(material.name)) {
-          material.emissive.setRGB(1, 0.72, 0.42);
-          material.emissiveIntensity = 2.2;
+          // A dark body under a warm glow: lit by the room's lamps as well,
+          // a white body blew out to flat white patches under the lantern.
+          material.color.setRGB(0.22, 0.14, 0.07);
+          material.emissive.setRGB(1, 0.62, 0.3);
+          material.emissiveIntensity = 1.8;
         }
       });
     });
@@ -557,6 +575,52 @@ function makeFlameTexture(): THREE.CanvasTexture {
     ctx.fillStyle = inner;
     shape();
     ctx.fill();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+/** Glowing coals: dark lumps with hot orange cracks and a few bright
+ * spots between them — the ember bed's emissive map. */
+function makeCoalTexture(): THREE.CanvasTexture {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#3a0c02';
+    ctx.fillRect(0, 0, size, size);
+    for (let i = 0; i < 90; i++) {
+      const x = Math.random() * size;
+      const y = Math.random() * size;
+      const radius = 10 + Math.random() * 30;
+      const heat = Math.random();
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, radius);
+      glow.addColorStop(0, heat > 0.75 ? 'rgba(255, 214, 120, 0.9)' : 'rgba(255, 120, 30, 0.7)');
+      glow.addColorStop(1, 'rgba(255, 90, 20, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    }
+    // Dark coal lumps over the glow; the gaps between them stay hot.
+    for (let i = 0; i < 70; i++) {
+      const x = Math.random() * size;
+      const y = Math.random() * size;
+      const radius = 8 + Math.random() * 16;
+      ctx.fillStyle = `rgba(8, 3, 1, ${0.55 + Math.random() * 0.35})`;
+      ctx.beginPath();
+      for (let corner = 0; corner < 7; corner++) {
+        const angle = (corner / 7) * Math.PI * 2;
+        const reach = radius * (0.7 + Math.random() * 0.3);
+        const px = x + Math.cos(angle) * reach;
+        const py = y + Math.sin(angle) * reach;
+        if (corner === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
