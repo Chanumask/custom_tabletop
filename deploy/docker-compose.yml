@@ -1,5 +1,5 @@
 # Custom Tabletop on the VPS — copied to /srv/apps/tabletop/docker-compose.yml
-# by scripts/deploy.sh, next to ./src (a checkout of this repo) and
+# by scripts/deploy-remote.sh (npm run deploy), next to ./src (a checkout of this repo) and
 # ./uploads. Nginx Proxy Manager reaches it over the shared `murrinet`
 # network as http://tabletop:3001; no port is published on the host.
 # Details: docs/engineering/deployment.md.
