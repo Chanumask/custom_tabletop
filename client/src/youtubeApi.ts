@@ -7,6 +7,7 @@
 
 export interface YouTubePlayer {
   playVideo(): void;
+  getCurrentTime(): number;
   setVolume(volume: number): void;
   destroy(): void;
 }
