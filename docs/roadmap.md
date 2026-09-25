@@ -84,25 +84,41 @@ A user-requested UI/UX pass, not itself a numbered milestone — landed between 
 - Client-only settings (`localStorage`, never synced to `GameState`): master volume, and a rebindable interact key (previously hardcoded to `E`).
 - Any player can add a sound to the shared soundboard via a direct audio-file link, not just upload — a YouTube-audio-download mechanism was explicitly declined (ToS/copyright) in favor of this.
 
-## Wall soundboard extension ✅ (pending live browser verification)
+## Wall soundboard extension ✅
 
 A further user-requested rework of the M8 soundboard interactable, landed right after the session-menu extension above. See `docs/decisions.md` (2026-09-24) and `docs/changelog.md` for the full breakdown.
 
 - Replaced the M8 floor-standing console with a wall-mounted 4x4 grid of individually-addressable buttons (`GameState.soundboardSlots`), each independently empty or holding a specific sound.
 - Interaction switched from click to aim + E (a proximity-only model can't tell 16 wall-mounted buttons apart); pressing an empty button opens an in-room menu to attach a sound via link or upload.
 - `sound:play` was relaxed from host-only to open to any player, applied consistently to both the wall board and the 2D panel.
-- Build/lint/tests all clean, but the actual in-room look (wall placement, aiming, the assign-menu overlay) hasn't been visually confirmed yet — the browser automation tooling was disconnected when this landed.
+- Live-verified on 2026-09-25: the board renders on the east wall, aim + E plays, and one press played the sound exactly once in each of three players' tabs.
+
+## Follow-up change requests & extras (2026-09-24/25) ✅
+
+The seven change requests from the owner's follow-up prompt, plus extras aimed at "not feeling limited". Each has a decisions.md entry; the changelog (2026-09-25) lists the commits.
+
+- **Foundations:** socket identity binding, presence with a reconnect grace period, host handover; six unique player colors with a pre-join peek, live profile edits, invite links.
+- **CR #1 Soundboard links:** YouTube plays as a visible embedded clip (audio-only isn't allowed); direct audio links are validated; the board can be managed.
+- **CR #2 Table & map:** square table, true-color surface, a crop/preview dialog that keeps the aspect ratio.
+- **CR #3 Characters:** six animated Quaternius characters (shirt in the player color), smooth movement, sitting on chairs, emotes, name tags.
+- **CR #4 Room:** a fully furnished Blender room; gameplay geometry (colliders, seats, table, whiteboard) read from the model.
+- **CR #5 Whiteboard:** six synced lines in their writers' colors, collision-free per-line edits.
+- **CR #6 Join screen:** live character preview, branded card, invite-link paste, who's-at-the-table status.
+- **CR #7 Sync:** a four-player end-to-end socket test asserting every client converges to the same game.
+- **Extras:** real d4–d20 dice landing on the server's result; chat and a session log with `/roll` and speech bubbles; right-click pings; a host-set map grid; per-color spawn points.
 
 ## M10 — Performance & polish
 
 - Confirm delta-only updates hold under real drawing/movement load (no full-state re-broadcast).
-- Basic error/disconnect UX, session cleanup on empty session.
+- Code-split the ~930 KB bundle (three.js and the room) away from the join screen.
+- ~~Basic error/disconnect UX, session cleanup on empty session.~~ Done along the way: a reconnect banner and grace period, toasts for refused actions, and an empty session is deleted.
+- Milestone 9's cross-browser pass (Edge, Firefox), still not run: this environment only drives Chrome.
 - Whatever's left from playtesting the milestones above.
 
 ---
 
 Later, out of scope for now (revisit once M1–M10 are playable):
 
-- **Map presets & fitting**: a handful of standard/built-in map backgrounds to choose from (mirroring the soundboard's built-in presets), plus an interactive resize/reposition step when a custom map image is uploaded so it's fitted to the circular table properly (crop/zoom/pan) rather than just auto-scaled to fill it. 2026-09-24 user request; a cheap non-interactive "cover" fit (preserve aspect ratio, crop to fill, no stretch) landed as part of the file-uploads extension's work as a stopgap — the interactive fit tool itself is still future work.
+- **Map presets**: a handful of standard/built-in map backgrounds to choose from (mirroring the soundboard's built-in presets). 2026-09-24 user request. (The interactive crop/zoom/pan fit it came with landed on 2026-09-25 as the map crop dialog.)
 - **Wall drawing + a pen tool**: extend drawing (Milestone 5) from the table surface to the room's walls, with a real tool-selection UI (a pen tool, implying others like an eraser later) rather than the current single click-drag-anywhere-on-the-table gesture. 2026-09-24 user request.
-- Persistence/save-load, mobile support, real (non-placeholder) character models.
+- Persistence/save-load, mobile support. (Real character models landed on 2026-09-24.)

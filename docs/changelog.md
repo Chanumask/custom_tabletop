@@ -6,6 +6,93 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 — The seven follow-up change requests, plus chat, real dice, pings and a grid
+
+**Asked** (user, relaying a follow-up prompt from the repo's owner):
+1. Fix soundboard YouTube links that gave no sound.
+2. Make the table square, show the whole map, and add a crop/preview.
+3. Six player models tied to six selectable colors.
+4. A more detailed room, without the white window object.
+5. A whiteboard.
+6. A polished login screen.
+7. Multiplayer and soundboard sync with 3+ players.
+
+On top: make the Blender MCP work at full potential, keep everything needed in git, let players change their colors, and "make it 10/10 … come up with cool ideas so it doesn't feel limited". Each item's reasoning is in [decisions.md](decisions.md) (2026-09-24 and 2026-09-25 entries).
+
+### What landed (all on local `main`, one merged branch per item)
+
+- **Housekeeping** (`94d1d8c`):
+  - `.mcp.json` pins `mcp-for-blender@2.0.4` with telemetry off.
+  - The raw Quaternius packs are git-ignored under `blender/source-assets/` (a README there says how to fetch them and rebuild the characters).
+  - `*.blend1` is ignored.
+- **Identity and presence** (`4174f78`), which had to come first:
+  - Sockets are bound to one player, so forged `playerId`s are refused everywhere.
+  - A 45 s reconnect grace period, host handover, resume-only rejoin, and `session:replaced` for duplicate tabs.
+- **Player colors** (`4fdee15`, CR #3 prerequisite):
+  - Six unique colors per session, and a `session:peek` before joining that shows who's there and which colors are taken.
+  - Live name/color edits, invite links (`?join=CODE`), and toasts for refused actions.
+- **Soundboard links** (`01cc74c`, CR #1): YouTube can't legally be audio-only, so a YouTube link now plays as YouTube's own *visible* player, shown to everyone. Direct audio links are probed before they're accepted, and the board can be managed (move, clear, remove).
+- **Room rework** (`8f102a3`, CR #2 and #4):
+  - The table is now square.
+  - The room is fully furnished from CC0 Poly Haven assets via the Blender MCP.
+  - The white window-like object is gone.
+  - Colliders, seats, the table and the whiteboard are read from named objects in the model.
+  - The table surface shows true map colors.
+- **Map crop dialog** (`11994f5`, CR #2): pan/zoom/presets on a square preview that keeps the aspect ratio, baked into the uploaded image. Uploads are named by their validated type.
+- **Characters** (`69b30e1`, CR #3):
+  - Six distinct Quaternius characters, one per color, with the shirt in the player color, built by `scripts/build-characters.mjs`.
+  - Smooth movement; walk/run animation from measured speed (Shift runs).
+  - Seated players sit on real chairs.
+  - Emotes on keys 1–6, and name tags.
+- **Whiteboard** (`125b28b`, CR #5):
+  - Six synced lines, each in its writer's color (darkened when needed so it stays legible).
+  - Aim + E opens the editor.
+  - Edits are sent per line, so two writers never overwrite each other.
+- **Join screen** (`5bda583`, CR #6): a live 3D preview of your character (it waves, and you can drag to spin it), a branded card, a paste-an-invite-link code field, a "who's at the table" line with colored dots, a rejoin card, and a d20 favicon.
+- **Real RPG dice** (`1cf9724`, extra):
+  - d4–d20 with numbered faces, in the owner's color. They tumble and land with the server's result on top, in the same pose on every client, with a result badge (gold nat 20, red nat 1) and a synthesized clatter.
+  - A `rollCount` nonce fixes same-number re-rolls not animating.
+  - Pool rolls; rolling by aim + E, by clicking at the table, or from the new Dice tab.
+- **Chat and session log** (`3e3d2ff`, extra):
+  - The log carries chat, every roll (with breakdown and total) and joins/leaves.
+  - `/roll 2d6+3` rolls on the server.
+  - Speech bubbles appear over the speaker.
+  - Enter opens chat; sending hands the mouse back to mouse-look.
+  - Players now spawn on per-color spots facing the table, and a reload keeps your position.
+- **Pings and grid** (`af32197`, extra):
+  - Right-click the table (seated or walking) for a colored ping everyone sees and hears.
+  - The host can lay a 10–30 cell grid over the map.
+- **Four-player sync test** (`e9906d7`, CR #7): one end-to-end socket test plays a busy four-player session (soundboard link, play and concurrent reassignment; dice pool; simultaneous whiteboard writes; chat and `/roll`; a leave). All remaining clients end with deep-equal state and everyone hears the sound exactly once. It passed 10 of 10 runs.
+
+### Checked
+
+- Full sanity pass on every merge. Now: **491 tests** (47 shared, 246 server, 198 client). Lint, format and build are clean.
+- Live in Chrome with 2–4 players (tabs plus a scripted socket client), per feature. Notable results:
+  - The wall soundboard, deferred from last session, is now verified: the board renders, aim + E plays, and one press played Bell exactly once in each of three tabs.
+  - Every dice kind landed showing its rolled number.
+  - Whiteboard, chat and ping sync across tabs.
+- **Bugs caught live and fixed** (details in decisions.md):
+  - Whiteboard: upside-down text (glTF `flipY`), a lost-update race, illegible yellow ink.
+  - Dice: pale, blown-out color under the chandelier.
+  - Join screen: a 377 px card in a 343 px column.
+  - Chat feed: showing history as news (a `performance.now()` sentinel).
+  - Layout: everyone spawning inside each other; the prompt and hint overlapping.
+
+### Next session
+
+- **Not pushed.** `main` is 13 merge/feature commits ahead of `origin/main` (`9dddec9`). Ask before `git push`.
+- **Remaining:**
+  - Milestone 10 (performance & polish). The JS bundle is ~930 KB (three.js dominates), so code-split the room/three.js away from the join screen. Also load-test drawing and dice with many players.
+  - Milestone 9's cross-browser pass (Edge/Firefox), which this environment can't drive.
+  - The roadmap's "later" list (wall drawing, persistence).
+- **Environment gotchas:**
+  - With the in-app browser pane hidden, `requestAnimationFrame` doesn't run. Live checks used a tab whose rAF was swapped for a timer *before joining* (RoomView mounts on join).
+  - Writing a file with a Bash heredoc can leave Vite serving a half-written transform. `touch` the file, then reload.
+  - Any edit under `server/src` (tests included) restarts the dev server and drops every in-memory session.
+- **Branch:** `main`, clean. No feature branch open.
+
+---
+
 ## 2026-09-24 — Wall soundboard rework: 4x4 grid, per-button sound assignment, aim + E
 
 **Asked** (user): "the soundboard isnt working as intended. it shoul be on one of the walls. a big board with 16 buttons (4x4) interacting with one of the buttons with e should play the attatched sound for all players. if theres no sound attatched e should open a menu where you can select a sound by posting an url or uploading a file."

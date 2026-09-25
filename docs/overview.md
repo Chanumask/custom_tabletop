@@ -8,7 +8,21 @@
 
 Scope is deliberately narrow at the start: get a host and a few players walking around one room together, sharing a table map, drawing on it, and rolling dice together in real time, before adding anything beyond that.
 
-## Where it stands (2026-09-24)
+## Where it stands (2026-09-25)
+
+**Milestones 1–9, plus the owner's seven follow-up change requests and a round of extras, are done.** On top of everything below:
+- Players pick one of six colors, each its own animated character that walks, runs, sits on the chairs and emotes, with a name tag.
+- The join screen previews your character live.
+- The room is a fully furnished Blender room with a square table showing the map in true colors (crop/preview on upload, optional grid).
+- There's a synced whiteboard.
+- The dice are real d4–d20 that land on the rolled number.
+- A chat/session log records every roll, supports `/roll` notation, and shows speech bubbles.
+- Right-click pings, and YouTube clips play as a visible shared player.
+- A four-player end-to-end test proves every client converges to the same game.
+
+Remaining: Milestone 10 (performance & polish, notably code-splitting the ~930 KB bundle) and the cross-browser pass. See [roadmap.md](roadmap.md) and [changelog.md](changelog.md).
+
+### Before this round (2026-09-24)
 
 **Milestones 1-9 done, plus a file-uploads extension on top of M5/M7.** The npm-workspace toolchain, sessions/connection (join, live player list, host role, reconnect), the 3D room shell (a real Blender-built "cozy tabletop game room" with a round table, first-person WASD + mouse-look movement, wall/table collision), player avatars (other connected players render as placeholder capsules and move live), the tabletop map/drawing (the host swaps the table's background image — by URL or file upload — any player draws directly on the physical table surface, both live for everyone), dice (any player spawns/rolls/removes a die, server-authoritative result, animated and visible to everyone live), soundboard/mute (the host triggers a sound everyone hears — a small built-in set or a file any player uploaded to the shared board; a player's self- or host-applied mute status is visible to the group), room interactables (a light switch, a full-screen sit-down mode at the table with a pen/eraser drawing toolbar, and a physical clickable soundboard console), and host authority hardening (every host-gated action now has live, proven server-side rejection coverage — an audit pass, not a new feature) all work end to end — see [roadmap.md](roadmap.md) for exactly what each milestone covers and [changelog.md](changelog.md) for how they were built. Remaining: Milestone 10 (performance & polish), the last milestone on the original roadmap. **Known gap:** Milestone 9's cross-browser pass (Edge, Firefox) was never actually performed — this environment's tooling only drives Chrome.
 
