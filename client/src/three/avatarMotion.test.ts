@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  assignSeats,
+  pickChair,
   lerpAngle,
   locomotionFor,
   playbackRate,
@@ -46,45 +46,22 @@ describe('locomotion', () => {
   });
 });
 
-describe('assignSeats', () => {
+describe('pickChair', () => {
   const seats = [
     { x: 0, z: 1.5, yaw: Math.PI },
     { x: 0, z: -1.5, yaw: 0 },
+    { x: 1.5, z: 0, yaw: -Math.PI / 2 },
   ];
 
-  it('gives each seated player the nearest free chair', () => {
-    const result = assignSeats(
-      [
-        { id: 'a', x: 0, z: 2 },
-        { id: 'b', x: 0.2, z: -2 },
-      ],
-      seats,
-    );
-    expect(result.get('a')).toBe(seats[0]);
-    expect(result.get('b')).toBe(seats[1]);
+  it('picks the nearest chair', () => {
+    expect(pickChair(seats, new Set(), { x: 0.2, z: -2 })).toBe(1);
   });
 
-  it('never puts two players on one chair, and is the same regardless of input order', () => {
-    const players = [
-      { id: 'b', x: 0, z: 2 },
-      { id: 'a', x: 0, z: 1.9 },
-    ];
-    const one = assignSeats(players, seats);
-    const two = assignSeats([...players].reverse(), seats);
-    expect(one.get('a')).toBe(seats[0]); // 'a' picks first (id order)
-    expect(one.get('b')).toBe(seats[1]);
-    expect([...two.entries()]).toEqual([...one.entries()]);
+  it('skips chairs someone is already on', () => {
+    expect(pickChair(seats, new Set([1]), { x: 0.2, z: -2 })).toBe(2);
   });
 
-  it('leaves players without a chair when chairs run out', () => {
-    const result = assignSeats(
-      [
-        { id: 'a', x: 0, z: 0 },
-        { id: 'b', x: 0, z: 0 },
-        { id: 'c', x: 0, z: 0 },
-      ],
-      seats,
-    );
-    expect(result.get('c')).toBeNull();
+  it('gives null when every chair is taken', () => {
+    expect(pickChair(seats, new Set([0, 1, 2]), { x: 0, z: 0 })).toBeNull();
   });
 });

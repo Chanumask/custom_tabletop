@@ -21,6 +21,24 @@ export const MOVEMENT_KEYS = new Set([...FORWARD_KEYS, ...BACK_KEYS, ...LEFT_KEY
 /** Held to run instead of walk. */
 export const RUN_KEYS = new Set(['ShiftLeft', 'ShiftRight']);
 
+/** Eye height of a seated character (standing eyes are at 1.7 m; the
+ * sitting pose drops the head about half a metre — PlayerAvatars). */
+export const SEATED_EYE_HEIGHT = 1.22;
+/** Eyes sit a little forward of the chair's center, over the knees. */
+const SEATED_EYE_FORWARD = 0.1;
+
+/** A chair to sit on: where it stands and which way it faces (yaw 0 faces
+ * +Z, like `Player.rotationY`). */
+export interface ChairPose {
+  x: number;
+  z: number;
+  yaw: number;
+}
+
+/** Seated, you either look out from your chair (free mouse-look: the other
+ * players, the room) or straight down at the table as a map. */
+export type SeatedView = 'chair' | 'table';
+
 export interface FirstPersonControllerOptions {
   camera: THREE.PerspectiveCamera;
   domElement: HTMLElement;
@@ -54,6 +72,8 @@ export class FirstPersonController {
   private readonly runSpeed: number;
   private readonly pressedKeys = new Set<string>();
   private standingState: { position: THREE.Vector3; quaternion: THREE.Quaternion } | null = null;
+  private chair: ChairPose | null = null;
+  private view: SeatedView = 'table';
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     if (isTypingTarget(event.target)) {
@@ -104,7 +124,8 @@ export class FirstPersonController {
   /** Advances the player by `deltaSeconds` of held-key input, resolved
    * against walls/table. No-op while pointer lock isn't active. */
   update(deltaSeconds: number): void {
-    if (!this.controls.isLocked || deltaSeconds <= 0) {
+    // Seated, mouse-look still works (from the chair) but WASD doesn't.
+    if (!this.controls.isLocked || this.isSeated || deltaSeconds <= 0) {
       return;
     }
 
@@ -141,16 +162,13 @@ export class FirstPersonController {
     object.position.z = resolved.z;
   }
 
-  /** "Sits" at the table (Milestone 8): releases pointer lock (so the
-   * existing raycast-driven table interactions — drawing, dice, the
-   * soundboard console — work immediately without a separate click) and
-   * takes the camera over directly, hovering it above the table looking
-   * straight down — high enough that the whole play surface fills the
-   * (square, while seated) frame (`seatedCameraHeight`). `update()`'s
-   * movement already no-ops while unlocked, so WASD is disabled for free as
-   * a side effect, without a separate seated flag to check. A no-op if
-   * already seated. */
-  sit(): void {
+  /** Sits down at the table (Milestone 8, reworked): on `chair` when there
+   * is one — looking out from it, where mouse-look still works and the
+   * other players are right there — or straight down at the table as a map
+   * (`view`, switchable any time with `setSeatedView`). Remembers the
+   * standing pose so `stand()` puts the player back exactly where they
+   * were. WASD is off while seated. A no-op if already seated. */
+  sit(chair: ChairPose | null, view: SeatedView = chair ? 'chair' : 'table'): void {
     if (this.standingState) {
       return;
     }
@@ -159,13 +177,52 @@ export class FirstPersonController {
       position: object.position.clone(),
       quaternion: object.quaternion.clone(),
     };
+    this.chair = chair;
+    this.view = chair ? view : 'table';
     this.controls.unlock();
-    object.position.set(
-      this.table.center.x,
-      seatedCameraHeight(this.table, this.camera.fov),
-      this.table.center.z,
-    );
-    object.lookAt(this.table.center.x, 0, this.table.center.z);
+    this.applySeatedPose();
+  }
+
+  /** Switches between the chair and the top-down table view (seated only;
+   * the chair view needs a chair). The table view releases mouse-look —
+   * it's for drawing, rolling and pinging with the cursor. */
+  setSeatedView(view: SeatedView): void {
+    if (!this.standingState || (view === 'chair' && !this.chair) || view === this.view) {
+      return;
+    }
+    this.view = view;
+    if (view === 'table') {
+      this.controls.unlock();
+    }
+    this.applySeatedPose();
+  }
+
+  /** The current seated view, or null while standing. */
+  get seatedView(): SeatedView | null {
+    return this.standingState ? this.view : null;
+  }
+
+  /** Whether there's a chair to look out from (vs. only the table view). */
+  get hasChair(): boolean {
+    return this.chair !== null;
+  }
+
+  private applySeatedPose(): void {
+    const object = this.controls.object;
+    const table = this.table;
+    if (this.view === 'chair' && this.chair) {
+      const { x, z, yaw } = this.chair;
+      object.position.set(
+        x + Math.sin(yaw) * SEATED_EYE_FORWARD,
+        SEATED_EYE_HEIGHT,
+        z + Math.cos(yaw) * SEATED_EYE_FORWARD,
+      );
+      // Facing the middle of the table, the way a seated player would.
+      object.lookAt(table.center.x, table.height + 0.1, table.center.z);
+      return;
+    }
+    object.position.set(table.center.x, seatedCameraHeight(table, this.camera.fov), table.center.z);
+    object.lookAt(table.center.x, 0, table.center.z);
   }
 
   /** Restores the camera to wherever it was right before `sit()` — the
@@ -181,6 +238,7 @@ export class FirstPersonController {
     object.position.copy(this.standingState.position);
     object.quaternion.copy(this.standingState.quaternion);
     this.standingState = null;
+    this.chair = null;
   }
 
   get isSeated(): boolean {

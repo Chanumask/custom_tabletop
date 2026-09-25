@@ -38,6 +38,7 @@ function player(id: string, overrides: Partial<Player> = {}): Player {
     rotationY: 0,
     muted: false,
     seated: false,
+    seatIndex: null,
     connected: true,
     ...overrides,
   };
@@ -115,9 +116,16 @@ describe('PlayerAvatars', () => {
   });
 
   it('seats a seated player on a chair, facing the way the chair faces', async () => {
-    const seats = [{ x: 0, z: 1.56, yaw: Math.PI }];
+    const seats = [
+      { x: 3, z: -1.56, yaw: 0 },
+      { x: 0, z: 1.56, yaw: Math.PI },
+    ];
     const avatars = new PlayerAvatars(new THREE.Scene(), fakeCharacters(), seats);
-    avatars.sync([player('a', { seated: true, position: { x: 0.3, y: 1.7, z: 2 } })], 'me');
+    // The chair they chose (seatIndex), not whichever is nearest to them.
+    avatars.sync(
+      [player('a', { seated: true, seatIndex: 1, position: { x: 2.8, y: 1.7, z: -2 } })],
+      'me',
+    );
     await flush();
     avatars.update(1 / 60);
 
