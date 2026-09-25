@@ -2,14 +2,19 @@ import { getAudioContext, getMasterVolume } from './sounds.js';
 
 /** Loudest the fire gets (at master volume 1), right in front of it. */
 const PEAK_GAIN = 0.22;
-/** Beyond this distance (metres) the fire is silent. */
-const HEARING_RANGE = 8;
+/** Past this distance (metres) the fire is at its room-filling floor. */
+const FALLOFF_RANGE = 7;
+/** A fire fills a small room: anywhere in it, it's at least this loud. It
+ * used to fade to silence by 8 m — which left it at 2–7% at the table,
+ * where players spend the game, so it seemed to "get lost". */
+const ROOM_FLOOR = 0.3;
 
-/** How loud the fire should be from `distance` metres away: full up close,
- * falling off smoothly to nothing at `HEARING_RANGE`. Pure, for tests. */
+/** How loud the fire should be from `distance` metres away (measured
+ * across the floor): full up close, easing down to a soft room-filling
+ * murmur. Pure, for tests. */
 export function fireLoudness(distance: number): number {
-  const t = Math.min(Math.max(distance / HEARING_RANGE, 0), 1);
-  return (1 - t) ** 2;
+  const t = Math.min(Math.max(distance / FALLOFF_RANGE, 0), 1);
+  return ROOM_FLOOR + (1 - ROOM_FLOOR) * (1 - t) ** 2;
 }
 
 /**
