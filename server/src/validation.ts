@@ -1,4 +1,6 @@
 import {
+  type DiceMoveRequest,
+  type MiniMoveRequest,
   CLIP_ACTIONS,
   MAX_CLIP_POSITION,
   type ClipAction,
@@ -713,4 +715,50 @@ export function parseClipLockRequest(payload: unknown): ClipLockRequest | null {
     return null;
   }
   return { sessionId, playerId, locked };
+}
+
+/** A position sane enough to be somewhere around the table. */
+function isNearTable(value: unknown): value is Vector3 {
+  return (
+    isVector3(value) && Math.abs(value.x) < 20 && Math.abs(value.z) < 20 && Math.abs(value.y) < 10
+  );
+}
+
+/** mini:move — whose mini, and where (or null: off the table). */
+export function parseMiniMoveRequest(payload: unknown): MiniMoveRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+  const { sessionId, playerId, targetPlayerId, point } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    !isNonEmptyString(targetPlayerId) ||
+    (point !== null && !isPoint2D(point))
+  ) {
+    return null;
+  }
+  return {
+    sessionId,
+    playerId,
+    targetPlayerId,
+    point: point === null ? null : { x: point.x, y: point.y },
+  };
+}
+
+/** dice:move — which die, and where it rests now. */
+export function parseDiceMoveRequest(payload: unknown): DiceMoveRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+  const { sessionId, playerId, diceId, position } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    !isNonEmptyString(diceId) ||
+    !isNearTable(position)
+  ) {
+    return null;
+  }
+  return { sessionId, playerId, diceId, position: { x: position.x, y: position.y, z: position.z } };
 }

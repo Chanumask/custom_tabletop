@@ -179,6 +179,10 @@ export interface GameState {
   /** Host-set: while true, only the host can control the clip. */
   clipLocked: boolean;
 
+  /** Players' minis on the table: playerId -> where it stands, in table
+   * units (minis.ts). A player without an entry has theirs off the table. */
+  minis: Record<string, Point2D>;
+
   /** The north wall's whiteboard — `WHITEBOARD_LINE_COUNT` lines (whiteboard.ts). */
   whiteboard: WhiteboardLine[];
 

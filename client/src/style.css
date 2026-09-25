@@ -2391,3 +2391,20 @@ button.primary {
   width: 1.45rem;
   height: 1.45rem;
 }
+
+/* Map tab: your mini. */
+.mini-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--edge);
+}
+
+.mini-hint {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  text-align: center;
+}

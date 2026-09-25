@@ -44,3 +44,14 @@ export function gridLineOffsets(cells: number, canvasSize: number): number[] {
   }
   return Array.from({ length: cells + 1 }, (_, index) => (index * canvasSize) / cells);
 }
+
+/** A point on the table surface (table units, like drawings) as a spot in
+ * the room, on the play surface — where a mini or a dragged die stands. */
+export function canvasToWorld(
+  point: Point2D,
+  table: { center: { x: number; z: number }; halfWidth: number; halfDepth: number; height: number },
+  canvasSize: number,
+): { x: number; y: number; z: number } {
+  const local = canvasToTableLocal(point, table.halfWidth, table.halfDepth, canvasSize);
+  return { x: table.center.x + local.x, y: table.height, z: table.center.z + local.z };
+}

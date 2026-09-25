@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { Socket } from 'socket.io-client';
 import {
+  TABLE_UNITS,
+  type Vector3,
   SocketEvent,
   DEFAULT_SPAWN_POSITION,
   type Player,
@@ -37,6 +39,9 @@ import {
 } from './RoomLighting.js';
 import { PlayerAvatars } from './PlayerAvatars.js';
 import { CharacterLibrary } from './characters.js';
+import { MiniManager } from './Minis.js';
+import { canvasToWorld } from './tableCoordinates.js';
+import { throttle } from '../throttle.js';
 import { isTypingTarget } from '../keyboard.js';
 import { WhiteboardCanvas } from './WhiteboardCanvas.js';
 import { WhiteboardEditor } from '../WhiteboardEditor.js';
@@ -75,6 +80,19 @@ import { SoundboardAssignMenu } from '../SoundboardAssignMenu.js';
 // Module-level so each character model downloads once per page, not once
 // per room mount (leaving and rejoining a session reuses it).
 const characterLibrary = new CharacterLibrary();
+/** A dragged mini or die sends where it is this often (ms). */
+const DRAG_SEND_MS = 60;
+/** DiceManager's carry lift (kept in step with its DRAG_LIFT). */
+const DIE_DRAG_LIFT = 0.02;
+/** Dragged things stay this far (table units) inside the play surface's
+ * edge, so a mini's base or a die never hangs over the rail. */
+const MINI_EDGE_UNITS = 24;
+const DIE_EDGE_UNITS = 40;
+
+function insetOnTable(point: Point2D, margin: number): Point2D {
+  const clamp = (value: number) => Math.min(TABLE_UNITS - margin, Math.max(margin, value));
+  return { x: clamp(point.x), y: clamp(point.y) };
+}
 // Throttle: enough for smooth-looking remote avatars without flooding the
 // socket (docs/engineering/architecture.md, "Performance" — deltas, not a
 // broadcast on every frame).
@@ -131,6 +149,14 @@ export interface RoomViewProps {
   players: Player[];
   activeScene: GameScene;
   dice: Dice[];
+  /** Players' minis on the table (minis.ts): playerId -> table point. */
+  minis: Record<string, Point2D>;
+  /** Whoever is host may move anyone's mini or die. */
+  hostId: string;
+  /** Move (or place) a mini; the host may move anyone's. */
+  onMoveMini: (targetPlayerId: string, point: Point2D) => void;
+  /** Drag a die to a new resting position. */
+  onMoveDie: (diceId: string, position: Vector3) => void;
   lightOn: boolean;
   soundboard: SoundState[];
   /** Slot index -> assigned sound id or null (Milestone 8 follow-up's wall
@@ -235,6 +261,10 @@ export function RoomView({
   players,
   activeScene,
   dice,
+  minis,
+  hostId,
+  onMoveMini,
+  onMoveDie,
   lightOn,
   soundboard,
   soundboardSlots,
@@ -261,6 +291,14 @@ export function RoomView({
   const lastRedrawnSignatureRef = useRef<string>('');
   const diceManagerRef = useRef<DiceManager | null>(null);
   const diceRef = useRef<Dice[]>(dice);
+  const minisRef = useRef(minis);
+  const miniManagerRef = useRef<MiniManager | null>(null);
+  const isHostRef = useRef(hostId === playerId);
+  isHostRef.current = hostId === playerId;
+  const onMoveMiniRef = useRef(onMoveMini);
+  onMoveMiniRef.current = onMoveMini;
+  const onMoveDieRef = useRef(onMoveDie);
+  onMoveDieRef.current = onMoveDie;
   const roomLightsRef = useRef<RoomLights | null>(null);
   const lampRef = useRef<RoomLamp | null>(null);
   const lightOnRef = useRef<boolean>(lightOn);
@@ -455,6 +493,11 @@ export function RoomView({
     diceRef.current = dice;
     diceManagerRef.current?.sync(dice, players);
   }, [dice, players]);
+
+  useEffect(() => {
+    minisRef.current = minis;
+    miniManagerRef.current?.sync(minis, players);
+  }, [minis, players]);
 
   // The room light (Milestone 8) is a session-wide flag, applied to both
   // the ambient/point lights (RoomLighting.ts) and the lamp prop's own
@@ -768,6 +811,10 @@ export function RoomView({
         diceRaycaster.far = DIE_REACH;
         diceManagerRef.current = diceManager;
 
+        const miniManager = new MiniManager(scene, characterLibrary, room.layout.table);
+        miniManager.sync(minisRef.current, playersRef.current);
+        miniManagerRef.current = miniManager;
+
         const controller = new FirstPersonController({
           camera,
           domElement: renderer.domElement,
@@ -886,13 +933,67 @@ export function RoomView({
             tableTopMesh,
             table: room.layout.table,
             isDrawingAllowed: () => !controller.controls.isLocked,
-            claimClick: (raycaster) => {
-              const dieId = diceManagerRef.current?.pick(raycaster);
-              if (dieId) {
-                onRollDiceRef.current([dieId]);
-                return true;
+            // Minis and dice can be picked up and dragged (docs/decisions.md,
+            // "Minis"); a die that's pressed but not moved rolls, as before.
+            startDrag: (raycaster) => {
+              const miniOwner = miniManagerRef.current?.pick(raycaster) ?? null;
+              if (miniOwner && miniOwner !== playerId && !isHostRef.current) {
+                // Someone else's mini: not yours to move — and pressing on it
+                // shouldn't start a scribble underneath it either.
+                return { move: () => {}, end: () => {} };
               }
-              return false;
+              if (miniOwner) {
+                const send = throttle(
+                  (point: Point2D) => onMoveMiniRef.current(miniOwner, point),
+                  DRAG_SEND_MS,
+                );
+                return {
+                  move: (raw) => {
+                    const point = insetOnTable(raw, MINI_EDGE_UNITS);
+                    miniManagerRef.current?.carry(miniOwner, point);
+                    send.call(point);
+                  },
+                  end: () => {
+                    send.flush();
+                    miniManagerRef.current?.release(miniOwner);
+                  },
+                };
+              }
+              const dieId = diceManagerRef.current?.pick(raycaster) ?? null;
+              if (!dieId) {
+                return null;
+              }
+              const die = diceRef.current.find((candidate) => candidate.id === dieId);
+              const canMove = !!die && (die.ownerId === playerId || isHostRef.current);
+              const send = throttle(
+                (position: Vector3) => onMoveDieRef.current(dieId, position),
+                DRAG_SEND_MS,
+              );
+              let last: Vector3 | null = null;
+              return {
+                move: (raw) => {
+                  if (!canMove) return;
+                  const point = insetOnTable(raw, DIE_EDGE_UNITS);
+                  last = canvasToWorld(point, room.layout.table, TABLE_UNITS);
+                  diceManagerRef.current?.carry(dieId, last);
+                  send.call(last);
+                },
+                end: (moved) => {
+                  if (!moved) {
+                    onRollDiceRef.current([dieId]);
+                    return;
+                  }
+                  send.flush();
+                  if (!last) return;
+                  // Set it back down where it was let go.
+                  diceManagerRef.current?.carry(dieId, { ...last, y: last.y - DIE_DRAG_LIFT });
+                },
+              };
+            },
+            canPickUp: (raycaster) => {
+              const miniOwner = miniManagerRef.current?.pick(raycaster) ?? null;
+              if (miniOwner) return miniOwner === playerId || isHostRef.current;
+              return diceManagerRef.current?.pick(raycaster) !== null;
             },
             getTool: () => drawToolRef.current,
             onPing: sendPing,
@@ -1120,6 +1221,7 @@ export function RoomView({
           const delta = Math.min(timer.getDelta(), MAX_FRAME_SECONDS);
           controller.update(delta);
           diceManagerRef.current?.update(delta, camera);
+          miniManagerRef.current?.update(delta);
           tablePings.update(delta);
           ambienceRef.current?.update(delta, timer.getElapsed());
           updateFireAudio?.(delta);
@@ -1285,6 +1387,8 @@ export function RoomView({
       avatarsRef.current = null;
       diceManagerRef.current?.dispose();
       diceManagerRef.current = null;
+      miniManagerRef.current?.dispose();
+      miniManagerRef.current = null;
       tableDrawing?.dispose();
       tableCanvasRef.current?.dispose();
       tableCanvasRef.current = null;

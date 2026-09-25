@@ -24,9 +24,13 @@ export interface TableDrawingOptions {
    * cursor while erasing, including while dragging — the caller hit-tests
    * which stroke (if any) that point is near. */
   onErase: (point: Point2D) => void;
-  /** Gets first say on a click (seated): e.g. clicking a die rolls it
-   * instead of starting a stroke under it. Returns true if it used the click. */
-  claimClick?: (raycaster: THREE.Raycaster) => boolean;
+  /** Gets first say on a press: something on the table (a mini, a die)
+   * can be picked up instead of starting a stroke under it. Returns what to
+   * do as the pointer moves and when it's let go — `end(false)` means it
+   * never moved, i.e. a click (a die rolls). Null: nothing there. */
+  startDrag?: (raycaster: THREE.Raycaster) => TableDrag | null;
+  /** Whether what's under the pointer could be picked up (the hand cursor). */
+  canPickUp?: (raycaster: THREE.Raycaster) => boolean;
   /** A right-click on the table: "look here!" (TablePings). */
   onPing?: (point: Point2D) => void;
 }
@@ -44,11 +48,21 @@ function preventContextMenu(event: Event): void {
   event.preventDefault();
 }
 
+/** Something picked up off the table (TableDrawingOptions.startDrag). */
+export interface TableDrag {
+  move(point: Point2D): void;
+  end(moved: boolean): void;
+}
+
+/** Pointer travel (px) before a press counts as a drag, not a click. */
+const DRAG_THRESHOLD_PX = 5;
+
 export class TableDrawing {
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointerNdc = new THREE.Vector2();
   private strokeActive = false;
   private eraseActive = false;
+  private drag: { handler: TableDrag; x: number; y: number; moved: boolean } | null = null;
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
     if (!this.options.isDrawingAllowed()) {
@@ -65,7 +79,10 @@ export class TableDrawing {
       return; // the middle button (and anything else) neither draws nor rolls
     }
     this.aim(event);
-    if (this.options.claimClick?.(this.raycaster)) {
+    const drag = this.options.startDrag?.(this.raycaster);
+    if (drag) {
+      this.drag = { handler: drag, x: event.clientX, y: event.clientY, moved: false };
+      this.options.domElement.style.cursor = 'grabbing';
       return;
     }
     const point = this.raycastToCanvasPoint(event);
@@ -82,6 +99,23 @@ export class TableDrawing {
   };
 
   private readonly handlePointerMove = (event: PointerEvent): void => {
+    if (this.drag) {
+      const drag = this.drag;
+      if (
+        !drag.moved &&
+        Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > DRAG_THRESHOLD_PX
+      ) {
+        drag.moved = true;
+      }
+      if (drag.moved) {
+        const point = this.raycastToCanvasPoint(event);
+        if (point) drag.handler.move(point);
+      }
+      return;
+    }
+    if (!this.strokeActive && !this.eraseActive) {
+      this.updateHoverCursor(event);
+    }
     if (this.eraseActive) {
       const point = this.raycastToCanvasPoint(event);
       if (point) {
@@ -99,6 +133,13 @@ export class TableDrawing {
   };
 
   private readonly handlePointerUp = (): void => {
+    if (this.drag) {
+      const { handler, moved } = this.drag;
+      this.drag = null;
+      this.options.domElement.style.cursor = '';
+      handler.end(moved);
+      return;
+    }
     if (this.eraseActive) {
       this.eraseActive = false;
       return;
@@ -126,6 +167,21 @@ export class TableDrawing {
     window.removeEventListener('pointerup', this.handlePointerUp);
     this.strokeActive = false;
     this.eraseActive = false;
+    this.drag = null;
+    this.options.domElement.style.cursor = '';
+  }
+
+  /** A hand over something that can be picked up (only over the canvas,
+   * and only while the pointer is free to draw). */
+  private updateHoverCursor(event: PointerEvent): void {
+    const element = this.options.domElement;
+    if (event.target !== element || !this.options.isDrawingAllowed() || !this.options.canPickUp) {
+      if (element.style.cursor === 'grab') element.style.cursor = '';
+      return;
+    }
+    this.aim(event);
+    const cursor = this.options.canPickUp(this.raycaster) ? 'grab' : '';
+    if (element.style.cursor !== cursor) element.style.cursor = cursor;
   }
 
   private aim(event: PointerEvent): void {
