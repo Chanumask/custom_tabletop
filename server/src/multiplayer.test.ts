@@ -5,6 +5,7 @@ import {
   appendLogEntry,
   type GameState,
   type LogEntryBroadcast,
+  type SessionPatch,
   type PlayerColorId,
   type SessionJoinResponse,
   type SoundPlayRequest,
@@ -55,6 +56,9 @@ describe('a four-player session stays in sync', () => {
     const soundsHeard: SoundPlayRequest[] = [];
     socket.on(SocketEvent.SessionState, (next: GameState) => {
       state = next;
+    });
+    socket.on(SocketEvent.SessionPatch, (message: SessionPatch) => {
+      if (state) state = { ...state, ...message.patch };
     });
     socket.on(SocketEvent.LogEntry, (message: LogEntryBroadcast) => {
       if (state) state = { ...state, log: appendLogEntry(state.log, message.entry) };

@@ -2,12 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import {
   SocketEvent,
-  type GameState,
   type SessionJoinResponse,
   type DiceSpawnResponse,
   type DiceRollResponse,
 } from '@custom-tabletop/shared';
-import { withTestToken } from './testSupport.js';
+import { withTestToken, nextUpdate } from './testSupport.js';
 import { createAppServer, type AppServer } from './server.js';
 
 function joinAck(client: ClientSocket, payload: unknown): Promise<SessionJoinResponse> {
@@ -24,9 +23,7 @@ function diceRollAck(client: ClientSocket, payload: unknown): Promise<DiceRollRe
   return new Promise((resolve) => client.emit(SocketEvent.DiceRoll, payload, resolve));
 }
 
-function waitForSessionState(client: ClientSocket): Promise<GameState> {
-  return new Promise((resolve) => client.once(SocketEvent.SessionState, resolve));
-}
+const waitForSessionState = nextUpdate;
 
 function connect(url: string): Promise<ClientSocket> {
   const client = ioClient(url, { transports: ['websocket'] });

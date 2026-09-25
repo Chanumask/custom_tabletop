@@ -9,7 +9,7 @@ import {
   type SoundRemoveResponse,
   type PlayerMuteResponse,
 } from '@custom-tabletop/shared';
-import { withTestToken } from './testSupport.js';
+import { withTestToken, nextUpdate } from './testSupport.js';
 import { createAppServer, type AppServer } from './server.js';
 
 function joinAck(client: ClientSocket, payload: unknown): Promise<SessionJoinResponse> {
@@ -131,9 +131,7 @@ describe('Soundboard & mute (Milestone 7 exit check)', () => {
     // *next* one — see the same note on the mute test below.
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    const aliceSeesTheUpload = new Promise((resolve) =>
-      alice.once(SocketEvent.SessionState, resolve),
-    );
+    const aliceSeesTheUpload = nextUpdate(alice);
 
     // Bob (not the host) uploads a sound — uploading was never host-gated.
     const uploadResult = await soundUploadAck(bob, {
@@ -312,9 +310,7 @@ describe('Soundboard & mute (Milestone 7 exit check)', () => {
     // already-in-flight broadcast instead of the mute-triggered one.
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    const aliceSeesBobMuted = new Promise((resolve) =>
-      alice.once(SocketEvent.SessionState, resolve),
-    );
+    const aliceSeesBobMuted = nextUpdate(alice);
 
     // Bob mutes himself (self-service, not host-gated).
     const result = await muteAck(bob, {

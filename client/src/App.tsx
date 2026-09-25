@@ -15,6 +15,7 @@ import {
   appendLogEntry,
   type ChatSendResponse,
   type LogEntryBroadcast,
+  type SessionPatch,
 } from '@custom-tabletop/shared';
 import { Toasts } from './Toasts.js';
 import type { ActiveClip } from './YouTubeClip.js';
@@ -173,6 +174,14 @@ export function App() {
 
     socket.on(SocketEvent.SessionState, (state: GameState) => {
       setGameState((current) => (current?.sessionId === state.sessionId ? state : current));
+    });
+
+    // Most actions send just what changed (SessionPatch) — merged over our
+    // copy; a full snapshot (session:state) replaces it.
+    socket.on(SocketEvent.SessionPatch, (message: SessionPatch) => {
+      setGameState((current) =>
+        current?.sessionId === message.sessionId ? { ...current, ...message.patch } : current,
+      );
     });
 
     // Chat lines and typed rolls arrive one entry at a time (log.ts).

@@ -6,6 +6,32 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-25 — Milestone 10 performance: code-split join screen, room preloaded behind it, `session:patch` instead of full-state broadcasts, a six-player load test
+
+**Decided.**
+
+1. **Code splitting.** The game view (RoomView, SessionView — and with them three.js) and the join screen's 3D character preview are lazy chunks. The join form's bundle went from 992 KB to 211 KB (69 KB gzipped) and paints at once. The character titles moved out of \`characters.ts\` (which imports three.js) into \`characterTitles.ts\`, since the color picker needs them before any 3D code.
+2. **Preload behind the join screen.** 600 ms after the join form shows, the room's code chunks and its model start downloading. \`roomAssets.ts\` shares one fetch of the bytes, and \`loadRoom\` parses them fresh per mount. Joining is usually instant. If not, a "Setting up the table…" card shows real progress (from \`content-length\`), and a failed download says so instead of leaving the screen black. Verified by resource timings: the preview chunk at 89 ms, the room chunks and model at ~900 ms, all before joining.
+3. **\`session:patch\` for everything but joins and scene changes.** Every infrequent action used to broadcast the *whole* GameState, including every stroke on the map: dice, the whiteboard, the soundboard, profile edits, mute, the light, sitting down, and presence. That cost grows with the drawings. Now each handler broadcasts only the top-level keys it changed:
+   - dice → \`dice\`, \`log\`;
+   - presence (join, leave, reconnect, removal) → \`players\`, \`hostId\`, \`log\`;
+   - the others likewise.
+
+   Clients merge the patch over their copy. Full snapshots remain for joins (the ack) and \`scene:*\`, which are rare and whose scenes carry the drawings anyway. Acks still return the full state to the actor, one message rather than a broadcast. The socket tests follow updates with a client-like merge (\`testSupport.ts\`'s \`onStateUpdates\` / \`waitForState\`), and the four-player convergence test merges patches exactly like the client; it passed 10 of 10.
+4. **\`npm run load-test\`** (\`scripts/load-test.ts\`): the real server in-process and six simulated players for 20 s. Everyone moves at 10 Hz, two draw at 30 Hz, and dice pools, chat, \`/roll\` and pings run throughout. Before → after the patches:
+
+   | Metric | Before | After |
+   |---|---|---|
+   | Per player | ~29 KB/s | ~13 KB/s |
+   | Biggest single message after 20 s of drawing | 51 KB, growing with the drawings | 8.9 KB, bounded by the 100-entry log |
+   | Chat ack median | 0.6 ms | 0.8 ms |
+   | Dice-roll ack median | 1.5 ms | 1.4 ms |
+   | CPU (including the six clients) | ~5% of one core | ~3% |
+
+   Event-loop delay stays near the 10 ms sampling resolution.
+
+---
+
 ## 2026-09-25 — The cozy room: fireplace, console TV with the shared YouTube clip on it, lounge nook, warm pooled light, glows without bloom
 
 **Decided** (user: "make sure that the room feels super cozy and is way more polished and beautiful … go all in on that", and "add the youtube link watch to a tv that is modeled in the room" — "match the room").
@@ -509,7 +535,7 @@ Live (Chrome, 3 tabs plus a 4th socket-client player):
 
 ## Table of Contents
 
-**2026-09-25** — The cozy room: fireplace, console TV with the YouTube clip on it (CSS3D under a hole in the canvas), lounge nook, glows as halos not bloom, pooled light, fire sound, WebP+meshopt room (9.3 MB); Seated chair view with free look + V table view, server-kept `seatIndex` chairs (explicit sit/stand), interact key consumed so it never types into dialogs; Pings (right-click, relayed not stored, 300 ms guard) and a host-set map grid via `scene:update`; Table chat and session log: `log:entry` deltas vs. full-state, typed `/roll` notation rolled server-side, speech bubbles, client-clock feed fading, per-color spawn points, bottom overlay stack; Real RPG dice: d4–d20 polyhedra landing on the server result, `rollCount` nonce fixes same-number re-rolls, pool rolls, in-world rolling, table-calibrated material; Join screen redesign: character preview on a pedestal, pure join-status logic, invite links paste into the code field, rejoin card, no new deps; Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
+**2026-09-25** — M10 performance: lazy game view + preloaded room (join bundle 992 → 211 KB), `session:patch` replaces full-state broadcasts (per-player traffic halved, biggest message no longer grows with drawings), six-player load test; The cozy room: fireplace, console TV with the YouTube clip on it (CSS3D under a hole in the canvas), lounge nook, glows as halos not bloom, pooled light, fire sound, WebP+meshopt room (9.3 MB); Seated chair view with free look + V table view, server-kept `seatIndex` chairs (explicit sit/stand), interact key consumed so it never types into dialogs; Pings (right-click, relayed not stored, 300 ms guard) and a host-set map grid via `scene:update`; Table chat and session log: `log:entry` deltas vs. full-state, typed `/roll` notation rolled server-side, speech bubbles, client-clock feed fading, per-color spawn points, bottom overlay stack; Real RPG dice: d4–d20 polyhedra landing on the server result, `rollCount` nonce fixes same-number re-rolls, pool rolls, in-world rolling, table-calibrated material; Join screen redesign: character preview on a pedestal, pure join-status logic, invite links paste into the code field, rejoin card, no new deps; Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
 
 **2026-09-24** — Player characters: six Quaternius models built by a glTF-Transform script, interpolation, chair sitting, emotes, name tags, Blender MCP read_homefile crash gotcha, frame-delta cap; map crop/preview dialog, uploads named by validated type; room rework: square table, furnished Blender room, geometry read from the model, true-color table surface; soundboard links validated, YouTube as a visible clip, board management; player colors, pre-join peek, live profile edits, invite links, toasts; identity binding, reconnect grace period, host handover, resume-only rejoin; wall soundboard rework (4x4 aim-and-E grid, `sound:play` opened to everyone); session menu rework (tabs, client-only settings, rebindable interact key, no YouTube downloader); Milestone 9: host authority hardening, an audit pass (not a new feature), the roadmap's stale "host-gated" list corrected, two real socket-level coverage gaps closed (scene:create, scene:change), player:unmute given its first test coverage, cross-browser pass logged as unverified (Chrome-only tooling); Milestone 8: room interactables, one generic object:interact event, proximity+E over raycast/click, table sit-down mode as a pure camera takeover, seated status visible via avatar squash, a soundboard console reusing sound:play, a real prompt-text bug caught live, a square full-screen seated table view, a seated drawing toolbar (per-stroke color/width, an eraser reusing drawing:delete), a latent drawing:delete remote-redraw bug caught and fixed, a React-controlled-input automation-testing gotcha, a real user-reported eraser bug (local drawing state never updated in real time) caught and fixed; File uploads (M5/M7 extension): REST upload + socket-register two-step, soundboard becomes real shared state, cover-fit stopgap for map images, three related asks captured as roadmap entries instead of implemented; Milestone 7: soundboard & mute, synthesized tones, self-mute plus host moderation, sender included in the sound broadcast; Milestone 6: dice, server-authoritative roll result, motion decoupled from result label, `Dice.sceneId` dropped, client-picked spawn position; Milestone 5: tabletop map & drawing, draw-on-the-table interaction, runtime UV remap, single-scene scope cut, `Point2D` spec deviation
 

@@ -5,7 +5,7 @@ import {
   type SessionJoinResponse,
   type ObjectInteractResponse,
 } from '@custom-tabletop/shared';
-import { withTestToken } from './testSupport.js';
+import { withTestToken, nextUpdate } from './testSupport.js';
 import { createAppServer, type AppServer } from './server.js';
 
 function joinAck(client: ClientSocket, payload: unknown): Promise<SessionJoinResponse> {
@@ -73,9 +73,7 @@ describe('Room interactables (Milestone 8 exit check)', () => {
     // soundAndMute.test.ts).
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    const aliceSeesTheLightFlip = new Promise((resolve) =>
-      alice.once(SocketEvent.SessionState, resolve),
-    );
+    const aliceSeesTheLightFlip = nextUpdate(alice);
 
     // Bob, not the host, flips the light off — not host-gated.
     const offResult = await interactAck(bob, {
@@ -109,9 +107,7 @@ describe('Room interactables (Milestone 8 exit check)', () => {
     await joinAck(bob, { sessionId: 'room-3', playerId: 'bob-id', playerName: 'Bob' });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    const aliceSeesBobSitDown = new Promise((resolve) =>
-      alice.once(SocketEvent.SessionState, resolve),
-    );
+    const aliceSeesBobSitDown = nextUpdate(alice);
 
     const sitResult = await interactAck(bob, {
       sessionId: 'room-3',

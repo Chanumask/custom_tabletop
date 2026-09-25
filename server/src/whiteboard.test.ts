@@ -3,7 +3,6 @@ import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import {
   SocketEvent,
   WHITEBOARD_LINE_COUNT,
-  type GameState,
   type PlayerColorId,
   type SessionJoinResponse,
   type WhiteboardWriteResponse,
@@ -11,6 +10,7 @@ import {
 import { createAppServer, type AppServer } from './server.js';
 import { SessionStore } from './sessionStore.js';
 import { parseWhiteboardWriteRequest } from './validation.js';
+import { waitForState } from './testSupport.js';
 
 function connect(url: string): Promise<ClientSocket> {
   const client = ioClient(url, { transports: ['websocket'], reconnection: false });
@@ -157,15 +157,7 @@ describe('whiteboard:write (socket)', () => {
     await join(bob, 'wb-1', 'bob', 'green');
     await join(carol, 'wb-1', 'carol', 'purple');
 
-    const carolSees = new Promise<GameState>((resolve) => {
-      const handler = (state: GameState) => {
-        if (state.whiteboard[1]?.text) {
-          carol.off(SocketEvent.SessionState, handler);
-          resolve(state);
-        }
-      };
-      carol.on(SocketEvent.SessionState, handler);
-    });
+    const carolSees = waitForState(carol, (state) => Boolean(state.whiteboard[1]?.text));
 
     expect((await write(alice, 'wb-1', 'alice', lines('Quest: find the key'))).ok).toBe(true);
     expect(
@@ -187,15 +179,9 @@ describe('whiteboard:write (socket)', () => {
     await join(bob, 'wb-3', 'bob', 'green');
     await join(carol, 'wb-3', 'carol', 'purple');
 
-    const carolSees = new Promise<GameState>((resolve) => {
-      const handler = (state: GameState) => {
-        if (state.whiteboard[0]?.text && state.whiteboard[5]?.text) {
-          carol.off(SocketEvent.SessionState, handler);
-          resolve(state);
-        }
-      };
-      carol.on(SocketEvent.SessionState, handler);
-    });
+    const carolSees = waitForState(carol, (state) =>
+      Boolean(state.whiteboard[0]?.text && state.whiteboard[5]?.text),
+    );
 
     const results = await Promise.all([
       write(alice, 'wb-3', 'alice', edits({ 0: 'Round 2' })),

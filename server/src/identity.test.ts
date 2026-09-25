@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import {
   SocketEvent,
-  type GameState,
   type SessionJoinResponse,
   type SceneUpdateResponse,
   type DiceSpawnResponse,
@@ -11,6 +10,7 @@ import {
   type DrawingUpdateRequest,
 } from '@custom-tabletop/shared';
 import { createAppServer, type AppServer } from './server.js';
+import { waitForState } from './testSupport.js';
 
 const GRACE_MS = 150;
 
@@ -34,28 +34,6 @@ function join(
     playerId,
     playerName: playerId,
     playerToken: token,
-  });
-}
-
-/** Resolves with the first session:state broadcast matching `predicate`. */
-function waitForState(
-  client: ClientSocket,
-  predicate: (state: GameState) => boolean,
-  timeoutMs = 2000,
-): Promise<GameState> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      client.off(SocketEvent.SessionState, handler);
-      reject(new Error('timed out waiting for a matching session:state'));
-    }, timeoutMs);
-    const handler = (state: GameState) => {
-      if (predicate(state)) {
-        clearTimeout(timer);
-        client.off(SocketEvent.SessionState, handler);
-        resolve(state);
-      }
-    };
-    client.on(SocketEvent.SessionState, handler);
   });
 }
 
