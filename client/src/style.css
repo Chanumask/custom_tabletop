@@ -1852,3 +1852,53 @@ button.primary {
   );
   pointer-events: none;
 }
+
+/* "Setting up the table…" (RoomLoading.tsx) — over the room while its
+ * model arrives, in the join screen's palette. */
+.room-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 45%, rgba(214, 140, 70, 0.18), transparent 70%), #120c08;
+  color: #f3e6d3;
+}
+
+.room-loading .brand-mark {
+  width: 3.4rem;
+  height: 3.4rem;
+  animation: join-bob 1.4s ease-in-out infinite alternate;
+}
+
+.room-loading-title {
+  margin: 0;
+  font-family: Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
+  font-size: 1.3rem;
+}
+
+.room-loading-bar {
+  width: min(18rem, 70vw);
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgba(243, 230, 211, 0.12);
+}
+
+.room-loading-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #d9a441, #f0c46a);
+  transition: width 200ms ease;
+}
+
+.room-loading-detail {
+  margin: 0;
+  color: rgba(243, 230, 211, 0.6);
+  font-size: 0.85rem;
+}
