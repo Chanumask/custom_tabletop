@@ -1059,11 +1059,15 @@ export class SessionStore {
     if (!state) {
       return { ok: false, error: 'Session not found.' };
     }
-    if (actorId !== targetPlayerId && state.hostId !== actorId) {
-      return { ok: false, error: "Only the host can move someone else's mini." };
-    }
     if (!state.players.some((player) => player.id === targetPlayerId)) {
       return { ok: false, error: 'Player not found.' };
+    }
+    // Anyone may push a mini that's on the table around, like a real one;
+    // putting it on the table or taking it off is its owner's (or the
+    // host's) call.
+    const moving = point !== null && state.minis[targetPlayerId] !== undefined;
+    if (actorId !== targetPlayerId && state.hostId !== actorId && !moving) {
+      return { ok: false, error: 'Only its owner or the host can put a mini on or off the table.' };
     }
     if (point) {
       state.minis[targetPlayerId] = clampToTable(point);
@@ -1073,9 +1077,9 @@ export class SessionStore {
     return { ok: true, state };
   }
 
-  /** Drag a die somewhere else on the table: your own; the host may move
-   * any. The client knows the table's shape — the position is only
-   * sanity-checked here. */
+  /** Drag a die somewhere else on the table: anyone may move any die they
+   * can see (a secret die only its owner). The client knows the table's
+   * shape — the position is only sanity-checked here. */
   moveDie(
     sessionId: string,
     actorId: string,
@@ -1087,8 +1091,8 @@ export class SessionStore {
     if (!state || !die) {
       return { ok: false, error: 'Die not found.' };
     }
-    if (die.ownerId !== actorId && state.hostId !== actorId) {
-      return { ok: false, error: "Only the host can move someone else's die." };
+    if (die.hidden && die.ownerId !== actorId) {
+      return { ok: false, error: 'Die not found.' };
     }
     die.position = { ...position };
     return { ok: true, state };
