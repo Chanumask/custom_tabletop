@@ -1196,6 +1196,11 @@ export class SessionStore {
         state.dice = [];
         what = 'took all the dice off the table';
       }
+    } else if (target === 'photos') {
+      if (state.photos.length > 0) {
+        state.photos = [];
+        what = 'took the photos off the pinboard';
+      }
     } else if (Object.keys(state.minis).length > 0) {
       state.minis = {};
       what = 'took all the minis off the table';

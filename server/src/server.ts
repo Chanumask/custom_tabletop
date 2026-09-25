@@ -51,6 +51,7 @@ import {
   WHITEBOARD_MAX_LINE_LENGTH,
   mayUse,
   SOUNDS_OFF_ERROR,
+  PHOTO_MIN_INTERVAL_MS,
   type HostActionResponse,
   type SessionRemoved,
   type TablePermission,
@@ -768,6 +769,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     // room (sender included — it's their confirmation too). Not a full-state
     // broadcast: chat is frequent and shouldn't resend the map each time.
     let recentChat: number[] = [];
+    let lastPhotoAt = 0;
     socket.on(
       SocketEvent.ChatSend,
       (payload: unknown, ack?: (response: ChatSendResponse) => void) => {
@@ -1402,9 +1404,10 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
 
         const result = sessions.takeItem(request.sessionId, request.playerId, request.itemId);
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
-          broadcastPatch(request.sessionId, result.state, ['inventory']);
+          // A swap can put a lit flashlight back (and switch it off).
+          broadcastPatch(request.sessionId, result.state, ['inventory', 'players']);
         }
       },
     );
@@ -1423,9 +1426,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
 
         const result = sessions.dropItem(request.sessionId, request.playerId, request.itemId);
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
-          broadcastPatch(request.sessionId, result.state, ['inventory']);
+          broadcastPatch(request.sessionId, result.state, ['inventory', 'players']);
         }
       },
     );
@@ -1445,9 +1448,15 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           return;
         }
 
+        const now = Date.now();
+        if (now - lastPhotoAt < PHOTO_MIN_INTERVAL_MS) {
+          ack?.({ ok: false, error: 'Easy there — one photo at a time.' });
+          return;
+        }
         const result = sessions.capturePhoto(request.sessionId, request.playerId, request.url);
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
+          lastPhotoAt = now;
           broadcastPatch(request.sessionId, result.state, ['photos']);
         }
       },
@@ -1469,7 +1478,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
 
         const result = sessions.toggleFlashlight(request.sessionId, request.playerId);
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['players']);
         }
@@ -1494,6 +1503,15 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           return;
         }
 
+        // The same flood guard as chat (they share one budget): radio lines
+        // cost every player a filtered log, even those who can't hear them.
+        const now = Date.now();
+        recentChat = recentChat.filter((at) => now - at < CHAT_WINDOW_MS);
+        if (recentChat.length >= CHAT_MAX_PER_WINDOW) {
+          ack?.({ ok: false, error: 'Easy there — too many messages at once.' });
+          return;
+        }
+        recentChat.push(now);
         const result = sessions.transmitOnWalkie(request.sessionId, request.playerId, request.text);
         ack?.(own(result));
         if (result.ok) {

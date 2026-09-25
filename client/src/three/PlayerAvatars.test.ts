@@ -90,20 +90,16 @@ describe('PlayerAvatars', () => {
     expect(`#${shirtOf(avatars, 'a').color.getHexString()}`).toBe('#9160d6');
   });
 
-  it('lights the flashlight beam only for a player whose flashlight is on', async () => {
-    const avatars = new PlayerAvatars(new THREE.Scene(), fakeCharacters());
-    avatars.sync([player('a', { flashlightOn: true }), player('b')], 'me');
+  it("adds no lights: a player joining never changes the scene's light count", async () => {
+    const scene = new THREE.Scene();
+    const avatars = new PlayerAvatars(scene, fakeCharacters());
+    avatars.sync([player('a', { flashlightOn: true }), player('b'), player('c')], 'me');
     await flush();
-
-    const beamOf = (id: string) =>
-      avatars
-        .objectFor(id)!
-        .children.find((child): child is THREE.SpotLight => child instanceof THREE.SpotLight)!;
-    expect(beamOf('a').intensity).toBeGreaterThan(0);
-    expect(beamOf('b').intensity).toBe(0);
-
-    avatars.sync([player('a', { flashlightOn: false }), player('b')], 'me');
-    expect(beamOf('a').intensity).toBe(0);
+    const lights: THREE.Light[] = [];
+    scene.traverse((object) => {
+      if (object instanceof THREE.Light) lights.push(object);
+    });
+    expect(lights).toEqual([]);
   });
 
   it('removes the avatar of a player who left', async () => {

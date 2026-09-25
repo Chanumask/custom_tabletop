@@ -635,6 +635,10 @@ body {
 }
 
 .calculator-equals {
+  grid-row: span 2;
+}
+
+.calculator-zero {
   grid-column: span 2;
 }
 
@@ -2645,6 +2649,11 @@ button.primary {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.35rem;
+}
+
+/* An odd one out (five things to clear) takes the whole last row. */
+.clear-grid > :last-child:nth-child(odd) {
+  grid-column: 1 / -1;
 }
 
 .clear-grid button {

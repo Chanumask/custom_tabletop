@@ -649,7 +649,17 @@ export function parsePhotoCaptureRequest(payload: unknown): PhotoCaptureRequest 
     return null;
   }
 
-  return { sessionId: sessionId.trim(), playerId: playerId.trim(), url: url.trim() };
+  // Only this server's own image uploads: an outside address would have
+  // every player's browser fetch it (and tell that server who they are).
+  const name = /\/uploads\/images\/([A-Za-z0-9._-]+)$/.exec(new URL(url.trim()).pathname)?.[1];
+  if (!name) {
+    return null;
+  }
+  return {
+    sessionId: sessionId.trim(),
+    playerId: playerId.trim(),
+    url: `/uploads/images/${name}`,
+  };
 }
 
 export function parseFlashlightToggleRequest(payload: unknown): FlashlightToggleRequest | null {

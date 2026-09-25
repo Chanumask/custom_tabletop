@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, type SettingsStorage } from './settings.js';
+import {
+  DEFAULT_SETTINGS,
+  RESERVED_KEYS,
+  loadSettings,
+  saveSettings,
+  type SettingsStorage,
+} from './settings.js';
 
 function fakeStorage(initial: Record<string, string> = {}): SettingsStorage {
   const data = new Map(Object.entries(initial));
@@ -37,6 +43,15 @@ describe('loadSettings', () => {
       'customTabletop.settings': JSON.stringify({ masterVolume: 0.2 }),
     });
     expect(loadSettings(storage)).toEqual({ ...DEFAULT_SETTINGS, masterVolume: 0.2 });
+  });
+
+  it('puts an interact key saved as a now-reserved key back to the default', () => {
+    for (const key of RESERVED_KEYS.keys()) {
+      const storage = fakeStorage({
+        'customTabletop.settings': JSON.stringify({ interactKey: key, masterVolume: 0.3 }),
+      });
+      expect(loadSettings(storage)).toEqual({ ...DEFAULT_SETTINGS, masterVolume: 0.3 });
+    }
   });
 
   it('falls back to defaults for corrupt JSON instead of throwing', () => {

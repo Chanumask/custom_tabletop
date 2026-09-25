@@ -31,3 +31,11 @@ export function uploadImage(file: File): Promise<string> {
 export function uploadSound(file: File): Promise<string> {
   return postFile('/uploads/sounds', file);
 }
+
+/** An upload as this client can load it: the server keeps pinned photos by
+ * path alone (`/uploads/images/<name>`, docs/decisions.md "Gadgets
+ * review"), so those get `SERVER_URL` in front; a full URL (anything saved
+ * before that) is used as it is. */
+export function resolveUploadUrl(url: string): string {
+  return url.startsWith('/') ? `${SERVER_URL}${url}` : url;
+}

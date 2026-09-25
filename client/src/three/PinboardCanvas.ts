@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Photo } from '@custom-tabletop/shared';
+import { resolveUploadUrl } from '../uploads.js';
 import { pinboardSlotRect, pinTilt, PINBOARD_COLS, PINBOARD_ROWS } from './pinboardLayout.js';
 
 const WIDTH = 960;
@@ -34,9 +35,15 @@ export class PinboardCanvas {
   readonly texture: THREE.CanvasTexture;
   private readonly ctx: CanvasRenderingContext2D;
   /** Loaded images, keyed by URL — kept across redraws so a photo already
-   * on the board doesn't re-fetch every time another one is added. */
+   * on the board doesn't re-fetch every time another one is added, and let
+   * go once their photo is off the board. */
   private readonly images = new Map<string, HTMLImageElement>();
+  /** URLs still loading, so a redraw meanwhile doesn't fetch them twice. */
+  private readonly loading = new Set<string>();
+  /** The board as it is now — what a late-arriving image repaints. */
+  private photos: Photo[] = [];
   private shown = '';
+  private disposed = false;
 
   constructor() {
     const canvas = document.createElement('canvas');
@@ -64,17 +71,30 @@ export class PinboardCanvas {
       return;
     }
     this.shown = key;
-    for (const photo of photos) {
-      if (!this.images.has(photo.url)) {
-        loadImage(photo.url)
-          .then((image) => {
-            this.images.set(photo.url, image);
-            this.paint(photos);
-          })
-          .catch(() => {
-            // A broken/unreachable photo just stays a blank slot.
-          });
+    this.photos = photos;
+    const onBoard = new Set(photos.map((photo) => photo.url));
+    for (const url of this.images.keys()) {
+      if (!onBoard.has(url)) {
+        this.images.delete(url);
       }
+    }
+    for (const { url } of photos) {
+      if (this.images.has(url) || this.loading.has(url)) {
+        continue;
+      }
+      this.loading.add(url);
+      loadImage(resolveUploadUrl(url))
+        .then((image) => {
+          // Painted onto the board as it is by now, if it's still on it.
+          if (!this.disposed && this.photos.some((photo) => photo.url === url)) {
+            this.images.set(url, image);
+            this.paint(this.photos);
+          }
+        })
+        .catch(() => {
+          // A broken/unreachable photo just stays a blank slot.
+        })
+        .finally(() => this.loading.delete(url));
     }
     this.paint(photos);
   }
@@ -138,6 +158,8 @@ export class PinboardCanvas {
   }
 
   dispose(): void {
+    this.disposed = true;
+    this.images.clear();
     this.texture.dispose();
   }
 }

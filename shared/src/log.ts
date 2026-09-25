@@ -10,6 +10,9 @@
  * actions already broadcast.
  */
 export const MAX_LOG_ENTRIES = 100;
+/** Walkie-talkie lines are kept apart (at most this many): only two players
+ * ever see them, so they mustn't push the table's shared log out. */
+export const MAX_RADIO_ENTRIES = 30;
 export const MAX_CHAT_LENGTH = 200;
 
 import type { PlayerColorId } from './player.js';
@@ -73,10 +76,25 @@ export interface LogEntryBroadcast {
   entry: LogEntry;
 }
 
-/** Keeps a log to its last `MAX_LOG_ENTRIES`, adding `entry` if it's new. */
+/** Adds `entry` if it's new, keeping the last `MAX_LOG_ENTRIES` table
+ * lines and, separately, the last `MAX_RADIO_ENTRIES` walkie lines. */
 export function appendLogEntry(log: LogEntry[], entry: LogEntry): LogEntry[] {
   if (log.some((existing) => existing.id === entry.id)) {
     return log;
   }
-  return [...log, entry].slice(-MAX_LOG_ENTRIES);
+  const next = [...log, entry];
+  const radio = next.filter((line) => line.kind === 'radio').length;
+  let dropRadio = Math.max(0, radio - MAX_RADIO_ENTRIES);
+  let dropOther = Math.max(0, next.length - radio - MAX_LOG_ENTRIES);
+  if (dropRadio === 0 && dropOther === 0) {
+    return next;
+  }
+  return next.filter((line) => {
+    if (line.kind === 'radio' ? dropRadio > 0 : dropOther > 0) {
+      if (line.kind === 'radio') dropRadio -= 1;
+      else dropOther -= 1;
+      return false;
+    }
+    return true;
+  });
 }

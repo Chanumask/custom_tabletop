@@ -21,8 +21,8 @@ type Key =
   | { label: string; kind: 'backspace' };
 
 /** Row-major, left to right — a real four-function pocket calculator's
- * layout (clear/backspace/÷/× on top, digits and +/- below, = spanning the
- * bottom-right beside 0 and the decimal point). */
+ * layout (clear/backspace/÷/× on top, digits and +/- below, a tall = down
+ * the bottom-right beside a wide 0 and the decimal point). */
 const KEYS: Key[] = [
   { label: 'C', kind: 'clear' },
   { label: '⌫', kind: 'backspace' },
@@ -83,7 +83,7 @@ const KEYBOARD_MAP: Record<string, Key> = {
 };
 
 /**
- * The calculator (gadgets phase 5) — opened by pressing C while holding it.
+ * The calculator (gadgets phase 5) — opened by pressing R while holding it.
  * Purely client-local: unlike the other gadgets, using it changes nothing
  * about the shared table, so there's no server round trip at all, just the
  * pure state machine in calculator.ts.
@@ -122,7 +122,9 @@ export function CalculatorDialog({ onClose }: { onClose: () => void }) {
                   ? 'calculator-operator'
                   : key.kind === 'equals'
                     ? 'calculator-equals'
-                    : undefined
+                    : key.label === '0'
+                      ? 'calculator-zero'
+                      : undefined
               }
               onClick={() => setState((current) => apply(current, key))}
             >

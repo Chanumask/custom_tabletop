@@ -32,6 +32,7 @@ import {
   EMOTES,
   WHITEBOARD_LINE_COUNT,
   SOUNDS_OFF_ERROR,
+  PHOTO_MIN_INTERVAL_MS,
   chairCount,
 } from '@custom-tabletop/shared';
 import { loadRoom } from './RoomLoader.js';
@@ -95,6 +96,7 @@ import { CalculatorDialog } from '../CalculatorDialog.js';
 import { HeldItems } from '../HeldItems.js';
 import { createPinboard, syncPinboard, disposePinboard, type Pinboard } from './Pinboard.js';
 import { uploadImage } from '../uploads.js';
+import { aimFlashlightBeam } from './flashlightBeam.js';
 
 // Module-level so each character model downloads once per page, not once
 // per room mount (leaving and rejoining a session reuses it).
@@ -120,11 +122,8 @@ const MAX_FRAME_SECONDS = 0.1;
 /** How close (along the view ray) the whiteboard can be aimed at. */
 const WHITEBOARD_RANGE = 3.2;
 const SCREEN_CENTER = new THREE.Vector2(0, 0);
-/** Reused every frame for the local player's flashlight beam direction —
- * avoids a fresh Vector3 allocation each frame. */
-const FLASHLIGHT_DIRECTION = new THREE.Vector3();
-const FLASHLIGHT_DISTANCE = 5;
-const FLASHLIGHT_INTENSITY = 8;
+/** Pinned photos are square: the middle of the view, at this size. */
+const PHOTO_SIZE = 512;
 /** How far away a die on the table can be aimed at to roll it. */
 const DIE_REACH = 2.6;
 const MOVE_POSITION_EPSILON = 0.01;
@@ -342,8 +341,8 @@ function promptFor(
  * `InventoryDialog`, a fixed catalog of small gadgets a player can take or
  * put back (the gadgets inventory, phase 1 — each gadget's own effect lands
  * with that gadget; this phase only tracks who's holding what). The camera
- * (phase 2) is a location-free fallback action instead — E while holding it
- * captures a screenshot, uploads it, and pins it to the wall `Pinboard`,
+ * (phase 2) is a location-free fallback action instead — R while holding it
+ * captures a square photo, uploads it, and pins it to the wall `Pinboard`,
  * which is purely reactive (`GameState.photos`, no interaction of its own).
  * Click-to-lock, Esc (browser default) to release; drawing only while not
  * locked. The
@@ -1030,12 +1029,11 @@ export function RoomView({
         syncPinboard(pinboard, photosRef.current);
         pinboardRef.current = pinboard;
 
-        // The local player's own flashlight beam (gadgets phase 3) — other
-        // players' beams live on their avatar (PlayerAvatars.ts), but the
-        // local player has no avatar of their own (first-person), so this
-        // one follows the camera directly instead (updated every frame in
-        // the animate loop below).
+        // The flashlight's beam (gadgets phase 3): one light for the one
+        // flashlight, aimed each frame by aimFlashlightBeam (the animate
+        // loop below) from whoever holds it.
         const flashlight = new THREE.SpotLight(0xfff0d0, 0, 10, Math.PI / 7, 0.45, 1.2);
+        flashlight.name = 'flashlight-beam';
         const flashlightTarget = new THREE.Object3D();
         flashlight.target = flashlightTarget;
         scene.add(flashlight, flashlightTarget);
@@ -1190,10 +1188,15 @@ export function RoomView({
         // more specific and the local player currently holds it. The flash
         // and shutter play immediately; the upload (and so the photo
         // reaching the pinboard) happens in the background.
+        let lastPhotoAt = -Infinity;
         const takePhoto = () => {
-          if (capturingPhotoRef.current) {
+          if (
+            capturingPhotoRef.current ||
+            performance.now() - lastPhotoAt < PHOTO_MIN_INTERVAL_MS
+          ) {
             return;
           }
+          lastPhotoAt = performance.now();
           capturingPhotoRef.current = true;
           setCameraFlash(true);
           playShutterSound();
@@ -1205,7 +1208,28 @@ export function RoomView({
           // more, synchronously, right before reading it back keeps the
           // buffer valid for this capture without that always-on cost.
           renderer.render(scene, camera);
-          renderer.domElement.toBlob(
+          // A square from the middle of the view, at pinboard size: the
+          // board shows photos square, and a full-window capture would
+          // be squashed there (and upload a few MB for a 180 px slot).
+          const view = renderer.domElement;
+          const side = Math.min(view.width, view.height);
+          const photo = document.createElement('canvas');
+          photo.width = PHOTO_SIZE;
+          photo.height = PHOTO_SIZE;
+          photo
+            .getContext('2d')
+            ?.drawImage(
+              view,
+              (view.width - side) / 2,
+              (view.height - side) / 2,
+              side,
+              side,
+              0,
+              0,
+              PHOTO_SIZE,
+              PHOTO_SIZE,
+            );
+          photo.toBlob(
             (blob) => {
               if (!blob) {
                 capturingPhotoRef.current = false;
@@ -1220,7 +1244,7 @@ export function RoomView({
                 });
             },
             'image/jpeg',
-            0.82,
+            0.85,
           );
         };
         toggleSeatedViewRef.current = () => {
@@ -1505,9 +1529,25 @@ export function RoomView({
         };
         document.addEventListener('keydown', handleInteractKey);
 
+        // Any open dialog (the assign-sound overlay, the whiteboard editor,
+        // the chest, the radio, the calculator) already owns input focus,
+        // but its own buttons aren't a "typing target" — isTypingTarget
+        // alone wouldn't stop V, R or an emote key from firing underneath.
+        const aDialogIsOpen = () =>
+          assignSlotIndexRef.current !== null ||
+          whiteboardOpenRef.current ||
+          inventoryOpenRef.current ||
+          walkieOpenRef.current ||
+          calculatorOpenRef.current;
+
         // V: switch between looking out from the chair and the table view.
         handleViewKey = (event: KeyboardEvent) => {
-          if (event.code !== 'KeyV' || event.repeat || isTypingTarget(event.target)) {
+          if (
+            event.code !== 'KeyV' ||
+            event.repeat ||
+            isTypingTarget(event.target) ||
+            aDialogIsOpen()
+          ) {
             return;
           }
           if (controller.isSeated) {
@@ -1523,18 +1563,8 @@ export function RoomView({
         // light, the table, the chest, the soundboard, dice, the
         // whiteboard) regardless of which gadget is held. A silent no-op
         // with nothing held (server would refuse the camera/flashlight/
-        // walkie actions anyway; this just skips the round trip).
-        // Any open dialog (the assign-sound overlay, the whiteboard editor,
-        // the chest, the radio, the calculator) already owns input focus,
-        // but its own buttons aren't a "typing target" — isTypingTarget
-        // alone wouldn't stop R from firing while one of them is open.
-        const aDialogIsOpen = () =>
-          assignSlotIndexRef.current !== null ||
-          whiteboardOpenRef.current ||
-          inventoryOpenRef.current ||
-          walkieOpenRef.current ||
-          calculatorOpenRef.current;
-
+        // walkie actions anyway; this just skips the round trip). The
+        // interact key can never be R (settings.ts, RESERVED_KEYS).
         handleUseItemKey = (event: KeyboardEvent) => {
           if (
             event.code !== 'KeyR' ||
@@ -1588,7 +1618,12 @@ export function RoomView({
         // character perform it (the local player gets a short confirmation,
         // since they can't see their own avatar from first person).
         handleEmoteKey = (event: KeyboardEvent) => {
-          if (event.repeat || isTypingTarget(event.target) || controller.isSeated) {
+          if (
+            event.repeat ||
+            isTypingTarget(event.target) ||
+            controller.isSeated ||
+            aDialogIsOpen()
+          ) {
             return;
           }
           const emote = EMOTES.find((candidate) => candidate.key === event.code);
@@ -1623,16 +1658,10 @@ export function RoomView({
           updateFireAudio?.(delta);
           updateNight?.(delta);
           avatarsRef.current?.update(delta);
-          if (flashlightRef.current && flashlightTargetRef.current) {
-            const on = playersRef.current.find((p) => p.id === playerId)?.flashlightOn ?? false;
-            flashlightRef.current.intensity = on ? FLASHLIGHT_INTENSITY : 0;
-            if (on) {
-              flashlightRef.current.position.copy(camera.position);
-              camera.getWorldDirection(FLASHLIGHT_DIRECTION);
-              flashlightTargetRef.current.position
-                .copy(camera.position)
-                .addScaledVector(FLASHLIGHT_DIRECTION, FLASHLIGHT_DISTANCE);
-            }
+          if (flashlightRef.current) {
+            aimFlashlightBeam(flashlightRef.current, playersRef.current, playerId, camera, (id) =>
+              avatarsRef.current?.objectFor(id),
+            );
           }
           soundboardWallRef.current?.update(delta);
           decorRef.current?.update(delta, timer.getElapsed());

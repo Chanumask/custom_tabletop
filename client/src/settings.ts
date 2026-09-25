@@ -30,6 +30,13 @@ export const DEFAULT_SETTINGS: ClientSettings = {
   menuCollapsed: false,
 };
 
+/** The room's fixed keys (RoomView.tsx), which the interact key can't take
+ * over: both would fire on the same press. */
+export const RESERVED_KEYS = new Map([
+  ['KeyR', 'uses your item'],
+  ['KeyV', 'switches the chair view'],
+]);
+
 const STORAGE_KEY = 'customTabletop.settings';
 
 /** Same minimal shape as `playerIdentity.ts`'s `IdStorage` — storage is
@@ -59,7 +66,12 @@ export function loadSettings(storage: SettingsStorage): ClientSettings {
     if (!isPartialSettings(parsed)) {
       return { ...DEFAULT_SETTINGS };
     }
-    return { ...DEFAULT_SETTINGS, ...parsed };
+    const settings = { ...DEFAULT_SETTINGS, ...parsed };
+    // An interact key saved before its key was reserved goes back to E.
+    if (typeof settings.interactKey !== 'string' || RESERVED_KEYS.has(settings.interactKey)) {
+      settings.interactKey = DEFAULT_SETTINGS.interactKey;
+    }
+    return settings;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

@@ -34,6 +34,7 @@ import { AddSoundForm } from './AddSoundForm.js';
 import { MapCropDialog, type MapSource } from './MapCropDialog.js';
 import { SOUND_KIND_LABEL, soundKind } from './soundKind.js';
 import { useSettings } from './useSettings.js';
+import { RESERVED_KEYS } from './settings.js';
 import { formatKeyCode } from './keyLabel.js';
 import { hostLink } from './hostKeys.js';
 import { MOVEMENT_KEYS, RUN_KEYS } from './three/FirstPersonController.js';
@@ -1067,6 +1068,7 @@ function clearables(
     },
     { target: 'dice', label: 'Dice', count: state.dice.length },
     { target: 'minis', label: 'Minis', count: Object.keys(state.minis).length },
+    { target: 'photos', label: 'Photos', count: state.photos.length },
   ];
 }
 
@@ -1218,6 +1220,11 @@ function SettingsTab() {
       }
       if (EMOTES.some((emote) => emote.key === event.code)) {
         setRebindError('That key plays an emote — try another.');
+        return;
+      }
+      const reserved = RESERVED_KEYS.get(event.code);
+      if (reserved) {
+        setRebindError(`That key ${reserved} — try another.`);
         return;
       }
       updateSettings({ interactKey: event.code });

@@ -7,6 +7,7 @@ import {
   pressDigit,
   pressEquals,
   pressOperator,
+  formatResult,
   type CalculatorState,
 } from './calculator.js';
 
@@ -74,6 +75,23 @@ describe('calculator', () => {
     const state = type(INITIAL_CALCULATOR_STATE, '9', '+', '9', '=');
     expect(pressClear()).toEqual(INITIAL_CALCULATOR_STATE);
     expect(state.display).not.toBe('0');
+  });
+
+  it('fits a long result by dropping decimals, not by going to an exponent', () => {
+    expect(type(INITIAL_CALCULATOR_STATE, '1', '÷', '3', '=').display).toBe('0.333333333');
+    expect(formatResult(100000 / 7)).toBe('14285.714286');
+    expect(formatResult(-100000 / 7)).toBe('-14285.71429');
+    expect(formatResult(0.1 + 0.2)).toBe('0.3');
+    expect(formatResult(123456789012)).toBe('123456789012');
+  });
+
+  it('only a whole part too long for the screen goes to an exponent', () => {
+    expect(formatResult(1234567890123)).toBe('1.234568e+12');
+    expect(formatResult(1e21)).toBe('1e+21');
+    expect(formatResult(-98765432109876)).toBe('-9.87654e+13');
+    for (const value of [1234567890123, -98765432109876, 2 ** 80, -(2 ** 80)]) {
+      expect(formatResult(value).length).toBeLessThanOrEqual(12);
+    }
   });
 
   it('equals with no pending operator is a no-op', () => {

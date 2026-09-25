@@ -24,7 +24,7 @@ export type RoomTheme = (typeof ROOM_THEMES)[number];
 
 /** What "clear" can sweep off: the active map's drawings, the whiteboard,
  * every die, or every mini. */
-export const CLEAR_TARGETS = ['drawings', 'whiteboard', 'dice', 'minis'] as const;
+export const CLEAR_TARGETS = ['drawings', 'whiteboard', 'dice', 'minis', 'photos'] as const;
 export type ClearTarget = (typeof CLEAR_TARGETS)[number];
 
 export type HostAction =

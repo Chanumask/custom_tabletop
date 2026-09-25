@@ -13,10 +13,16 @@ import type { GameState } from './types.js';
  * `soundboardSlots`, there's no manual per-slot placement to preserve). */
 export const PINBOARD_SLOT_COUNT = 12;
 
+/** At most one photo per player this often: the server refuses sooner ones,
+ * and the camera doesn't even take them (so none is uploaded for nothing). */
+export const PHOTO_MIN_INTERVAL_MS = 2000;
+
 export interface PhotoCaptureRequest {
   sessionId: string;
   playerId: string;
-  /** An absolute URL to the already-uploaded photo. */
+  /** Where the already-uploaded photo is. Only one of this server's own
+   * image uploads is accepted; the server keeps just its path
+   * (`/uploads/images/<name>`), and each client loads it from its server. */
   url: string;
 }
 

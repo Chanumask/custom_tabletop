@@ -44,14 +44,33 @@ function applyOperator(a: number, b: number, operator: CalcOperator): number {
 }
 
 /** Trims float noise (0.1 + 0.2) and very long results down to what the
- * display can actually hold. */
-function formatResult(value: number): string {
+ * display can actually hold: fewer decimals first (1 ÷ 7 × 100000 is
+ * 14285.7142857, not 1.42857e+4), and only a number whose whole part
+ * doesn't fit goes to an exponent. */
+export function formatResult(value: number): string {
   if (!Number.isFinite(value)) {
     return 'Error';
   }
   const rounded = Math.round(value * 1e9) / 1e9;
-  const text = String(rounded);
-  return text.length > MAX_DISPLAY_LENGTH ? rounded.toExponential(5) : text;
+  const plain = String(rounded);
+  if (plain.length <= MAX_DISPLAY_LENGTH && !plain.includes('e')) {
+    return plain;
+  }
+  const whole = String(Math.trunc(Math.abs(rounded))).length + (rounded < 0 ? 1 : 0);
+  if (!plain.includes('e') && whole <= MAX_DISPLAY_LENGTH) {
+    const decimals = Math.max(0, MAX_DISPLAY_LENGTH - whole - 1);
+    const fitted = String(Number(rounded.toFixed(decimals)));
+    if (fitted.length <= MAX_DISPLAY_LENGTH) {
+      return fitted;
+    }
+  }
+  for (let digits = MAX_DISPLAY_LENGTH; digits > 0; digits -= 1) {
+    const text = rounded.toExponential(digits).replace(/\.?0+e/, 'e');
+    if (text.length <= MAX_DISPLAY_LENGTH) {
+      return text;
+    }
+  }
+  return rounded.toExponential(0);
 }
 
 export function pressDigit(state: CalculatorState, digit: string): CalculatorState {

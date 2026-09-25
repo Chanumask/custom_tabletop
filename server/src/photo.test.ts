@@ -86,8 +86,9 @@ describe('The camera and pinboard (gadgets phase 2 exit check)', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.state.photos).toHaveLength(1);
+    // Only the upload's own path is kept; each client loads it from its server.
     expect(result.state.photos[0]).toMatchObject({
-      url: 'https://example.com/uploads/images/b.jpg',
+      url: '/uploads/images/b.jpg',
       takenBy: 'bob-id',
     });
 
@@ -95,7 +96,7 @@ describe('The camera and pinboard (gadgets phase 2 exit check)', () => {
       photos: { url: string; takenBy: string }[];
     };
     expect(broadcast.photos[0]).toMatchObject({
-      url: 'https://example.com/uploads/images/b.jpg',
+      url: '/uploads/images/b.jpg',
       takenBy: 'bob-id',
     });
   });

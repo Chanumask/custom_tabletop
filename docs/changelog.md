@@ -6,6 +6,53 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 (gadgets review) — Fixes from reviewing the gadgets
+
+A colleague's gadget phases 1–6 were reviewed. Everything the review turned up is fixed, and every fix is recorded in decisions.md, "Gadgets review".
+
+### What landed
+
+- **Privacy:** the take/drop/photo/flashlight replies are filtered like every other state (`own()`), so no more secret dice in them.
+- **Flashlight:**
+  - one shared `SpotLight` aimed by `aimFlashlightBeam` (new `client/src/three/flashlightBeam.ts`), replacing a light per avatar;
+  - take/drop patch `players`, so a put-back beam goes out for everyone.
+- **Walkies:**
+  - on the chat flood guard;
+  - radio lines capped at 30 apart from the table's 100 (`MAX_RADIO_ENTRIES`).
+- **Camera and pinboard:**
+  - only this server's uploads, stored by path (`resolveUploadUrl` on the client);
+  - one photo per 2 s, server and client;
+  - 512 px square JPEGs from the middle of the view;
+  - a host "Photos" clear (the clear grid gives an odd last button the whole row);
+  - `PinboardCanvas` evicts and dedupes, and paints late loads onto the current board.
+- **Keys:** V and emotes are ignored under a dialog. R and V are reserved from the interact rebind, and a saved R/V resets to E.
+- **Calculator:** long results fit by dropping decimals; the keypad has a tall = and a wide 0. The stale "C"/"E" comments now say R.
+
+### Checked
+
+- New `server/src/gadgetGuards.test.ts` covers:
+  - filtered replies;
+  - the flashlight going off on swap and on put-back;
+  - the walkie flood guard;
+  - the photo rate limit, URL rules and host clear;
+  - the radio log cap.
+- New `flashlightBeam.test.ts`, plus calculator/settings/avatar tests.
+- Sanity pass clean: 702 tests (52 shared, 375 server, 275 client).
+- Playwright smoke against a local production build: 9/9 across Chromium, Firefox and WebKit. Against the dev server, Firefox's two-player test fails only after the Chromium run and passes alone (3/3): load, not code.
+- Live three-player run on the dev build confirmed:
+  - 14 scene lights before and after a third player joins;
+  - photos come out 512×512 and Bob loads them from the stored path;
+  - three quick presses give two photos, and no refused upload;
+  - Alice's beam sits at her avatar on Bob's screen and goes out when she swaps;
+  - the calculator shows 14285.714286;
+  - the host's Photos clear empties the board, logged as "took the photos off the pinboard".
+
+### Still open
+
+The phase 6 handover's branch note is stale: `feat/single-item-slot` is in `main`. Real Blender gadget meshes, replacing the placeholder shapes, are still to come.
+
+---
+
 ## 2026-09-25 (gadgets phase 6) — One item slot, and R becomes the single "use item" key
 
 ### What landed
