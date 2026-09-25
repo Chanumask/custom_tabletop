@@ -17,6 +17,7 @@ import {
   type MapTransform,
 } from './mapFit.js';
 import { TABLE_PARCHMENT, TABLE_TEXTURE_PIXELS } from './three/TableCanvas.js';
+import { parchmentSheet } from './three/parchment.js';
 
 export type MapSource = { kind: 'file'; file: File } | { kind: 'url'; url: string };
 
@@ -56,8 +57,8 @@ function paint(
   const k = canvas.width / frameSize;
   ctx.setTransform(k, 0, 0, k, 0, 0);
   ctx.imageSmoothingQuality = 'high';
-  ctx.fillStyle = TABLE_PARCHMENT;
-  ctx.fillRect(0, 0, frameSize, frameSize);
+  // The same aged parchment as the bare table behind any uncovered part.
+  ctx.drawImage(parchmentSheet(TABLE_TEXTURE_PIXELS, TABLE_PARCHMENT), 0, 0, frameSize, frameSize);
   ctx.drawImage(image, t.x, t.y, image.naturalWidth * t.scale, image.naturalHeight * t.scale);
 }
 

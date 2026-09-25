@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { gridLineOffsets } from './tableCoordinates.js';
 import type { Drawing, Point2D, Scene } from '@custom-tabletop/shared';
 import { computeCoverRect } from './imageFit.js';
+import { parchmentSheet } from './parchment.js';
 
 /** The canvas's *logical* size — the coordinate space every stroke point
  * (and the server's stroke-width bounds) is expressed in. Unchanged since
@@ -15,7 +16,7 @@ export const TABLE_TEXTURE_PIXELS = 2048;
 const RESOLUTION_SCALE = TABLE_TEXTURE_PIXELS / TABLE_CANVAS_SIZE;
 /** Blank parchment — the table with no map, and what shows around a map
  * image that doesn't cover the whole table (see MapCropDialog). */
-export const TABLE_PARCHMENT = '#e8dcc0';
+export const TABLE_PARCHMENT = '#e6d4b0';
 
 export interface StrokeStyle {
   color: string;
@@ -90,8 +91,13 @@ export class TableCanvas {
     }
 
     this.lastPoint.clear();
-    this.ctx.fillStyle = TABLE_PARCHMENT;
-    this.ctx.fillRect(0, 0, TABLE_CANVAS_SIZE, TABLE_CANVAS_SIZE);
+    this.ctx.drawImage(
+      parchmentSheet(TABLE_TEXTURE_PIXELS, TABLE_PARCHMENT),
+      0,
+      0,
+      TABLE_CANVAS_SIZE,
+      TABLE_CANVAS_SIZE,
+    );
     if (image) {
       // The crop dialog (MapCropDialog.tsx) already produces a square image
       // framed exactly as intended, so this is a 1:1 draw for those; any
