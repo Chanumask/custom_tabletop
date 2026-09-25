@@ -17,6 +17,7 @@ import {
   CLIP_LOCKED_ERROR,
   SECRET_DICE_HOST_ONLY_ERROR,
   DEFAULT_PERMISSIONS,
+  MAX_SCENES_PER_SESSION,
   HOST_ONLY_ERROR,
   REMOVED_FROM_TABLE_ERROR,
   TABLE_LOCKED_ERROR,
@@ -437,6 +438,12 @@ export class SessionStore {
     if (state.scenes.some((scene) => scene.id === sceneId)) {
       return { ok: false, error: 'A scene with that id already exists.' };
     }
+    if (state.scenes.length >= MAX_SCENES_PER_SESSION) {
+      return {
+        ok: false,
+        error: `A table holds at most ${MAX_SCENES_PER_SESSION} maps — delete one first.`,
+      };
+    }
 
     state.scenes.push({ id: sceneId, name, backgroundImage, gridCells: 0, drawings: [] });
     return { ok: true, state };
@@ -451,11 +458,35 @@ export class SessionStore {
     if (state.hostId !== playerId) {
       return { ok: false, error: 'Only the host can change the active scene.' };
     }
-    if (!state.scenes.some((scene) => scene.id === sceneId)) {
+    const scene = state.scenes.find((candidate) => candidate.id === sceneId);
+    if (!scene) {
       return { ok: false, error: 'Scene not found.' };
     }
 
-    state.activeSceneId = sceneId;
+    if (state.activeSceneId !== sceneId) {
+      state.activeSceneId = sceneId;
+      const host = state.players.find((player) => player.id === playerId);
+      if (host) addSystemEntry(state, `${host.name} put “${scene.name}” on the table`);
+    }
+    return { ok: true, state };
+  }
+
+  /** Host-only. Removes a map — never the one on the table, never the last. */
+  deleteScene(sessionId: string, playerId: string, sceneId: string): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    if (state.hostId !== playerId) {
+      return { ok: false, error: 'Only the host can delete a map.' };
+    }
+    if (!state.scenes.some((scene) => scene.id === sceneId)) {
+      return { ok: false, error: 'Scene not found.' };
+    }
+    if (state.activeSceneId === sceneId) {
+      return { ok: false, error: 'That map is on the table — show another one first.' };
+    }
+    state.scenes = state.scenes.filter((scene) => scene.id !== sceneId);
     return { ok: true, state };
   }
 

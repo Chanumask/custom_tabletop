@@ -38,3 +38,17 @@ export interface SceneUpdateRequest {
 }
 
 export type SceneUpdateResponse = { ok: true; state: GameState } | { ok: false; error: string };
+
+/** How many maps a table can hold (docs/decisions.md, "Maps"). */
+export const MAX_SCENES_PER_SESSION = 12;
+/** A map's name, at most this long. */
+export const MAX_SCENE_NAME_LENGTH = 40;
+
+/** Host-only: remove a map. Never the one on the table, never the last. */
+export interface SceneDeleteRequest {
+  sessionId: string;
+  playerId: string;
+  sceneId: string;
+}
+
+export type SceneDeleteResponse = { ok: true; state: GameState } | { ok: false; error: string };

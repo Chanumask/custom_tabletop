@@ -30,6 +30,7 @@ import {
   type SceneCreateResponse,
   type SceneChangeResponse,
   type SceneUpdateResponse,
+  type SceneDeleteResponse,
   type DiceSpawnResponse,
   type DiceRollResponse,
   type DiceRemoveResponse,
@@ -65,6 +66,7 @@ import {
   parsePlayerEmoteRequest,
   parseSceneCreateRequest,
   parseSceneChangeRequest,
+  parseSceneDeleteRequest,
   parseSceneUpdateRequest,
   parseDrawingStartRequest,
   parseDrawingUpdateRequest,
@@ -845,6 +847,27 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
 
         const result = sessions.changeScene(request.sessionId, request.playerId, request.sceneId);
+        ack?.(own(result));
+        if (result.ok) {
+          broadcastState(request.sessionId, result.state);
+        }
+      },
+    );
+
+    socket.on(
+      SocketEvent.SceneDelete,
+      (payload: unknown, ack?: (response: SceneDeleteResponse) => void) => {
+        const request = parseSceneDeleteRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and sceneId are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+
+        const result = sessions.deleteScene(request.sessionId, request.playerId, request.sceneId);
         ack?.(own(result));
         if (result.ok) {
           broadcastState(request.sessionId, result.state);
