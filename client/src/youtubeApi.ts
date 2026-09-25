@@ -7,6 +7,9 @@
 
 export interface YouTubePlayer {
   playVideo(): void;
+  pauseVideo(): void;
+  seekTo(seconds: number, allowSeekAhead: boolean): void;
+  getPlayerState(): number;
   getCurrentTime(): number;
   setVolume(volume: number): void;
   destroy(): void;
@@ -34,8 +37,11 @@ export interface YouTubeNamespace {
   ) => YouTubePlayer;
 }
 
-/** `onStateChange` data value for "the video finished". */
+/** `onStateChange` / `getPlayerState` values. */
 export const YT_ENDED = 0;
+export const YT_PLAYING = 1;
+export const YT_PAUSED = 2;
+export const YT_BUFFERING = 3;
 
 declare global {
   interface Window {

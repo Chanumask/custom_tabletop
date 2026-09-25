@@ -31,6 +31,10 @@ export const SocketEvent = {
    */
   SessionHostKey: 'session:host-key',
 
+  /** The shared YouTube clip (clip.ts): pause/play/seek/stop, and the host lock. */
+  ClipControl: 'clip:control',
+  ClipLock: 'clip:lock',
+
   SceneCreate: 'scene:create',
   SceneChange: 'scene:change',
   SceneUpdate: 'scene:update',

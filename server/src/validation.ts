@@ -1,4 +1,9 @@
 import {
+  CLIP_ACTIONS,
+  MAX_CLIP_POSITION,
+  type ClipAction,
+  type ClipControlRequest,
+  type ClipLockRequest,
   MAX_SESSION_ID_LENGTH,
   MAX_CHAT_LENGTH,
   MAX_DICE_PER_ROLL,
@@ -674,4 +679,38 @@ export function parseTablePingRequest(payload: unknown): TablePingRequest | null
     playerId: playerId.trim(),
     point: { x: point.x, y: point.y },
   };
+}
+
+/** clip:control — a known action at a sane position (clip.ts). */
+export function parseClipControlRequest(payload: unknown): ClipControlRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+  const { sessionId, playerId, clipId, action, position } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    !isNonEmptyString(clipId) ||
+    typeof action !== 'string' ||
+    !(CLIP_ACTIONS as readonly string[]).includes(action) ||
+    typeof position !== 'number' ||
+    !Number.isFinite(position) ||
+    position < 0 ||
+    position > MAX_CLIP_POSITION
+  ) {
+    return null;
+  }
+  return { sessionId, playerId, clipId, action: action as ClipAction, position };
+}
+
+/** clip:lock — the host locks or unlocks the clip's controls. */
+export function parseClipLockRequest(payload: unknown): ClipLockRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+  const { sessionId, playerId, locked } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || typeof locked !== 'boolean') {
+    return null;
+  }
+  return { sessionId, playerId, locked };
 }
