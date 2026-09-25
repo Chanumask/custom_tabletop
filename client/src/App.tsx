@@ -650,6 +650,7 @@ export function App() {
             onRollDice={handleRollDice}
             log={gameState.log}
             fireSound={settings.fireSound}
+            nightSounds={settings.nightSounds}
             clipView={clipView}
           />
           <SessionView
