@@ -1,10 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import {
   BUILTIN_SOUND_PRESETS,
-  DEFAULT_SPAWN_POSITION,
+  appendLogEntry,
+  type DiceNotation,
+  type LogEntry,
+  type LoggedDie,
   MAX_PLAYERS_PER_SESSION,
   PLAYER_COLORS,
   SOUNDBOARD_SLOT_COUNT,
   emptyWhiteboard,
+  spawnPointFor,
   type Dice,
   type GameState,
   type Player,
@@ -24,6 +29,14 @@ const DEFAULT_SCENE_ID = 'default';
  * the full new GameState rather than a fire-and-forget delta (scene:* and
  * dice:*, unlike player:move/drawing:*). */
 export type GameStateMutationResult = { ok: true; state: GameState } | { ok: false; error: string };
+
+/** A new log entry, or why it couldn't be made. */
+export type LogResult = { ok: true; entry: LogEntry } | { ok: false; error: string };
+
+/** A fresh id and timestamp for a log entry. */
+function stamp(): { id: string; at: number } {
+  return { id: randomUUID(), at: Date.now() };
+}
 
 /**
  * The server-authoritative registry of live sessions. Trusts its inputs are
@@ -95,6 +108,7 @@ export class SessionStore {
     preferredColor?: PlayerColorId,
   ): GameState {
     let state = this.sessions.get(sessionId);
+    const opening = !state;
 
     if (!state) {
       state = createEmptySession(sessionId, playerId);
@@ -110,6 +124,10 @@ export class SessionStore {
         throw new Error(`session ${sessionId} is full`);
       }
       state.players.push(createPlayer(playerId, playerName, color));
+      addSystemEntry(
+        state,
+        opening ? `${playerName} opened the table` : `${playerName} joined the table`,
+      );
     }
     // Rejoining with the same playerId intentionally doesn't rename the
     // existing Player record — renaming is its own explicit action.
@@ -135,8 +153,12 @@ export class SessionStore {
       return undefined;
     }
 
+    const leaving = state.players.find((player) => player.id === playerId);
     state.players = state.players.filter((player) => player.id !== playerId);
     this.credentials.get(sessionId)?.delete(playerId);
+    if (leaving) {
+      addSystemEntry(state, `${leaving.name} left the table`);
+    }
 
     if (state.players.length === 0) {
       this.sessions.delete(sessionId);
@@ -147,6 +169,7 @@ export class SessionStore {
     if (state.hostId === playerId) {
       const successor = state.players.find((player) => player.connected) ?? state.players[0]!;
       state.hostId = successor.id;
+      addSystemEntry(state, `${successor.name} is now the host`);
     }
 
     return state;
@@ -203,7 +226,8 @@ export class SessionStore {
       return { ok: false, error: 'That color is already taken.' };
     }
 
-    if (patch.name !== undefined) {
+    if (patch.name !== undefined && patch.name !== player.name) {
+      addSystemEntry(state, `${player.name} is now called ${patch.name}`);
       player.name = patch.name;
       player.character.name = patch.name;
     }
@@ -226,10 +250,12 @@ export class SessionStore {
     if (state.hostId !== actorId) {
       return { ok: false, error: 'Only the host can hand over the host role.' };
     }
-    if (!state.players.some((player) => player.id === targetPlayerId)) {
+    const target = state.players.find((player) => player.id === targetPlayerId);
+    if (!target) {
       return { ok: false, error: 'Player not found.' };
     }
     state.hostId = targetPlayerId;
+    addSystemEntry(state, `${target.name} is now the host`);
     return { ok: true, state };
   }
 
@@ -449,7 +475,70 @@ export class SessionStore {
       die.rollCount += 1;
       die.rolledBy = rolledBy;
     }
+    const roller = state.players.find((player) => player.id === rolledBy);
+    if (roller) {
+      const logged = (dice as Dice[]).map((die) => ({
+        sides: DIE_FACES[die.kind],
+        result: die.result!,
+      }));
+      state.log = appendLogEntry(state.log, {
+        ...stamp(),
+        kind: 'roll',
+        ...authorOf(roller),
+        dice: logged,
+        modifier: 0,
+        total: logged.reduce((sum, die) => sum + die.result, 0),
+      });
+    }
     return { ok: true, state };
+  }
+
+  /** A line of chat from a player (text pre-validated: trimmed, 1..max). */
+  chat(sessionId: string, playerId: string, text: string): LogResult {
+    const state = this.sessions.get(sessionId);
+    const author = state?.players.find((player) => player.id === playerId);
+    if (!state || !author) {
+      return { ok: false, error: 'Player not found.' };
+    }
+    const entry: LogEntry = { ...stamp(), kind: 'chat', ...authorOf(author), text };
+    state.log = appendLogEntry(state.log, entry);
+    return { ok: true, entry };
+  }
+
+  /** A typed roll (`/roll 2d6+3`): rolled here, like table dice, so it
+   * can't be faked. */
+  rollNotation(
+    sessionId: string,
+    playerId: string,
+    notation: DiceNotation,
+    random: () => number = Math.random,
+  ): LogResult {
+    const state = this.sessions.get(sessionId);
+    const author = state?.players.find((player) => player.id === playerId);
+    if (!state || !author) {
+      return { ok: false, error: 'Player not found.' };
+    }
+    const dice: LoggedDie[] = notation.groups.flatMap((group) =>
+      Array.from({ length: Math.abs(group.count) }, () => ({
+        sides: group.sides,
+        result: Math.floor(random() * group.sides) + 1,
+        ...(group.count < 0 ? { subtract: true } : {}),
+      })),
+    );
+    const total =
+      dice.reduce((sum, die) => sum + (die.subtract ? -die.result : die.result), 0) +
+      notation.modifier;
+    const entry: LogEntry = {
+      ...stamp(),
+      kind: 'roll',
+      ...authorOf(author),
+      dice,
+      modifier: notation.modifier,
+      total,
+      notation: notation.text,
+    };
+    state.log = appendLogEntry(state.log, entry);
+    return { ok: true, entry };
   }
 
   /** Not host-gated — any player can remove a die. */
@@ -648,7 +737,16 @@ function createEmptySession(sessionId: string, hostId: string): GameState {
     ],
     lightOn: true,
     whiteboard: emptyWhiteboard(),
+    log: [],
   };
+}
+
+function authorOf(player: Player): { playerId: string; name: string; color: PlayerColorId } {
+  return { playerId: player.id, name: player.name, color: player.color };
+}
+
+function addSystemEntry(state: GameState, text: string): void {
+  state.log = appendLogEntry(state.log, { ...stamp(), kind: 'system', text });
 }
 
 /** Every session starts with one scene, auto-created the same way the
@@ -673,13 +771,17 @@ function pickColor(state: GameState, preferred?: PlayerColorId): PlayerColorId |
 }
 
 function createPlayer(id: string, name: string, color: PlayerColorId): Player {
+  // Each color has its own spot facing the table, so players who just
+  // joined don't stand inside each other; the client starts its camera here
+  // and live player:move updates take over from there.
+  const spawn = spawnPointFor(color);
   return {
     id,
     name,
     color,
     character: { id, name }, // character customization isn't scoped yet; the player stands in for their own character for now
-    position: { ...DEFAULT_SPAWN_POSITION }, // overwritten by the client's first player:move once it joins (Milestone 4)
-    rotationY: 0,
+    position: spawn.position,
+    rotationY: spawn.rotationY,
     muted: false,
     seated: false,
     connected: true,

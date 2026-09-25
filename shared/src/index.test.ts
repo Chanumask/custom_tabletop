@@ -6,6 +6,8 @@ import {
   MAX_PLAYERS_PER_SESSION,
   isPlayerColorId,
   playerColorHex,
+  spawnPointFor,
+  DEFAULT_SPAWN_POSITION,
 } from './index.js';
 
 describe('shared/player colors', () => {
@@ -39,5 +41,22 @@ describe('shared/events', () => {
 
   it('exposes the session-state broadcast event added in Milestone 2', () => {
     expect(SocketEvent.SessionState).toBe('session:state');
+  });
+});
+
+describe('spawnPointFor', () => {
+  it('gives every color its own spot, well apart, facing the table', () => {
+    const spawns = PLAYER_COLORS.map((color) => spawnPointFor(color.id));
+    for (const [i, a] of spawns.entries()) {
+      for (const b of spawns.slice(i + 1)) {
+        expect(
+          Math.hypot(a.position.x - b.position.x, a.position.z - b.position.z),
+        ).toBeGreaterThan(0.9);
+      }
+      // Facing (sin, cos) of the heading points back at the table's center.
+      const toCenter = Math.atan2(-a.position.x, -a.position.z);
+      expect(a.rotationY).toBeCloseTo(toCenter, 9);
+      expect(a.position.y).toBe(DEFAULT_SPAWN_POSITION.y);
+    }
   });
 });

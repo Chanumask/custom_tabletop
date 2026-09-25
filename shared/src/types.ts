@@ -10,6 +10,7 @@
 import type { PlayerColorId } from './player.js';
 import type { WhiteboardLine } from './whiteboard.js';
 import type { DieKind } from './dice.js';
+import type { LogEntry } from './log.js';
 
 export interface Vector3 {
   x: number;
@@ -164,6 +165,9 @@ export interface GameState {
 
   /** The north wall's whiteboard — `WHITEBOARD_LINE_COUNT` lines (whiteboard.ts). */
   whiteboard: WhiteboardLine[];
+
+  /** Recent chat, rolls and arrivals/departures, oldest first (log.ts). */
+  log: LogEntry[];
 }
 
 /**

@@ -39,7 +39,8 @@ body {
 /* Deliberately small, not full-screen (Milestone 5): the rest of the
  * viewport — including the table — stays free for click-drag drawing
  * (TableDrawing raycasts against it) while the pointer isn't locked. */
-.room-view-overlay {
+/* Bottom-center: the interaction prompt stacked above the look hint. */
+.room-bottom-stack {
   position: absolute;
   left: 50%;
   bottom: 1.5rem;
@@ -47,8 +48,19 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 0.5rem;
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  pointer-events: none;
+}
+
+.room-view-overlay {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 0.25rem;
-  max-width: 22rem;
+  max-width: 30rem;
   padding: 0.6rem 1rem;
   border: none;
   border-radius: 8px;
@@ -65,10 +77,6 @@ body {
  * standing near an interactable, or replace while seated) rather than
  * reusing the same class, since its trigger condition and position differ. */
 .interaction-prompt {
-  position: absolute;
-  left: 50%;
-  bottom: 5rem;
-  transform: translateX(-50%);
   padding: 0.5rem 1rem;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.55);
@@ -555,11 +563,12 @@ button.primary {
 }
 
 /* The soundboard's YouTube clip card (YouTubeClip.tsx) — YouTube's own
- * visible player, bottom-left, for every player at once. */
+ * visible player, top-left (the chat has the bottom-left), for every
+ * player at once. */
 .youtube-clip {
   position: absolute;
   left: 1rem;
-  bottom: 1rem;
+  top: 1rem;
   width: 356px;
   overflow: hidden;
   border-radius: 10px;
@@ -1561,4 +1570,148 @@ button.primary {
 
 .dice-result.fumble {
   color: #f07a64;
+}
+
+/* The table chat / session log (ChatPanel.tsx), bottom-left. Collapsed,
+ * it's a feed of the newest lines — each on its own dark pill so it reads
+ * over the room — that fade away; open, it's the scrollable history with
+ * an input. The collapsed feed never blocks clicks on the room. */
+.chat-panel {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 14;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: min(24rem, calc(100vw - 2rem));
+  color: #f3e6d3;
+  font-size: 0.88rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.chat-panel.open {
+  pointer-events: auto;
+}
+
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 40vh;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.chat-panel.open .chat-log {
+  padding: 0.6rem 0.7rem;
+  border-radius: 10px;
+  background: rgba(20, 14, 10, 0.9);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.chat-line {
+  overflow-wrap: anywhere;
+  transition: opacity 3s ease;
+  animation: chat-in 180ms ease-out;
+}
+
+.chat-panel:not(.open) .chat-line {
+  align-self: flex-start;
+  padding: 0.2rem 0.55rem;
+  border-radius: 7px;
+  background: rgba(20, 14, 10, 0.66);
+}
+
+.chat-line.fading {
+  opacity: 0;
+}
+
+.chat-name {
+  font-weight: 700;
+  filter: brightness(1.25);
+}
+
+.chat-system {
+  color: rgba(243, 230, 211, 0.6);
+  font-style: italic;
+}
+
+.chat-breakdown {
+  opacity: 0.7;
+}
+
+.chat-total {
+  font-size: 1rem;
+}
+
+.chat-total.critical,
+.chat-flavor {
+  color: #f3c55b;
+}
+
+.chat-total.fumble,
+.chat-flavor.fumble {
+  color: #f07a64;
+}
+
+.chat-input input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(243, 230, 211, 0.25);
+  border-radius: 10px;
+  background: rgba(20, 14, 10, 0.92);
+  color: #f3e6d3;
+  font: inherit;
+}
+
+.chat-input input:focus {
+  outline: none;
+  border-color: rgba(240, 196, 106, 0.7);
+}
+
+.chat-open {
+  align-self: flex-start;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid rgba(243, 230, 211, 0.18);
+  border-radius: 8px;
+  background: rgba(20, 14, 10, 0.55);
+  color: rgba(243, 230, 211, 0.75);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* Narrower screens: the chat sits above the bottom-center hint/prompt
+ * rather than running into them. */
+@media (max-width: 1100px) {
+  .chat-panel {
+    bottom: 7.5rem;
+  }
+}
+
+.chat-open kbd {
+  margin-right: 0.25rem;
+  padding: 0 0.3rem;
+  border: 1px solid rgba(243, 230, 211, 0.35);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.7rem;
+}
+
+@keyframes chat-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.room-view-keys {
+  color: rgba(243, 230, 211, 0.72);
+  font-size: 0.78rem;
 }
