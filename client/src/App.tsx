@@ -11,9 +11,13 @@ import {
   type SessionPeekResponse,
   type SoundPlayRequest,
   type DieKind,
+  appendLogEntry,
+  type ChatSendResponse,
+  type LogEntryBroadcast,
 } from '@custom-tabletop/shared';
 import { Toasts } from './Toasts.js';
 import { YouTubeClip, type ActiveClip } from './YouTubeClip.js';
+import { ChatPanel } from './ChatPanel.js';
 import { useToasts } from './useToasts.js';
 import { createSocket } from './socket.js';
 import { connectionStatusLabel, type ConnectionStatus } from './connectionStatus.js';
@@ -158,6 +162,15 @@ export function App() {
 
     socket.on(SocketEvent.SessionState, (state: GameState) => {
       setGameState((current) => (current?.sessionId === state.sessionId ? state : current));
+    });
+
+    // Chat lines and typed rolls arrive one entry at a time (log.ts).
+    socket.on(SocketEvent.LogEntry, (message: LogEntryBroadcast) => {
+      setGameState((current) =>
+        current?.sessionId === message.sessionId
+          ? { ...current, log: appendLogEntry(current.log, message.entry) }
+          : current,
+      );
     });
 
     // This tab's player identity was claimed by a newer connection (a
@@ -341,6 +354,25 @@ export function App() {
       'Failed to hand over the host role',
     );
 
+  const handleSendChat = (text: string) =>
+    new Promise<boolean>((resolve) => {
+      const socket = socketRef.current;
+      if (!socket || !gameState) {
+        resolve(false);
+        return;
+      }
+      socket.emit(
+        SocketEvent.ChatSend,
+        { sessionId: gameState.sessionId, playerId, text },
+        (response: ChatSendResponse) => {
+          if (!response.ok) {
+            toast(response.error, 'error');
+          }
+          resolve(response.ok);
+        },
+      );
+    });
+
   const activeScene = gameState?.scenes.find((scene) => scene.id === gameState.activeSceneId);
 
   if (gameState && socketRef.current && activeScene) {
@@ -365,6 +397,7 @@ export function App() {
           whiteboard={gameState.whiteboard}
           onWriteWhiteboard={handleWriteWhiteboard}
           onRollDice={handleRollDice}
+          log={gameState.log}
         />
         <SessionView
           state={gameState}
@@ -392,6 +425,7 @@ export function App() {
             onError={(message) => toast(message, 'error')}
           />
         )}
+        <ChatPanel log={gameState.log} players={gameState.players} onSend={handleSendChat} />
         {status !== 'connected' && (
           <div className="connection-banner" role="status">
             Connection lost — reconnecting…

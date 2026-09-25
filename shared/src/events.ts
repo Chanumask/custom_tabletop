@@ -57,6 +57,10 @@ export const SocketEvent = {
 
   /** Save the whiteboard's lines (whiteboard.ts). */
   WhiteboardWrite: 'whiteboard:write',
+  /** Chat, or a typed roll (/roll 2d6+3) — log.ts. */
+  ChatSend: 'chat:send',
+  /** Server → room: one new log entry (a chat line or typed roll). */
+  LogEntry: 'log:entry',
 } as const;
 
 export type SocketEventName = (typeof SocketEvent)[keyof typeof SocketEvent];

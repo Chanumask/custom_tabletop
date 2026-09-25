@@ -6,6 +6,44 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-25 — Table chat and session log: chat, every roll, /roll notation, speech bubbles; per-color spawn points
+
+**Decided** (the "chat with speech bubbles and a shared log that records dice rolls" idea).
+
+1. **One shared log, `GameState.log`** (last 100 entries), with three kinds:
+   - `chat`;
+   - `roll` (table dice, or a typed roll);
+   - `system` (opened / joined / left the table, renamed, new host).
+
+   Chat and roll entries carry the author's name and color *at the time*, so the lines of someone who has left still read properly. A late joiner gets the recent history with the session state.
+2. **Transport split:** `chat:send` is ack'd and the new entry is broadcast on its own (`log:entry`, sender included), not as a full `session:state`. Chat is the chattiest thing at a table and shouldn't resend every drawn stroke each time. Roll and system entries ride along with the full-state broadcasts those actions already make. Clients merge by id (`appendLogEntry`), so ordering between the two channels can't duplicate a line. Per socket, at most 6 lines per 5 s.
+3. **Typed rolls:** `/roll 2d6+3` or `/r d20` (a bare `/roll` is a d20). Notation is terms joined by + and −, each NdS or a number: up to 50 dice, up to d1000. The shared `parseDiceNotation` validates on both sides; the server does the rolling, like table dice. The log line shows the breakdown ("1d20+4 (19 + 4): 23"), and a lone d20 calls out a natural 20 or 1.
+4. **UI:**
+   - The log sits bottom-left. Collapsed, the newest lines show on dark pills and fade after 12 s (timed by *this client's* receipt, not server timestamps, which are on another clock); history never pops up.
+   - Enter opens it from the room. From a walking view, sending or Esc hands the mouse straight back to looking around (`RESUME_LOOK_EVENT`; the keypress counts as the user gesture pointer lock needs).
+   - New chat lines and typed rolls also appear as speech bubbles over the speaker's character for 5–10 s.
+   - The YouTube clip card moved to the top-left to make room.
+5. **Spawn points per color** (`spawnPointFor`): six spots on an arc facing the table, instead of one shared spot. Live-testing chat with three players put everyone inside everyone else, name tags on top of each other. The camera now starts at the player's *server* position, so a reload puts you back where you were standing.
+6. **Bottom-center overlays are one flex stack** (prompt above the "Click to look around" hint, which is now a compact three-line key legend). The two used to be separately positioned and overlapped once the hint wrapped. Below 1100 px wide the chat sits above the stack.
+
+**Bugs caught live:**
+- The feed's "already seen" sentinel was 0 on a `performance.now()` clock. A few seconds after page load that looked recent, so the join line popped up as news. It's now `-Infinity`, covered by `feedEntries` tests.
+- Bubbles lasting only 3.5 s were too brief to catch while glancing up; they now last 5–10 s.
+
+**Verified:**
+- `chat.test.ts` (13): log entries for join, rejoin, leave, rename and host change; roll entries with totals; typed notation including subtraction; the 100-entry cap; forged senders; 3-client delivery; `/roll` on the server; late-joiner history; the flood guard.
+- `diceNotation.test.ts` (notation, commands, log capping); `logFormat.test.ts` (roll summaries, breakdowns, crit/fumble, feed selection).
+- `PlayerAvatars.test.ts` (+3: bubble shown, expired, wrapping); spawn-point spacing and facing.
+
+Live (Chrome, three tabs):
+- Distinct spawns facing the table.
+- Enter opened chat and sending closed it; lines appeared in all three feeds.
+- `/r d20+4` logged "(19 + 4): 23" everywhere, and bubbles rendered over the speakers.
+
+482 tests; lint, format and build clean.
+
+---
+
 ## 2026-09-25 — Real RPG dice: d4–d20 with numbered faces that land on the server's result; a roll nonce; pool rolls
 
 **Decided** (the handover's "re-roll to the same number doesn't animate" bug, plus the "real dice" idea).
@@ -385,7 +423,7 @@ Live (Chrome, 3 tabs plus a 4th socket-client player):
 
 ## Table of Contents
 
-**2026-09-25** — Real RPG dice: d4–d20 polyhedra landing on the server result, `rollCount` nonce fixes same-number re-rolls, pool rolls, in-world rolling, table-calibrated material; Join screen redesign: character preview on a pedestal, pure join-status logic, invite links paste into the code field, rejoin card, no new deps; Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
+**2026-09-25** — Table chat and session log: `log:entry` deltas vs. full-state, typed `/roll` notation rolled server-side, speech bubbles, client-clock feed fading, per-color spawn points, bottom overlay stack; Real RPG dice: d4–d20 polyhedra landing on the server result, `rollCount` nonce fixes same-number re-rolls, pool rolls, in-world rolling, table-calibrated material; Join screen redesign: character preview on a pedestal, pure join-status logic, invite links paste into the code field, rejoin card, no new deps; Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
 
 **2026-09-24** — Player characters: six Quaternius models built by a glTF-Transform script, interpolation, chair sitting, emotes, name tags, Blender MCP read_homefile crash gotcha, frame-delta cap; map crop/preview dialog, uploads named by validated type; room rework: square table, furnished Blender room, geometry read from the model, true-color table surface; soundboard links validated, YouTube as a visible clip, board management; player colors, pre-join peek, live profile edits, invite links, toasts; identity binding, reconnect grace period, host handover, resume-only rejoin; wall soundboard rework (4x4 aim-and-E grid, `sound:play` opened to everyone); session menu rework (tabs, client-only settings, rebindable interact key, no YouTube downloader); Milestone 9: host authority hardening, an audit pass (not a new feature), the roadmap's stale "host-gated" list corrected, two real socket-level coverage gaps closed (scene:create, scene:change), player:unmute given its first test coverage, cross-browser pass logged as unverified (Chrome-only tooling); Milestone 8: room interactables, one generic object:interact event, proximity+E over raycast/click, table sit-down mode as a pure camera takeover, seated status visible via avatar squash, a soundboard console reusing sound:play, a real prompt-text bug caught live, a square full-screen seated table view, a seated drawing toolbar (per-stroke color/width, an eraser reusing drawing:delete), a latent drawing:delete remote-redraw bug caught and fixed, a React-controlled-input automation-testing gotcha, a real user-reported eraser bug (local drawing state never updated in real time) caught and fixed; File uploads (M5/M7 extension): REST upload + socket-register two-step, soundboard becomes real shared state, cover-fit stopgap for map images, three related asks captured as roadmap entries instead of implemented; Milestone 7: soundboard & mute, synthesized tones, self-mute plus host moderation, sender included in the sound broadcast; Milestone 6: dice, server-authoritative roll result, motion decoupled from result label, `Dice.sceneId` dropped, client-picked spawn position; Milestone 5: tabletop map & drawing, draw-on-the-table interaction, runtime UV remap, single-scene scope cut, `Point2D` spec deviation
 

@@ -18,6 +18,7 @@ import {
 } from './avatarMotion.js';
 import { EMOTE_CLIPS, type CharacterSource } from './characters.js';
 import { NameTag } from './nameTag.js';
+import { SpeechBubble, speechSeconds } from './speechBubble.js';
 
 // Smoothing between the ~10 Hz player:move updates (see avatarMotion.ts).
 const POSITION_HALF_LIFE = 0.06;
@@ -31,6 +32,9 @@ const CROSSFADE_SECONDS = 0.22;
 const FAINT_HOLD_SECONDS = 1.4;
 const NAME_TAG_HEIGHT = 2.18;
 const SEATED_NAME_TAG_HEIGHT = 1.7;
+/** A speech bubble's tail sits just above the name tag. */
+const SPEECH_ABOVE_TAG = 0.1;
+const SPEECH_FADE_SECONDS = 0.4;
 /** A player inside the server's reconnect grace period is a translucent
  * "ghost" rather than a fully-present figure nobody's actually behind. */
 const AWAY_OPACITY = 0.3;
@@ -74,6 +78,8 @@ interface Avatar {
   seat: Seat | null;
   connected: boolean;
   nameTag: NameTag;
+  /** What they just said in chat, until `until` (on the avatars' clock). */
+  speech: { bubble: SpeechBubble; until: number } | null;
   loadToken: number;
 }
 
@@ -178,6 +184,25 @@ export class PlayerAvatars {
     avatar.emote = { action, holdUntil: null };
   }
 
+  /** Shows a chat line in a bubble over a player's character for a few
+   * seconds (replacing anything they said just before). */
+  say(playerId: string, text: string): void {
+    const avatar = this.avatars.get(playerId);
+    if (!avatar) {
+      return;
+    }
+    this.clearSpeech(avatar);
+    const bubble = new SpeechBubble(text, playerColorHex(avatar.color));
+    avatar.group.add(bubble.sprite);
+    avatar.speech = { bubble, until: this.clock + speechSeconds(text) };
+    this.updateSpeech(avatar);
+  }
+
+  /** Whether a player has a speech bubble up right now — for tests. */
+  isSpeaking(playerId: string): boolean {
+    return !!this.avatars.get(playerId)?.speech;
+  }
+
   update(deltaSeconds: number): void {
     this.clock += deltaSeconds;
     for (const avatar of this.avatars.values()) {
@@ -233,6 +258,7 @@ export class PlayerAvatars {
       seat: null,
       connected: player.connected,
       nameTag,
+      speech: null,
       loadToken: 0,
     };
     this.avatars.set(player.id, avatar);
@@ -340,6 +366,7 @@ export class PlayerAvatars {
     avatar.group.position.set(avatar.current.x, 0, avatar.current.z);
     avatar.group.rotation.y = avatar.current.yaw;
     avatar.nameTag.sprite.position.y = avatar.seated ? SEATED_NAME_TAG_HEIGHT : NAME_TAG_HEIGHT;
+    this.updateSpeech(avatar);
 
     if (!avatar.mixer || !avatar.model) {
       return;
@@ -404,9 +431,32 @@ export class PlayerAvatars {
     avatar.emote = null;
   }
 
+  private updateSpeech(avatar: Avatar): void {
+    const speech = avatar.speech;
+    if (!speech) {
+      return;
+    }
+    const remaining = speech.until - this.clock;
+    if (remaining <= 0) {
+      this.clearSpeech(avatar);
+      return;
+    }
+    speech.bubble.sprite.position.y = avatar.nameTag.sprite.position.y + SPEECH_ABOVE_TAG;
+    speech.bubble.opacity = Math.min(1, remaining / SPEECH_FADE_SECONDS);
+  }
+
+  private clearSpeech(avatar: Avatar): void {
+    if (avatar.speech) {
+      avatar.group.remove(avatar.speech.bubble.sprite);
+      avatar.speech.bubble.dispose();
+      avatar.speech = null;
+    }
+  }
+
   private removeAvatar(avatar: Avatar): void {
     avatar.loadToken += 1; // cancel any in-flight model load
     this.detachModel(avatar);
+    this.clearSpeech(avatar);
     avatar.nameTag.dispose();
     this.group.remove(avatar.group);
     this.avatars.delete(avatar.id);

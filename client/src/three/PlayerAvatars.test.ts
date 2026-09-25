@@ -4,6 +4,7 @@ import type { Player, PlayerColorId } from '@custom-tabletop/shared';
 import { PlayerAvatars } from './PlayerAvatars.js';
 import type { CharacterAsset, CharacterSource } from './characters.js';
 import { nameTagLabel } from './nameTag.js';
+import { speechSeconds, wrapSpeech } from './speechBubble.js';
 
 /** A stand-in character: a body mesh wearing a "Shirt" material, plus the
  * clips PlayerAvatars looks for (empty motion is fine for these tests). */
@@ -137,6 +138,22 @@ describe('PlayerAvatars', () => {
     expect(shirtOf(avatars, 'a').opacity).toBe(1);
   });
 
+  it('shows what a player says over their character, then lets it fade away', async () => {
+    const avatars = new PlayerAvatars(new THREE.Scene(), fakeCharacters());
+    avatars.sync([player('me'), player('bob')], 'me');
+    await flush();
+
+    avatars.say('bob', 'The door is trapped!');
+    avatars.say('me', 'I never see my own bubble'); // no avatar for yourself
+    expect(avatars.isSpeaking('bob')).toBe(true);
+    expect(avatars.isSpeaking('me')).toBe(false);
+
+    avatars.update(speechSeconds('The door is trapped!') - 0.1);
+    expect(avatars.isSpeaking('bob')).toBe(true);
+    avatars.update(0.2);
+    expect(avatars.isSpeaking('bob')).toBe(false);
+  });
+
   it('dispose removes the avatar group from the scene', async () => {
     const scene = new THREE.Scene();
     const avatars = new PlayerAvatars(scene, fakeCharacters());
@@ -153,5 +170,20 @@ describe('nameTagLabel', () => {
     expect(nameTagLabel(base)).toBe('Mia');
     expect(nameTagLabel({ ...base, muted: true })).toBe('Mia · muted');
     expect(nameTagLabel({ ...base, away: true, muted: true })).toBe('Mia · reconnecting…');
+  });
+});
+
+describe('wrapSpeech', () => {
+  it('wraps at word boundaries', () => {
+    expect(wrapSpeech('the quick brown fox jumps over', 12)).toEqual([
+      'the quick',
+      'brown fox',
+      'jumps over',
+    ]);
+  });
+
+  it('cuts off with an ellipsis past the last line, and splits very long words', () => {
+    expect(wrapSpeech('one two three four five six', 7, 2)).toEqual(['one two', 'three…']);
+    expect(wrapSpeech('aaaaaaaaaaaa', 5)).toEqual(['aaaaa', 'aaaaa', 'aa']);
   });
 });

@@ -4,8 +4,13 @@ import { createServer, type Server as HttpServer } from 'node:http';
 import { Server as SocketIoServer, type Socket } from 'socket.io';
 import {
   ConnectionEvent,
+  MAX_CHAT_LENGTH,
   MAX_DICE_PER_ROLL,
   MAX_PLAYER_NAME_LENGTH,
+  parseDiceNotation,
+  rollCommand,
+  type ChatSendResponse,
+  type LogEntryBroadcast,
   MAX_PLAYERS_PER_SESSION,
   SESSION_ENDED_ERROR,
   SocketEvent,
@@ -47,6 +52,7 @@ import {
   parseDrawingUpdateRequest,
   parseDrawingEndRequest,
   parseDrawingDeleteRequest,
+  parseChatSendRequest,
   parseDiceSpawnRequest,
   parseDiceRollRequest,
   parseDiceRemoveRequest,
@@ -77,6 +83,9 @@ export interface AppServerOptions {
 const DEFAULT_DISCONNECT_GRACE_MS = 45_000;
 /** Minimum spacing between one socket's emotes. */
 const EMOTE_MIN_INTERVAL_MS = 400;
+/** Chat flood guard, per socket: at most this many lines per window. */
+const CHAT_WINDOW_MS = 5000;
+const CHAT_MAX_PER_WINDOW = 6;
 
 /** Every acked event's rejection when the socket isn't joined to the
  * payload's session as the payload's player — see `actsAs` below. */
@@ -396,6 +405,58 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       lastEmoteAt = now;
       socket.to(request.sessionId).emit(SocketEvent.PlayerEmote, request);
     });
+
+    // Chat and typed rolls: ack, then the new log entry alone to the whole
+    // room (sender included — it's their confirmation too). Not a full-state
+    // broadcast: chat is frequent and shouldn't resend the map each time.
+    let recentChat: number[] = [];
+    socket.on(
+      SocketEvent.ChatSend,
+      (payload: unknown, ack?: (response: ChatSendResponse) => void) => {
+        const request = parseChatSendRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: `Messages are 1-${MAX_CHAT_LENGTH} characters.` });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+        const now = Date.now();
+        recentChat = recentChat.filter((at) => now - at < CHAT_WINDOW_MS);
+        if (recentChat.length >= CHAT_MAX_PER_WINDOW) {
+          ack?.({ ok: false, error: 'Easy there — too many messages at once.' });
+          return;
+        }
+        recentChat.push(now);
+
+        const command = rollCommand(request.text);
+        let result;
+        if (command === null) {
+          result = sessions.chat(request.sessionId, request.playerId, request.text);
+        } else {
+          // A bare "/roll" rolls a d20 — the die people usually mean.
+          const notation = parseDiceNotation(command || 'd20');
+          if (!notation) {
+            ack?.({
+              ok: false,
+              error: 'Roll like "/roll 2d6+3": dice (NdS) and numbers joined by + or -.',
+            });
+            return;
+          }
+          result = sessions.rollNotation(request.sessionId, request.playerId, notation);
+        }
+        if (!result.ok) {
+          ack?.(result);
+          return;
+        }
+        ack?.({ ok: true });
+        io.to(request.sessionId).emit(SocketEvent.LogEntry, {
+          sessionId: request.sessionId,
+          entry: result.entry,
+        } satisfies LogEntryBroadcast);
+      },
+    );
 
     // Infrequent, host-gated, full-state ack + broadcast — same pattern as
     // session:join/leave (unlike player:move/drawing:*, which fire too

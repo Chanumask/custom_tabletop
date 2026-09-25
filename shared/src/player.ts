@@ -8,7 +8,7 @@
  * silently server-side rather than acked with an error, for the same
  * reason (see server/src/validation.ts).
  */
-import type { GameState, Vector3 } from './types.js';
+import { DEFAULT_SPAWN_POSITION, type GameState, type Vector3 } from './types.js';
 
 export interface PlayerMoveRequest {
   sessionId: string;
@@ -63,3 +63,33 @@ export interface PlayerUpdateRequest {
 }
 
 export type PlayerUpdateResponse = { ok: true; state: GameState } | { ok: false; error: string };
+
+/** Spawn points sit on an arc this far from the table's center (the room's
+ * origin), on the south side where the room's entrance view is. */
+const SPAWN_ARC_RADIUS = 3;
+/** Each color's place on that arc (degrees from due south, +x to the east):
+ * neighbours in join order stand on opposite sides, so a table of six
+ * never starts out standing inside each other. */
+const SPAWN_ANGLE_DEG: Record<PlayerColorId, number> = {
+  red: -10,
+  blue: 10,
+  green: -30,
+  yellow: 30,
+  purple: -50,
+  orange: 50,
+};
+
+/**
+ * Where a player of this color first appears, and which way they face
+ * (`rotationY`, the same heading convention as `player:move`: the facing
+ * direction is (sin, cos) of it) — always toward the table.
+ */
+export function spawnPointFor(color: PlayerColorId): { position: Vector3; rotationY: number } {
+  const angle = (SPAWN_ANGLE_DEG[color] * Math.PI) / 180;
+  const x = SPAWN_ARC_RADIUS * Math.sin(angle);
+  const z = SPAWN_ARC_RADIUS * Math.cos(angle);
+  return {
+    position: { x, y: DEFAULT_SPAWN_POSITION.y, z },
+    rotationY: Math.atan2(-x, -z),
+  };
+}

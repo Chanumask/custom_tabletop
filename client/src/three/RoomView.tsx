@@ -13,6 +13,7 @@ import {
   type DrawingDeleteRequest,
   type Dice,
   type DieKind,
+  type LogEntry,
   type SoundState,
   type PlayerEmoteRequest,
   type WhiteboardLine,
@@ -38,6 +39,8 @@ import { TableDrawing } from './TableDrawing.js';
 import { remapTableTopUV } from './tableTopUV.js';
 import { DiceManager, TUMBLE_SECONDS } from './DiceManager.js';
 import { playDiceClatter } from '../sounds.js';
+import { RESUME_LOOK_EVENT } from '../ChatPanel.js';
+import { rollBubble } from '../logFormat.js';
 import {
   createLamp,
   setLampOn,
@@ -139,6 +142,9 @@ export interface RoomViewProps {
   onWriteWhiteboard: (lines: (string | null)[]) => void;
   /** Rolls dice on the table (aim + interact, or a click while seated). */
   onRollDice: (diceIds: string[]) => void;
+  /** The session log: new chat lines and typed rolls pop up as speech
+   * bubbles over whoever said them. */
+  log: LogEntry[];
 }
 
 function promptFor(
@@ -218,6 +224,7 @@ export function RoomView({
   whiteboard,
   onWriteWhiteboard,
   onRollDice,
+  log,
 }: RoomViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FirstPersonController | null>(null);
@@ -250,6 +257,9 @@ export function RoomView({
   const lastPromptKeyRef = useRef<string>('');
   const onPlaySoundRef = useRef(onPlaySound);
   const onRollDiceRef = useRef(onRollDice);
+  // The newest log entry already shown — lines from before this view
+  // mounted are history, not something anyone is saying right now.
+  const lastLogIdRef = useRef<string | null>(log.at(-1)?.id ?? null);
   const targetedDieRef = useRef<string | null>(null);
   const onObjectInteractRef = useRef(onObjectInteract);
   const onUploadSoundRef = useRef(onUploadSound);
@@ -305,6 +315,22 @@ export function RoomView({
   useEffect(() => {
     onRollDiceRef.current = onRollDice;
   }, [onRollDice]);
+
+  useEffect(() => {
+    const lastSeen = lastLogIdRef.current;
+    const seenIndex = lastSeen ? log.findIndex((entry) => entry.id === lastSeen) : -1;
+    // (If the last-seen line already scrolled out of the log, just the newest.)
+    const fresh =
+      lastSeen === null ? log : seenIndex >= 0 ? log.slice(seenIndex + 1) : log.slice(-1);
+    lastLogIdRef.current = log.at(-1)?.id ?? lastSeen;
+    for (const entry of fresh) {
+      if (entry.kind === 'chat') {
+        avatarsRef.current?.say(entry.playerId, entry.text);
+      } else if (entry.kind === 'roll' && entry.notation) {
+        avatarsRef.current?.say(entry.playerId, rollBubble(entry));
+      }
+    }
+  }, [log]);
 
   useEffect(() => {
     onObjectInteractRef.current = onObjectInteract;
@@ -418,11 +444,13 @@ export function RoomView({
       0.1,
       100,
     );
-    camera.position.set(
-      DEFAULT_SPAWN_POSITION.x,
-      DEFAULT_SPAWN_POSITION.y,
-      DEFAULT_SPAWN_POSITION.z,
-    );
+    // Start where the server has this player: their color's spawn point on
+    // a fresh join, or wherever they last stood after a reload — facing the
+    // way they faced (rotationY is a heading; the camera looks down its -z).
+    const self = playersRef.current.find((player) => player.id === playerId);
+    const start = self?.position ?? DEFAULT_SPAWN_POSITION;
+    camera.position.set(start.x, DEFAULT_SPAWN_POSITION.y, start.z);
+    camera.rotation.set(0, (self?.rotationY ?? Math.PI) + Math.PI, 0, 'YXZ');
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -532,6 +560,7 @@ export function RoomView({
     };
     let handleInteractKey: ((event: KeyboardEvent) => void) | null = null;
     let handleEmoteKey: ((event: KeyboardEvent) => void) | null = null;
+    let handleResumeLook: (() => void) | null = null;
 
     void loadRoom(ROOM_GLTF_URL).then((room) => {
       if (disposed) {
@@ -808,6 +837,15 @@ export function RoomView({
       };
       document.addEventListener('keydown', handleInteractKey);
 
+      // Chat was opened from a walking view: sending (or Esc) hands the
+      // mouse straight back to looking around (ChatPanel.tsx).
+      handleResumeLook = () => {
+        if (!controller.isSeated) {
+          controller.controls.lock();
+        }
+      };
+      window.addEventListener(RESUME_LOOK_EVENT, handleResumeLook);
+
       // Emotes on the number keys: everyone else sees this player's
       // character perform it (the local player gets a short confirmation,
       // since they can't see their own avatar from first person).
@@ -960,6 +998,9 @@ export function RoomView({
       socket.off(SocketEvent.DrawingUpdate, handleDrawingUpdate);
       socket.off(SocketEvent.DrawingEnd, handleDrawingEnd);
       socket.off(SocketEvent.DrawingDelete, handleDrawingDelete);
+      if (handleResumeLook) {
+        window.removeEventListener(RESUME_LOOK_EVENT, handleResumeLook);
+      }
       if (handleInteractKey) {
         document.removeEventListener('keydown', handleInteractKey);
       }
@@ -997,20 +1038,29 @@ export function RoomView({
       {locked && !seated && assignSlotIndex === null && !whiteboardOpen && (
         <div className="crosshair" />
       )}
-      {!locked && !seated && assignSlotIndex === null && !whiteboardOpen && (
-        <button
-          type="button"
-          className="room-view-overlay"
-          onClick={() => controllerRef.current?.controls.lock()}
-        >
-          Click to look around (WASD to move · Shift to run · 1–6 to emote · Esc to release)
-          <br />
-          or click-drag on the table to draw · click a die to roll it
-        </button>
-      )}
-      {interactionPrompt && assignSlotIndex === null && !whiteboardOpen && (
-        <div className="interaction-prompt">{interactionPrompt}</div>
-      )}
+      {/* One bottom-center stack, so the prompt always sits above the hint
+          instead of the two overlapping when the hint wraps. */}
+      <div className="room-bottom-stack">
+        {interactionPrompt && assignSlotIndex === null && !whiteboardOpen && (
+          <div className="interaction-prompt">{interactionPrompt}</div>
+        )}
+        {!locked && !seated && assignSlotIndex === null && !whiteboardOpen && (
+          <button
+            type="button"
+            className="room-view-overlay"
+            onClick={() => controllerRef.current?.controls.lock()}
+          >
+            <strong>Click to look around</strong>
+            <span className="room-view-keys">
+              WASD move · Shift run · {formatKeyCode(interactKey)} interact · 1–6 emote · Enter chat
+              · Esc release
+            </span>
+            <span className="room-view-keys">
+              Drag on the table to draw · click a die to roll it
+            </span>
+          </button>
+        )}
+      </div>
       {whiteboardOpen && (
         <WhiteboardEditor
           lines={whiteboard}

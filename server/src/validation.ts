@@ -1,6 +1,8 @@
 import {
+  MAX_CHAT_LENGTH,
   MAX_DICE_PER_ROLL,
   MAX_PLAYER_NAME_LENGTH,
+  type ChatSendRequest,
   isDieKind,
   MAX_SOUND_NAME_LENGTH,
   SOUNDBOARD_SLOT_COUNT,
@@ -609,4 +611,21 @@ export function parseWhiteboardWriteRequest(payload: unknown): WhiteboardWriteRe
   }
 
   return { sessionId: sessionId.trim(), playerId: playerId.trim(), lines: cleaned };
+}
+
+export function parseChatSendRequest(payload: unknown): ChatSendRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, text } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || typeof text !== 'string') {
+    return null;
+  }
+  const cleaned = withoutControlChars(text).trim();
+  if (!cleaned || cleaned.length > MAX_CHAT_LENGTH) {
+    return null;
+  }
+
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), text: cleaned };
 }
