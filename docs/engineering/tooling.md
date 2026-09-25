@@ -24,6 +24,8 @@ Run from the repo root unless noted; each fans out to whichever workspaces defin
 | `npm run lint` | ESLint (flat config, `eslint.config.js`) across the whole repo |
 | `npm run format` / `npm run format:check` | Prettier, write or check-only |
 | `npm test` | Vitest, `run` mode, per workspace |
+| `npm run test:e2e` | Playwright cross-browser smoke tests (`e2e/`) in Chromium, Firefox and WebKit against the real app; starts the dev server + client itself, or reuses running ones. First time on a machine: `npx playwright install` |
+| `npm run load-test` | Six simulated players against a running server (`scripts/load-test.ts`): message sizes, per-player traffic, ack latency, server CPU |
 
 Scoped to one workspace: `npm run <script> -w server` (or `-w client`, `-w shared`).
 

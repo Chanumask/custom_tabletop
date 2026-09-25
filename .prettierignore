@@ -4,3 +4,5 @@ build
 coverage
 *.md
 blender/source-assets
+test-results
+playwright-report
