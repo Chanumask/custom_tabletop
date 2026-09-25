@@ -4,13 +4,14 @@ A browser-based virtual tabletop for running tabletop RPG sessions with friends:
 
 ## Status
 
-**All ten roadmap milestones are done**, plus the owner's follow-up change requests and a round of extras. Everything a table needs:
-- **The room.** A cozy, lived-in Blender room with a crackling fireplace, candles, fairy lights, a moonlit window, a lounge nook and a console TV. You walk around it in first person and see each other's animated characters. Six colors, one character each; they walk, run, sit and emote.
+**All ten roadmap milestones are done**, plus the owner's follow-up change requests and several rounds of extras. Everything a table needs:
+- **The room.** A cozy, lived-in Blender room with a crackling fireplace, candles, fairy lights, a lounge nook and a console TV. Five windows look out on a living night: a moonlit lake, woods, a village, a windmill, fireflies, with real depth as you walk past. You walk around it in first person and see each other's animated characters. Up to eight players, one character each; they walk, run, sit and emote.
 - **The table.** A square table with the map in true colors (crop it on upload, lay an optional grid) or aged parchment when there's no map. Anyone can draw on it live. Sit down to look around from your chair, or press V for a top-down view.
-- **Dice.** Real d4–d20 that tumble and land on the server's roll, with sound. You can also type `/roll 2d6+3` in chat.
+- **Dice and minis.** Real d4–d20 that tumble and land on the server's roll, with sound. Click one to roll it, drag it to move it, or type `/roll 2d6+3` in chat. The host can roll in secret. Each player has a mini of their character to move around the map.
 - **Talking.** Chat with speech bubbles, a session log of every roll, and right-click pings on the table.
-- **Sound and video.** A 4x4 wall soundboard (built-in tones, uploaded files, audio links). YouTube clips play on the TV for everyone.
+- **Sound and video.** A 4x4 wall soundboard (built-in tones, uploaded files, audio links) with brass buttons that light up when played. YouTube clips play on the TV for everyone, and pausing or skipping is shared.
 - **Saved tables.** Tables survive server restarts, and an empty table waits a week for its host to reopen it just as it was.
+- **For the host.** Lock the table, remove a player, decide who may draw or use sounds, lock the TV, clear the table, and dress the whole room (and the night outside) for Halloween.
 - **The rest.** A shared whiteboard. A light switch for a fire-lit room. Invite links. A collapsible session menu with volume, a rebindable interact key and a fire-sound toggle.
 
 **Deployed** as one Docker container to the owner's VPS, live at **https://tabletop.murri.me**. It's open to anyone with the link; uploads are capped and cleaned up automatically. How: [docs/engineering/deployment.md](docs/engineering/deployment.md).

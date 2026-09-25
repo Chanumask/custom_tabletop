@@ -12,14 +12,14 @@ Scope is deliberately narrow at the start: get a host and a few players walking 
 
 **All ten roadmap milestones are done**, plus the owner's seven follow-up change requests and two rounds of extras. The final round (see [changelog.md](changelog.md)) covered:
 - **Seated play.** Sitting down shows the view from your chair (free look, see the others) or, with V, the top-down table.
-- **The cozy room.** A fireplace with a fire sound, candles, fairy lights, a moonlit window, a lounge nook, warm pooled light and a lights-off mode lit by the fire.
+- **The cozy room.** A fireplace with a fire sound, candles, fairy lights, a moonlit window (five since the follow-up batch, looking out on a whole night landscape), a lounge nook, warm pooled light and a lights-off mode lit by the fire.
 - **The TV.** A console TV that plays the shared YouTube clip in the room, falling back to a corner player where a browser can't.
 - **Performance (M10).** The join screen loads 5x less up front, the room preloads behind it, and updates are delta-only. A six-player load test runs at ~13 KB/s per player, and the room renders at 60 fps.
 - **Cross-browser tests.** Playwright smoke tests run in Chromium, Firefox and WebKit, and in Edge on demand. They closed M9's missing browser pass and caught two real WebKit bugs.
 - **A visual QA and polish pass.** In-game controls match the join screen, the session menu collapses, and the bare table is aged parchment. The room's lighting, shield and chandelier were fixed.
 
 Earlier this day:
-- Six color-coded animated characters with a live preview on the join screen.
+- Six color-coded animated characters with a live preview on the join screen (eight since the follow-up batch).
 - A square true-color map table with crop and grid.
 - A synced whiteboard.
 - Real d4–d20 dice.
@@ -31,7 +31,18 @@ Earlier this day:
 
 **Saved tables** (same day): tables survive restarts and deploys, and a table everyone has left waits 7 days for its host to reopen it with the same code or the host link.
 
-Nothing on the roadmap is left. What's next is whatever playtesting turns up, plus the "later" list in [roadmap.md](roadmap.md): map presets, wall drawing, persistence.
+**The follow-up batch** (same night, [changelog.md](changelog.md)):
+- The TV's clip is synced: anyone pauses, plays or seeks for everyone.
+- Tables of eight.
+- A mini of your character to move on the map, and dice you drag.
+- The host's secret dice.
+- Host controls: lock, remove, permissions, clearing.
+- A soundboard that looks like furniture.
+- Four more windows onto a living 3D night with true depth.
+- A Halloween toggle for the whole room.
+- A polished HUD.
+
+Nothing on the roadmap is left. What's next is whatever playtesting turns up, plus the "later" list in [roadmap.md](roadmap.md): map presets, wall drawing, fog of war, an initiative tracker.
 
 ### Earlier on 2026-09-25
 

@@ -146,7 +146,7 @@ Later — **in discussion, not decided.** Each of these is an idea on the table,
 - **Map presets**: a handful of built-in map backgrounds to pick from, mirroring the soundboard's presets. 2026-09-24 user request. (The crop/zoom/pan fit it came with landed on 2026-09-25 as the map crop dialog.)
 - **Wall drawing + a pen tool**: extend drawing (Milestone 5) from the table to the room's walls, with a real tool-selection UI. 2026-09-24 user request.
 - **Dev-tooling upgrades**: `npm audit` flags 5 vulnerabilities, all in dev-only tooling (Vite/esbuild/Vitest). The production dependency tree has 0 (`npm audit --omit=dev`), and the deployed app never runs the Vite dev server. Fixing them means major upgrades (`vite@8`, `vitest@5`), so it's a maintenance chore, not a deploy blocker.
-- **Tokens/minis on the table**: small figures players drag around the map (suggested 2026-09-25).
+- ~~**Tokens/minis on the table**~~: built on 2026-09-25 at the owner's request. Each player has a mini of their own character (decisions.md, "Minis").
 - **Fog of war**: the host hides parts of the map and reveals them as players explore (suggested 2026-09-25).
 - **Initiative tracker**: turn order shown in the room (suggested 2026-09-25).
 - **macOS Safari check of the TV**: Windows WebKit falls back to the corner player; real Safari hasn't been tried.

@@ -6,6 +6,84 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 (night) — The follow-up batch: synced TV, eight players, minis, host controls, Halloween, a world outside
+
+**Asked** (user, one message of follow-ups):
+- YouTube pause should be synced.
+- The fire sound gets lost.
+- More host control.
+- A player object to place and move on the table.
+- Are the models in the repo?
+- Movable dice (drag, click rolls).
+- More polished in-game UI.
+- Secret dice for the host.
+- A soundboard that matches the room.
+- More of a Halloween vibe.
+- More windows with actual stuff outside and depth.
+- What about more than 4 players?
+- Check everything inside.
+
+Four choices were asked and answered:
+- Halloween as a host toggle;
+- eight chairs and eight players;
+- anyone controls the TV unless the host locks it;
+- minis of your own character.
+
+Everything is in [decisions.md](decisions.md), newest first.
+
+### What landed (one branch each, merged locally)
+
+- **The fire sound:** it faded to 2–7% at the table (quadratic falloff to zero at 8 m). It now keeps a 30% room floor and uses horizontal distance.
+- **Synced clips:** the TV's clip is shared state with a server-clock playback anchor. Anyone can pause, play, seek or stop it for everyone, and the host can lock it.
+- **Tables of eight:** two new characters (pink, the Witch; teal, the Drifter) and eight chairs, two to a side.
+- **Minis:** a miniature of your own character to put on the map and drag around. Dice drag too, and a die pressed but not moved rolls.
+- **Secret dice:** the host's dice and rolls that only they see. They're filtered out of everything the server sends anyone else.
+- **Host controls:** a Host tab with:
+  - lock the table;
+  - remove a player (told why, kept out);
+  - whether everyone else may draw or use sounds;
+  - the TV lock;
+  - clearing drawings, the whiteboard, dice or minis, each with a confirm press.
+- **The soundboard's look:** a walnut cabinet with an oxblood leather field, brass-bezelled jewel buttons that pulse for everyone when played, engraved nameplates and a picture lamp.
+- **The world outside:**
+  - four more windows (east and west walls);
+  - a whole night landscape seen through every pane with true parallax, via a portal render target;
+  - a starry sky, a moon over a glittering lake, a pine forest, a fenced yard, a village whose windows light and dim, a turning windmill, mountains, fireflies and falling leaves.
+- **Halloween night** (host toggle):
+  - outside: an orange moon, jack-o'-lanterns, a graveyard with ghosts, bats, fog, a black cat, a witch across the moon;
+  - inside: pumpkins, a bubbling cauldron, cobwebs, floating candles, paper bats and orange-violet fairy lights.
+- **UI polish and the room check:**
+  - a keycap hint card, no overlapping prompts, notices at the top, and the map grid row fixed;
+  - the two small picture frames hung backwards: turned, and repainted with a realm map and a star chart.
+- **Robustness:** the outside falls back to 8-bit where float render targets aren't available.
+- **Models in the repo?** Yes. Every model the app loads is tracked, and only the raw ~500 MB character packs are gitignored, with download links (`blender/source-assets/README.md`).
+
+### Checked
+
+- **Unit tests:** 606 (47 shared, 323 server, 236 client). New ones cover clips, minis, secret dice (not even the id reaches another player), host controls and theme, terrain and placement, clip sync maths, throttling and the soundboard palette.
+- **Cross-browser:** `npm run test:e2e` passes 9/9 in Chromium, Firefox and WebKit. The outside world was also checked by screenshot in all three.
+- **Live Playwright runs** with two and three browsers:
+  - clip sync across players;
+  - eight seated players;
+  - minis and dice dragged and rolled;
+  - the secret dice view;
+  - every host control (a removed player lands on the join screen with the reason and can't rejoin);
+  - clearing drawings repainting every table;
+  - Halloween on and off for the other player.
+- **Performance:** a steady 60 fps (vsync) at 1600×900 looking out of the windows in both themes.
+- **Bugs caught and fixed along the way:**
+  - a seek while paused didn't propagate;
+  - pressing someone else's mini started a stroke;
+  - a cleared map didn't repaint;
+  - the brew rendered white;
+  - the fog stacked opaque;
+  - a firefly bloomed past the glass;
+  - the backwards frames.
+
+Nothing from this batch is pushed or deployed yet. The room model grew to 8.96 MB (from 8.86).
+
+---
+
 ## 2026-09-25 (late night) — Saved tables
 
 **Asked** (user): "lets talk about saving sessions next". It was discussed first, per the "in discussion" rule. I laid out two goals (surviving restarts vs. campaigns between game nights) and three ways back (the same code, named saves, a save file). The owner chose:
