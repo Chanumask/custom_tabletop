@@ -112,6 +112,15 @@ export interface InventoryItem {
   heldBy: string | null;
 }
 
+/** A photo taken with the chest's camera (`photo:capture`) and pinned to
+ * the wall pinboard — always pinned, in arrival order; the oldest is
+ * dropped once the board is full (see `PINBOARD_SLOT_COUNT`, photo.ts). */
+export interface Photo {
+  id: string;
+  url: string;
+  takenBy: string;
+}
+
 /** Every session's chest starts with these. Two walkies, so a pair of
  * players can use them together once the walkie-talkie mechanic lands. */
 export const STARTING_INVENTORY: InventoryItem[] = [
@@ -198,6 +207,10 @@ export interface GameState {
   /** The room's chest (the gadgets inventory, phase 1) — a fixed catalog of
    * small props a player can carry; see `STARTING_INVENTORY`. */
   inventory: InventoryItem[];
+
+  /** Photos taken with the chest's camera, always pinned to the wall
+   * pinboard — oldest first, capped at `PINBOARD_SLOT_COUNT` (photo.ts). */
+  photos: Photo[];
 
   /** The room's light switch (Milestone 8, `object:interact` with objectId
    * "light") — a session-wide flag, not per-player: whoever flips it changes

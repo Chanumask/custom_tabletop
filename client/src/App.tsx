@@ -479,6 +479,9 @@ export function App() {
   const handleDropItem = (itemId: string) =>
     sendAction(SocketEvent.ItemDrop, { itemId }, 'Failed to put that back');
 
+  const handleCapturePhoto = (url: string) =>
+    sendAction(SocketEvent.PhotoCapture, { url }, "Couldn't pin that photo");
+
   const handleMutePlayer = (targetPlayerId: string) =>
     sendAction(SocketEvent.PlayerMute, { targetPlayerId }, 'Failed to mute player');
 
@@ -648,6 +651,8 @@ export function App() {
             inventory={gameState.inventory}
             onTakeItem={handleTakeItem}
             onDropItem={handleDropItem}
+            photos={gameState.photos}
+            onCapturePhoto={handleCapturePhoto}
             onUploadSound={handleUploadSound}
             onAssignSlot={handleAssignSlot}
             theme={gameState.theme ?? 'classic'}

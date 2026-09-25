@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { getAudioContext, playDiceClatter, playPingSound, playSound } from './sounds.js';
+import {
+  getAudioContext,
+  playDiceClatter,
+  playPingSound,
+  playShutterSound,
+  playSound,
+} from './sounds.js';
 
 describe('playSound', () => {
   it('resolves as a silent no-op for an unrecognized built-in preset id (never touches AudioContext)', async () => {
@@ -23,6 +29,7 @@ describe('without Web Audio', () => {
   it('plays tones, dice and pings as silent no-ops', async () => {
     expect(() => playDiceClatter(3, 1)).not.toThrow();
     expect(() => playPingSound()).not.toThrow();
+    expect(() => playShutterSound()).not.toThrow();
     await expect(
       playSound({ id: 'bell', name: 'Bell', url: '', playing: false, addedBy: null }),
     ).resolves.toBeUndefined();

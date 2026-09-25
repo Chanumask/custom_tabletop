@@ -11,6 +11,7 @@ import {
   PLAYER_COLORS,
   SOUNDBOARD_SLOT_COUNT,
   STARTING_INVENTORY,
+  PINBOARD_SLOT_COUNT,
   emptyWhiteboard,
   spawnPointFor,
   parseYouTubeUrl,
@@ -403,6 +404,7 @@ export class SessionStore {
     for (const state of this.sessions.values()) {
       state.scenes.forEach((scene) => add(scene.backgroundImage));
       state.soundboard.forEach((sound) => add(sound.url));
+      state.photos.forEach((photo) => add(photo.url));
     }
     return names;
   }
@@ -973,6 +975,29 @@ export class SessionStore {
     return { ok: true, state };
   }
 
+  /** Registers an already-uploaded photo (gadgets phase 2's camera) and
+   * pins it to the wall board — refused unless the requester currently
+   * holds the camera. Always pinned, oldest-first: once the board is full
+   * the oldest photo is dropped to make room, no manual placement like the
+   * wall soundboard's slots. */
+  capturePhoto(sessionId: string, playerId: string, url: string): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const holdsCamera = state.inventory.some(
+      (item) => item.kind === 'camera' && item.heldBy === playerId,
+    );
+    if (!holdsCamera) {
+      return { ok: false, error: 'You need the camera to take a photo.' };
+    }
+    state.photos.push({ id: randomUUID(), url, takenBy: playerId });
+    if (state.photos.length > PINBOARD_SLOT_COUNT) {
+      state.photos.shift();
+    }
+    return { ok: true, state };
+  }
+
   /** The host's own controls (host.ts): the table as the host may change
    * it, or why not. */
   private asHost(
@@ -1255,6 +1280,7 @@ function normalizeRestoredState(sessionId: string, saved: GameState): GameState 
   // one keeps it as-is (who's holding what survives a restart, same as
   // `seated`).
   state.inventory = saved.inventory ?? base.inventory;
+  state.photos = saved.photos ?? base.photos;
   return state;
 }
 
@@ -1280,6 +1306,7 @@ function createEmptySession(sessionId: string, hostId: string): GameState {
     ],
     // A fresh copy per session — same reasoning as soundboard's presets.
     inventory: STARTING_INVENTORY.map((item) => ({ ...item })),
+    photos: [],
     lightOn: true,
     whiteboard: emptyWhiteboard(),
     log: [],

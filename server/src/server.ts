@@ -43,6 +43,7 @@ import {
   type ObjectInteractResponse,
   type ItemTakeResponse,
   type ItemDropResponse,
+  type PhotoCaptureResponse,
   type WhiteboardWriteResponse,
   WHITEBOARD_LINE_COUNT,
   WHITEBOARD_MAX_LINE_LENGTH,
@@ -88,6 +89,7 @@ import {
   parseObjectInteractRequest,
   parseItemTakeRequest,
   parseItemDropRequest,
+  parsePhotoCaptureRequest,
   parseWhiteboardWriteRequest,
 } from './validation.js';
 import { registerUploadRoutes } from './uploads.js';
@@ -1420,6 +1422,29 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         ack?.(result);
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['inventory']);
+        }
+      },
+    );
+
+    // The camera (gadgets phase 2) — not host-gated, refused server-side
+    // unless the requester currently holds the camera (SessionStore.capturePhoto).
+    socket.on(
+      SocketEvent.PhotoCapture,
+      (payload: unknown, ack?: (response: PhotoCaptureResponse) => void) => {
+        const request = parsePhotoCaptureRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and url are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+
+        const result = sessions.capturePhoto(request.sessionId, request.playerId, request.url);
+        ack?.(result);
+        if (result.ok) {
+          broadcastPatch(request.sessionId, result.state, ['photos']);
         }
       },
     );

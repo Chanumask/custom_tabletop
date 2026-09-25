@@ -676,3 +676,49 @@ describe('SessionStore inventory (gadgets phase 1)', () => {
     expect(state?.inventory.find((item) => item.id === 'flashlight-1')?.heldBy).toBeNull();
   });
 });
+
+describe('SessionStore photos (gadgets phase 2)', () => {
+  it('refuses to capture a photo without holding the camera', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    expect(store.capturePhoto('abc', 'p1', 'https://example.com/photo.jpg')).toEqual({
+      ok: false,
+      error: 'You need the camera to take a photo.',
+    });
+  });
+
+  it('pins a photo when the requester holds the camera', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.takeItem('abc', 'p1', 'camera-1');
+    const result = store.capturePhoto('abc', 'p1', 'https://example.com/photo.jpg');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.photos).toHaveLength(1);
+    expect(result.state.photos[0]).toMatchObject({
+      url: 'https://example.com/photo.jpg',
+      takenBy: 'p1',
+    });
+  });
+
+  it('drops the oldest photo once the board is full', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.takeItem('abc', 'p1', 'camera-1');
+    for (let i = 0; i < 13; i++) {
+      store.capturePhoto('abc', 'p1', `https://example.com/${i}.jpg`);
+    }
+    const state = store.get('abc')!;
+    expect(state.photos).toHaveLength(12);
+    expect(state.photos[0]!.url).toBe('https://example.com/1.jpg');
+    expect(state.photos.at(-1)!.url).toBe('https://example.com/12.jpg');
+  });
+
+  it('counts a pinned photo as a referenced upload', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.takeItem('abc', 'p1', 'camera-1');
+    store.capturePhoto('abc', 'p1', 'https://example.com/uploads/images/photo123.jpg');
+    expect(store.referencedUploads().has('photo123.jpg')).toBe(true);
+  });
+});

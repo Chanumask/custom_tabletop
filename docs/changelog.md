@@ -6,6 +6,35 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 (gadgets phase 2) — The Polaroid camera and the wall pinboard
+
+**Asked** (user): "go for phases 2-5" — continuing the gadgets inventory plan from phase 1, unattended (no new design questions; the plan and its `AskUserQuestion` decisions were already settled).
+
+### What landed
+
+- **Reused the wall pinboard's spot** rather than a new interactable: it's purely reactive to `GameState.photos`, with no aim/proximity interaction of its own — only the camera (already picked up from the chest) has a "use" action. Found a genuinely clear stretch of the north wall (between "The Realm" painting and the whiteboard) by querying the live room's actual mesh bounding boxes in the browser rather than guessing from old screenshots — the room changed a lot in the follow-up batch (eight chairs, four more windows, new paintings).
+- **`shared`**: `types.ts` gained `Photo` and `GameState.photos`. New `photo.ts` (mirroring `inventory.ts`'s split) holds `PINBOARD_SLOT_COUNT` (12) and `PhotoCaptureRequest`/`Response`. New `photo:capture` event.
+- **`server`**: `SessionStore.capturePhoto` — refused unless the requester holds the camera (`InventoryItem.kind === 'camera'`); always pins, oldest photo dropped once the board is full (unlike the wall soundboard's manually-placed slots, there's no picking a spot). Photo URLs are counted in `referencedUploads()`/`uploadsOf()` (tableArchive.ts) so the upload-pruning sweep and the archive's own upload protection don't delete a photo that's still pinned.
+- **`client`**: the camera has no 3D model of its own (HUD-icon-only, per phase 1's decision) — pressing the interact key while holding it is a location-free fallback action (after light/table/chest/board/dice/whiteboard all fail to claim the keypress), captures a screenshot, flashes the screen white, plays a synthesized shutter click (`playShutterSound`), uploads it via the existing `/uploads/images` route, and registers it. `Pinboard.ts` (a plain wood-framed cork panel, procedural like `RoomLamp`/`SoundboardWall`) + `PinboardCanvas.ts` (one canvas texture, redrawn on every `photos` change) show up to 12 photos as small tilted "pinned Polaroids" — the tilt is a deterministic hash of the photo's id (`pinTilt`, `pinboardLayout.ts`), not `Math.random()`, so every client draws the identical board.
+
+### Bugs caught live, not by review
+
+- **The pinboard's photos rendered upside-down-ish (top row at the bottom)**: `PinboardCanvas` copied `WhiteboardCanvas`'s `texture.flipY = false`, which is specifically correct for a glTF-sourced mesh's non-flipped UVs — the pinboard is a plain `THREE.BoxGeometry`, which expects the *default* (flipped) orientation. Removed the override.
+- **Every captured photo was solid black**: the renderer isn't created with `preserveDrawingBuffer` (a per-frame cost not worth paying so an occasional photo works), so by the time the keydown handler's `toBlob` callback ran, the WebGL canvas's drawing buffer had already been cleared. Fixed by rendering once more, synchronously, immediately before reading the canvas back.
+- Both found by actually taking photos in the running app and looking at the board, not by reading the code — a reminder that this class of bug (texture UV convention per mesh source, WebGL buffer lifetime) doesn't show up in a type-check or a unit test.
+
+### Checked
+
+- New tests: `SessionStore` unit tests for `capturePhoto` (refuses without the camera, pins on success, drops the oldest once full, counted in `referencedUploads`), a socket-level `photo.test.ts` (mirroring `inventory.test.ts`'s pattern — rejects without the camera, live broadcast to another player, malformed payload), and `pinboardLayout.test.ts` for the pure grid/tilt math (7 tests).
+- Full `sanity-check` (lint/format/build/test): 635 tests (47 shared, 343 server, 245 client), all clean.
+- **Live browser verification**: took three photos from the running app (two before the buffer-timing fix, confirmed black; one after, confirmed a correct tilted thumbnail of the actual room). Confirmed the "Press E to take a photo" prompt only shows when holding the camera and nothing higher-priority (light/table/chest/board/dice/whiteboard) is targeted.
+
+### Next session
+
+Phases 3-5 (flashlight, walkie-talkies, calculator) still to build, each its own branch.
+
+---
+
 ## 2026-09-25 (small hours) — TV on a sideboard, anyone moves minis and dice, chairs that scale, a quality pass
 
 **Asked** (user):

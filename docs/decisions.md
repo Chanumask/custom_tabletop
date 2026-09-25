@@ -6,6 +6,16 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-25 — Camera + pinboard: two Three.js/canvas pitfalls worth remembering
+
+**The pinboard is passive, not an interactable.** Unlike the wall soundboard (16 individually aimed-at buttons), the pinboard never needs its own raycast target — only the camera has a "use" action, and taking a photo always auto-pins it (oldest dropped once the 12-slot board is full). Building per-slot aim targeting for a board nobody ever presses directly would have been pure overhead.
+
+**Two bugs only showed up live, not from reading the code — both worth knowing about before building the next canvas-texture prop or screenshot feature:**
+- **A `CanvasTexture`'s `flipY` depends on where the mesh's UVs came from, not on the texture itself.** `WhiteboardCanvas` sets `flipY = false` because it maps onto a glTF-loaded mesh (non-flipped UVs, the GLTFLoader convention). `PinboardCanvas` copied that line onto a plain `THREE.BoxGeometry`, which expects the *opposite* (default, flipped) convention — the board rendered with rows reversed until the override was removed. Any new canvas-texture prop needs to check which convention its *specific* mesh source uses, not copy the nearest existing example.
+- **`renderer.domElement.toBlob()`/`toDataURL()` can return a blank/black frame if read outside the render call that produced it**, because the room's `WebGLRenderer` is deliberately *not* created with `preserveDrawingBuffer: true` (a real per-frame cost, not worth paying continuously just so an occasional screenshot works) — the browser is free to clear the drawing buffer once compositing is done. A keydown handler's `toBlob` callback runs well after that. Fixed by calling `renderer.render(scene, camera)` once more, synchronously, immediately before reading the canvas back — the buffer is guaranteed valid for that one capture. Any future feature that grabs a frame from this canvas (not just the camera) needs the same synchronous re-render immediately before reading it.
+
+---
+
 ## 2026-09-25 — Chairs come and go with the players: four always, up to eight
 
 **Decided (owner: "4 default but scales when there are more people in the lobby… also scale back down… 4 is always the base").** The table has `chairCount(players) = min(8, max(4, players))` chairs (`shared/src/seats.ts`). Every player counts, including one reconnecting, so a dropped player's chair doesn't vanish under them.

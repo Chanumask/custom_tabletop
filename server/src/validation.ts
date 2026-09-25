@@ -54,6 +54,7 @@ import {
   type ObjectInteractRequest,
   type ItemTakeRequest,
   type ItemDropRequest,
+  type PhotoCaptureRequest,
   type Vector3,
   type Point2D,
 } from '@custom-tabletop/shared';
@@ -628,6 +629,25 @@ export function parseItemDropRequest(payload: unknown): ItemDropRequest | null {
   }
 
   return { sessionId: sessionId.trim(), playerId: playerId.trim(), itemId: itemId.trim() };
+}
+
+export function parsePhotoCaptureRequest(payload: unknown): PhotoCaptureRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, url } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    !isNonEmptyString(url) ||
+    url.length > MAX_URL_LENGTH ||
+    !isHttpUrl(url.trim())
+  ) {
+    return null;
+  }
+
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), url: url.trim() };
 }
 
 export function parsePlayerUnmuteRequest(payload: unknown): PlayerUnmuteRequest | null {

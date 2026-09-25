@@ -79,6 +79,9 @@ export const SocketEvent = {
   /** The room chest's gadgets (phase 1) — take/drop a held item. */
   ItemTake: 'item:take',
   ItemDrop: 'item:drop',
+  /** The camera (gadgets phase 2) — register an already-uploaded photo,
+   * always pinned to the wall board. */
+  PhotoCapture: 'photo:capture',
 
   /** Save the whiteboard's lines (whiteboard.ts). */
   WhiteboardWrite: 'whiteboard:write',

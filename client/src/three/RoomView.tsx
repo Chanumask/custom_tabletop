@@ -19,6 +19,7 @@ import {
   type ObjectInteractRequest,
   type ObjectInteractResponse,
   type InventoryItem,
+  type Photo,
   type Point2D,
   type TablePingRequest,
   playerColorHex,
@@ -56,7 +57,7 @@ import { TABLE_CANVAS_SIZE, TableCanvas } from './TableCanvas.js';
 import { TableDrawing } from './TableDrawing.js';
 import { remapTableTopUV } from './tableTopUV.js';
 import { DiceManager, TUMBLE_SECONDS } from './DiceManager.js';
-import { playDiceClatter, playPingSound } from '../sounds.js';
+import { playDiceClatter, playPingSound, playShutterSound } from '../sounds.js';
 import { TablePings } from './TablePings.js';
 import { Ambience } from './Ambience.js';
 import { OutsideWorld } from './outside/OutsideWorld.js';
@@ -89,6 +90,8 @@ import { isInteractKeyPress } from '../keyboard.js';
 import { SoundboardAssignMenu } from '../SoundboardAssignMenu.js';
 import { InventoryDialog } from '../InventoryDialog.js';
 import { HeldItems } from '../HeldItems.js';
+import { createPinboard, syncPinboard, disposePinboard, type Pinboard } from './Pinboard.js';
+import { uploadImage } from '../uploads.js';
 
 // Module-level so each character model downloads once per page, not once
 // per room mount (leaving and rejoining a session reuses it).
@@ -214,6 +217,11 @@ export interface RoomViewProps {
   inventory: InventoryItem[];
   onTakeItem: (itemId: string) => void;
   onDropItem: (itemId: string) => void;
+  /** Photos pinned to the wall pinboard (the camera, gadgets phase 2). */
+  photos: Photo[];
+  /** Registers an already-uploaded photo (the upload itself is a plain
+   * REST call inside this component, same split as sound/map uploads). */
+  onCapturePhoto: (url: string) => void;
   /** Registers a newly-uploaded/linked sound into the shared soundboard —
    * shared with the 2D panel's own upload form (SessionView.tsx), which
    * never passes `slotIndex`. Passing one (from the wall board's assign
@@ -254,6 +262,7 @@ function promptFor(
   boardTarget: { slotIndex: number; soundName: string | null } | null,
   whiteboardTargeted: boolean,
   targetedDie: DieKind | null = null,
+  holdingCamera = false,
 ): string | null {
   const keyLabel = formatKeyCode(interactKey);
   if (seatedView) {
@@ -282,6 +291,9 @@ function promptFor(
   if (nearestId === 'chest') {
     return `Press ${keyLabel} to open the chest`;
   }
+  if (holdingCamera) {
+    return `Press ${keyLabel} to take a photo`;
+  }
   return null;
 }
 
@@ -306,8 +318,12 @@ function promptFor(
  * (`COL_Chest` in the model, `RoomLoader.ts`'s `chestSpot`): opens
  * `InventoryDialog`, a fixed catalog of small gadgets a player can take or
  * put back (the gadgets inventory, phase 1 — each gadget's own effect lands
- * with that gadget; this phase only tracks who's holding what). Click-to-lock,
- * Esc (browser default) to release; drawing only while not locked. The
+ * with that gadget; this phase only tracks who's holding what). The camera
+ * (phase 2) is a location-free fallback action instead — E while holding it
+ * captures a screenshot, uploads it, and pins it to the wall `Pinboard`,
+ * which is purely reactive (`GameState.photos`, no interaction of its own).
+ * Click-to-lock, Esc (browser default) to release; drawing only while not
+ * locked. The
  * light/table/chest proximity interactables trigger via E regardless of lock
  * state (unchanged from Milestone 8); the board's aim-based targeting only
  * makes sense while actively looking around, so it only resolves while
@@ -335,6 +351,8 @@ export function RoomView({
   inventory,
   onTakeItem,
   onDropItem,
+  photos,
+  onCapturePhoto,
   onUploadSound,
   onAssignSlot,
   canDraw,
@@ -393,6 +411,10 @@ export function RoomView({
   const soundboardRef = useRef<SoundState[]>(soundboard);
   const soundboardSlotsRef = useRef<(string | null)[]>(soundboardSlots);
   const soundboardWallRef = useRef<SoundboardWall | null>(null);
+  const pinboardRef = useRef<Pinboard | null>(null);
+  const photosRef = useRef<Photo[]>(photos);
+  const capturingPhotoRef = useRef(false);
+  const [cameraFlash, setCameraFlash] = useState(false);
   const interactablesRef = useRef<Interactable[]>([]);
   const nearestInteractableIdRef = useRef<string | null>(null);
   // The wall board's targeted slot (aim-based, recomputed every frame in
@@ -428,6 +450,8 @@ export function RoomView({
   const targetedDieRef = useRef<string | null>(null);
   const onObjectInteractRef = useRef(onObjectInteract);
   const onUploadSoundRef = useRef(onUploadSound);
+  const onCapturePhotoRef = useRef(onCapturePhoto);
+  const inventoryRef = useRef<InventoryItem[]>(inventory);
   const onNotifyRef = useRef(onNotify);
   const interactKeyRef = useRef(interactKey);
   const [locked, setLocked] = useState(false);
@@ -535,6 +559,21 @@ export function RoomView({
   useEffect(() => {
     onUploadSoundRef.current = onUploadSound;
   }, [onUploadSound]);
+
+  useEffect(() => {
+    onCapturePhotoRef.current = onCapturePhoto;
+  }, [onCapturePhoto]);
+
+  useEffect(() => {
+    inventoryRef.current = inventory;
+  }, [inventory]);
+
+  useEffect(() => {
+    photosRef.current = photos;
+    if (pinboardRef.current) {
+      syncPinboard(pinboardRef.current, photos);
+    }
+  }, [photos]);
 
   useEffect(() => {
     onNotifyRef.current = onNotify;
@@ -931,6 +970,10 @@ export function RoomView({
         soundboardWall.sync(soundboardRef.current, soundboardSlotsRef.current);
         soundboardWallRef.current = soundboardWall;
 
+        const pinboard = createPinboard(scene);
+        syncPinboard(pinboard, photosRef.current);
+        pinboardRef.current = pinboard;
+
         const whiteboardSurface = room.whiteboardSurface;
         if (whiteboardSurface) {
           const board = new WhiteboardCanvas(WHITEBOARD_LINE_COUNT);
@@ -1073,6 +1116,44 @@ export function RoomView({
           controller.stand();
           applySeatedView();
           sendSeated(false, null);
+        };
+        // The camera (gadgets phase 2) — a fallback action, not tied to any
+        // location: available whenever the interact key doesn't hit anything
+        // more specific and the local player currently holds it. The flash
+        // and shutter play immediately; the upload (and so the photo
+        // reaching the pinboard) happens in the background.
+        const takePhoto = () => {
+          if (capturingPhotoRef.current) {
+            return;
+          }
+          capturingPhotoRef.current = true;
+          setCameraFlash(true);
+          playShutterSound();
+          window.setTimeout(() => setCameraFlash(false), 180);
+          // The renderer isn't created with preserveDrawingBuffer (a
+          // per-frame cost not worth paying for every frame just so an
+          // occasional photo works) — the canvas's WebGL buffer can already
+          // be cleared by the time toBlob's callback runs. Rendering once
+          // more, synchronously, right before reading it back keeps the
+          // buffer valid for this capture without that always-on cost.
+          renderer.render(scene, camera);
+          renderer.domElement.toBlob(
+            (blob) => {
+              if (!blob) {
+                capturingPhotoRef.current = false;
+                onNotifyRef.current("Couldn't take that photo.");
+                return;
+              }
+              uploadImage(new File([blob], 'photo.jpg', { type: 'image/jpeg' }))
+                .then((url) => onCapturePhotoRef.current(url))
+                .catch(() => onNotifyRef.current("Couldn't take that photo."))
+                .finally(() => {
+                  capturingPhotoRef.current = false;
+                });
+            },
+            'image/jpeg',
+            0.82,
+          );
         };
         toggleSeatedViewRef.current = () => {
           if (!controller.isSeated || !controller.hasChair) {
@@ -1347,6 +1428,10 @@ export function RoomView({
           } else if (nearestId === 'chest') {
             controller.controls.unlock();
             setInventoryOpen(true);
+          } else if (
+            inventoryRef.current.some((item) => item.kind === 'camera' && item.heldBy === playerId)
+          ) {
+            takePhoto();
           }
         };
         document.addEventListener('keydown', handleInteractKey);
@@ -1488,7 +1573,10 @@ export function RoomView({
                 }
               : null;
 
-          const promptKey = `${nearestId}|${controller.seatedView}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}|${targetedDie}`;
+          const holdingCamera = inventoryRef.current.some(
+            (item) => item.kind === 'camera' && item.heldBy === playerId,
+          );
+          const promptKey = `${nearestId}|${controller.seatedView}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}|${targetedDie}|${holdingCamera}`;
           if (promptKey !== lastPromptKeyRef.current) {
             lastPromptKeyRef.current = promptKey;
             setInteractionPrompt(
@@ -1500,6 +1588,7 @@ export function RoomView({
                 boardTarget,
                 whiteboardTargeted,
                 targetedDieKind,
+                holdingCamera,
               ),
             );
           }
@@ -1588,6 +1677,10 @@ export function RoomView({
       }
       soundboardWallRef.current?.dispose();
       soundboardWallRef.current = null;
+      if (pinboardRef.current) {
+        disposePinboard(pinboardRef.current);
+        pinboardRef.current = null;
+      }
       brassEnv?.dispose();
       outside?.dispose();
       paintings.forEach((item) => item.dispose());
@@ -1668,6 +1761,7 @@ export function RoomView({
         assignSlotIndex === null &&
         !whiteboardOpen &&
         !inventoryOpen && <div className="crosshair" />}
+      {cameraFlash && <div className="camera-flash" />}
       <HeldItems items={inventory.filter((item) => item.heldBy === playerId)} />
       {/* One bottom-center stack, so the prompt always sits above the hint
           instead of the two overlapping when the hint wraps. */}

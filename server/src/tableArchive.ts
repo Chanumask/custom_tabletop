@@ -117,6 +117,7 @@ export function uploadsOf(state: GameState): string[] {
   };
   state.scenes?.forEach((scene) => add(scene.backgroundImage ?? ''));
   state.soundboard?.forEach((sound) => add(sound.url ?? ''));
+  state.photos?.forEach((photo) => add(photo.url ?? ''));
   return [...names];
 }
 

@@ -204,3 +204,33 @@ export function playPingSound(): void {
     oscillator.stop(at + 0.36);
   });
 }
+
+/** The camera's shutter click (gadgets phase 2) — two very short, high
+ * square-wave clicks, a mechanical "clack-clack" rather than a musical
+ * tone. */
+export function playShutterSound(): void {
+  if (masterVolume === 0) {
+    return;
+  }
+  const ctx = getAudioContext();
+  if (!ctx) {
+    return;
+  }
+  if (ctx.state === 'suspended') {
+    void ctx.resume();
+  }
+  const start = ctx.currentTime + 0.01;
+  [0, 0.05].forEach((offset) => {
+    const at = start + offset;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = 'square';
+    oscillator.frequency.value = 1800;
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(0.16 * masterVolume, at + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
+    oscillator.connect(gain).connect(ctx.destination);
+    oscillator.start(at);
+    oscillator.stop(at + 0.06);
+  });
+}

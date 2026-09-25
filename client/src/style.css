@@ -104,6 +104,27 @@ body {
   pointer-events: none;
 }
 
+/* The camera's flash (gadgets phase 2) — a brief white full-screen fade,
+ * timed with the shutter sound; toggled off in JS (RoomView.tsx) shortly
+ * after the CSS fade finishes. */
+.camera-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0.85;
+  pointer-events: none;
+  animation: camera-flash-fade 180ms ease-out forwards;
+}
+
+@keyframes camera-flash-fade {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 /* What the local player is carrying from the chest (the gadgets inventory,
  * phase 1) — a small, always-on corner HUD, informational only for now.
  * Bottom-right: bottom-left is the chat toggle/panel's own corner
