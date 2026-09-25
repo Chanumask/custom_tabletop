@@ -97,7 +97,10 @@ const boardText = (response: SessionJoinResponse) =>
 
 describe('a table survives a restart', () => {
   it('comes back with its players away; they rejoin as themselves and play on', async () => {
-    const first = await start();
+    // A long grace period: this test is about rejoining, and on a busy machine
+    // 150 ms can pass before the rejoin arrives.
+    const patient = { disconnectGraceMs: 10_000 };
+    const first = await start(patient);
     const alice = await connect(first.url);
     const bob = await connect(first.url);
     expect((await join(alice, 'CRYPT', 'alice')).ok).toBe(true);
@@ -106,7 +109,7 @@ describe('a table survives a restart', () => {
 
     await stop(first.app); // shutting down saves every table in play
 
-    const second = await start();
+    const second = await start(patient);
     const observer = await connect(second.url);
     const seen = await peek(observer, 'CRYPT');
     expect(seen).toMatchObject({ exists: true, playerCount: 2 });
