@@ -41,6 +41,8 @@ import {
   type PlayerMuteResponse,
   type PlayerUnmuteResponse,
   type ObjectInteractResponse,
+  type ItemTakeResponse,
+  type ItemDropResponse,
   type WhiteboardWriteResponse,
   WHITEBOARD_LINE_COUNT,
   WHITEBOARD_MAX_LINE_LENGTH,
@@ -84,6 +86,8 @@ import {
   parsePlayerMuteRequest,
   parsePlayerUnmuteRequest,
   parseObjectInteractRequest,
+  parseItemTakeRequest,
+  parseItemDropRequest,
   parseWhiteboardWriteRequest,
 } from './validation.js';
 import { registerUploadRoutes } from './uploads.js';
@@ -142,8 +146,11 @@ const ARCHIVE_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 const EMOTE_MIN_INTERVAL_MS = 400;
 
 type PatchKey = keyof SessionPatch['patch'];
-/** What a join, leave, reconnect or removal changes. */
-const PRESENCE_KEYS: PatchKey[] = ['players', 'hostId', 'log'];
+/** What a join, leave, reconnect or removal changes. `inventory` is here
+ * too — a player leaving releases whatever they were holding back into the
+ * chest (SessionStore.leave), and everyone else needs to see that, not just
+ * the leaving player's own now-discarded ack. */
+const PRESENCE_KEYS: PatchKey[] = ['players', 'hostId', 'log', 'inventory'];
 /** Pings are for pointing, not strobing: at most one per socket this often. */
 const PING_MIN_INTERVAL_MS = 300;
 /** Chat flood guard, per socket: at most this many lines per window. */
@@ -1369,6 +1376,50 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['lightOn', 'players']);
+        }
+      },
+    );
+
+    // The room chest's gadgets (phase 1) — not host-gated, same reasoning
+    // as object:interact: a player can only ever take/drop their own item.
+    socket.on(
+      SocketEvent.ItemTake,
+      (payload: unknown, ack?: (response: ItemTakeResponse) => void) => {
+        const request = parseItemTakeRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and itemId are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+
+        const result = sessions.takeItem(request.sessionId, request.playerId, request.itemId);
+        ack?.(result);
+        if (result.ok) {
+          broadcastPatch(request.sessionId, result.state, ['inventory']);
+        }
+      },
+    );
+
+    socket.on(
+      SocketEvent.ItemDrop,
+      (payload: unknown, ack?: (response: ItemDropResponse) => void) => {
+        const request = parseItemDropRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and itemId are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+
+        const result = sessions.dropItem(request.sessionId, request.playerId, request.itemId);
+        ack?.(result);
+        if (result.ok) {
+          broadcastPatch(request.sessionId, result.state, ['inventory']);
         }
       },
     );

@@ -99,6 +99,29 @@ export const BUILTIN_SOUND_PRESETS: SoundState[] = [
   { id: 'alert', name: 'Alert', url: '', playing: false, addedBy: null },
 ];
 
+/** A small hand-held prop from the room's chest (the gadgets inventory,
+ * phase 1 — camera+pinboard, flashlight, walkie-talkies, calculator each
+ * get their own "use" mechanic as that gadget lands; this phase only
+ * tracks who's carrying what). */
+export type ItemKind = 'camera' | 'flashlight' | 'walkie' | 'calculator';
+
+export interface InventoryItem {
+  id: string;
+  kind: ItemKind;
+  /** A player id, or null while it's sitting in the chest. */
+  heldBy: string | null;
+}
+
+/** Every session's chest starts with these. Two walkies, so a pair of
+ * players can use them together once the walkie-talkie mechanic lands. */
+export const STARTING_INVENTORY: InventoryItem[] = [
+  { id: 'camera-1', kind: 'camera', heldBy: null },
+  { id: 'flashlight-1', kind: 'flashlight', heldBy: null },
+  { id: 'walkie-1', kind: 'walkie', heldBy: null },
+  { id: 'walkie-2', kind: 'walkie', heldBy: null },
+  { id: 'calculator-1', kind: 'calculator', heldBy: null },
+];
+
 export interface Player {
   id: string;
   name: string;
@@ -171,6 +194,10 @@ export interface GameState {
    * occupying any wall slot, and a slot always points at a specific button
    * position regardless of how many sounds get added later. */
   soundboardSlots: (string | null)[];
+
+  /** The room's chest (the gadgets inventory, phase 1) — a fixed catalog of
+   * small props a player can carry; see `STARTING_INVENTORY`. */
+  inventory: InventoryItem[];
 
   /** The room's light switch (Milestone 8, `object:interact` with objectId
    * "light") — a session-wide flag, not per-player: whoever flips it changes

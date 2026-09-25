@@ -185,6 +185,7 @@ describe('SessionStore saving hooks', () => {
     const state = store.restore(old);
     expect(state.players[0]!.connected).toBe(false);
     expect(state.whiteboard.length).toBeGreaterThan(0);
+    expect(state.inventory.length).toBeGreaterThan(0);
     expect(state.log).toEqual([]);
     expect(state.scenes[0]!.gridCells).toBe(0);
     expect(store.authorizeJoin('ROOM', 'p1', 'secret')).toBe(true);

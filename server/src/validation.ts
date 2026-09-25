@@ -52,6 +52,8 @@ import {
   type PlayerMuteRequest,
   type PlayerUnmuteRequest,
   type ObjectInteractRequest,
+  type ItemTakeRequest,
+  type ItemDropRequest,
   type Vector3,
   type Point2D,
 } from '@custom-tabletop/shared';
@@ -600,6 +602,32 @@ export function parseObjectInteractRequest(payload: unknown): ObjectInteractRequ
     ...(seated !== undefined ? { seated } : {}),
     ...(seatIndex !== undefined ? { seatIndex: seatIndex as number } : {}),
   };
+}
+
+export function parseItemTakeRequest(payload: unknown): ItemTakeRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, itemId } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || !isNonEmptyString(itemId)) {
+    return null;
+  }
+
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), itemId: itemId.trim() };
+}
+
+export function parseItemDropRequest(payload: unknown): ItemDropRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, itemId } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || !isNonEmptyString(itemId)) {
+    return null;
+  }
+
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), itemId: itemId.trim() };
 }
 
 export function parsePlayerUnmuteRequest(payload: unknown): PlayerUnmuteRequest | null {

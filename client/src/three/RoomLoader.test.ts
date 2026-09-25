@@ -108,3 +108,20 @@ describe('describeRoom cozy anchors', () => {
     expect(room.flames).toEqual([]);
   });
 });
+
+describe('describeRoom chest spot', () => {
+  it('reads the decorative chest footprint from COL_Chest', () => {
+    const root = new THREE.Group();
+    root.add(box('COL_Chest', [0.6, 0.4, 0.4], [4.7, 0.2, 2.3]));
+
+    const room = describeRoom(root);
+
+    expect(room.chestSpot?.x).toBeCloseTo(4.7);
+    expect(room.chestSpot?.z).toBeCloseTo(2.3);
+  });
+
+  it('is null when the model has no chest', () => {
+    const room = describeRoom(new THREE.Group());
+    expect(room.chestSpot).toBeNull();
+  });
+});

@@ -473,6 +473,12 @@ export function App() {
   const handleObjectInteract = (objectId: string) =>
     sendAction(SocketEvent.ObjectInteract, { objectId }, 'Failed to interact');
 
+  const handleTakeItem = (itemId: string) =>
+    sendAction(SocketEvent.ItemTake, { itemId }, 'Failed to take that');
+
+  const handleDropItem = (itemId: string) =>
+    sendAction(SocketEvent.ItemDrop, { itemId }, 'Failed to put that back');
+
   const handleMutePlayer = (targetPlayerId: string) =>
     sendAction(SocketEvent.PlayerMute, { targetPlayerId }, 'Failed to mute player');
 
@@ -639,6 +645,9 @@ export function App() {
             interactKey={settings.interactKey}
             onPlaySound={handlePlaySound}
             onObjectInteract={handleObjectInteract}
+            inventory={gameState.inventory}
+            onTakeItem={handleTakeItem}
+            onDropItem={handleDropItem}
             onUploadSound={handleUploadSound}
             onAssignSlot={handleAssignSlot}
             theme={gameState.theme ?? 'classic'}

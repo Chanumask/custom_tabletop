@@ -41,6 +41,34 @@ Pushed (`f202503..0d2ed71`) and deployed at the owner's go-ahead. The container 
 
 ---
 
+## 2026-09-25 (very late) — Gadgets inventory, phase 1: the room chest
+
+**Asked** (user): the game's first story is a 1990s German school-trip setting, and wants small period-appropriate gadgets in the room with real functionality (not just decoration) — brainstormed together first (camera+pinboard, flashlight, walkie-talkies, calculator chosen; TV already covers the Walkman/CD-player idea), then asked for a precise implementation plan per item plus a chest as the access point, then "go for it start with the phase 1 then open it locally so i can look at it".
+
+This session is phase 1 only: the chest and the take/drop inventory plumbing every gadget will build on. No gadget has its own effect yet (no camera flash, no flashlight beam, no radio channel, no calculator UI) — this phase only tracks who's holding what.
+
+### What landed
+
+- **Reused the room's existing decorative treasure chest** (Poly Haven asset, `COL_Chest` in the model — see the M10 room-dressing entry) as the gadgets' pickup point instead of building a duplicate prop. `RoomLoader.ts`'s `describeRoom` now also reads `COL_Chest`'s footprint into a `chestSpot`, the same "read gameplay geometry out of the model by name" pattern `Table_Top`/`Fireplace_Fire`/etc. already use.
+- **`shared`**: `types.ts` gained `ItemKind`, `InventoryItem`, and `STARTING_INVENTORY` (5 items: a camera, a flashlight, two walkie-talkies, a calculator), plus `GameState.inventory`. New `inventory.ts` (mirroring `sound.ts`'s split from `types.ts`) holds `ItemTakeRequest`/`ItemDropRequest` and their responses. New `item:take`/`item:drop` socket events.
+- **`server`**: `SessionStore.takeItem`/`dropItem` — not host-gated (a player can only ever take/drop their own item, same reasoning as the seated toggle); taking an already-held item is refused, taking your own held item is a no-op success. A player who leaves drops whatever they were holding back into the chest (`SessionStore.leave`). `PRESENCE_KEYS` (what a join/leave/reconnect broadcasts) now includes `inventory`, so everyone sees a departed player's item return to the chest live, not just on their next full refresh. An older saved table without `inventory` gets a fresh chest on restore.
+- **`client`**: the chest is wired into `RoomView.tsx`'s existing proximity + E interactable system (same as the light switch and the table) — walking up and pressing the interact key opens `InventoryDialog.tsx` (styled like the whiteboard/map-crop dialogs), listing all 5 items with Take/Put-back buttons and who's currently holding what. A small always-on corner HUD (`HeldItems.tsx`) shows the local player's own held items.
+- Branch `feat/gadgets-inventory`, off `main`. **Not merged/pushed yet** — the user asked to see it running locally first.
+
+### Checked
+
+- New tests: `SessionStore` unit tests (take/drop happy path, refuse-taking-held, refuse-dropping-not-held, leave-releases-items — 7 tests), a socket-level `inventory.test.ts` (5 tests, mirroring `interactables.test.ts`'s pattern) proving a forged take of an already-held item is rejected with no effect and that a leaving player's item is seen returning to the chest live by whoever remains, and `RoomLoader.test.ts` coverage for the new `chestSpot` extraction (2 tests). `tableArchive.test.ts`'s existing "fills in fields old saves lack" test extended to also cover `inventory`.
+- **Environment note**: the first full `npm test` run (before the rebase below) hit 22 failures across several unrelated server test files — `EPERM` on `fs.rmSync` for stale `server/uploads/*` files left from earlier live-testing sessions (gitignored, untracked), cascading into `clients.forEach` errors in `afterEach` hooks whose `beforeEach` never got that far. Confirmed via `git stash` + a clean rerun that this is pre-existing Windows file-lock flakiness (likely antivirus/indexer scanning freshly-touched files), not caused by this branch — a rerun minutes later, with no code changes, passed clean. Not fixed (stale local-only files, out of scope for a code change); flagging here in case it recurs.
+- **Rebased onto the follow-up batch** (below), which landed and was pushed while this branch was in progress — see that entry for what it touched. Conflicts were in `sessionStore.ts` (`takeItem`/`dropItem` interleaved with the batch's own new methods after `setSeated` — clip controls, host controls) and `RoomView.tsx` (the chest's `!inventoryOpen` guards folded into the batch's reworked hint card); resolved by keeping both sides' logic, no dropped code either way. Confirmed the room model still carries `COL_Chest` at the same spot after the batch's room rework (eight chairs, more windows) — checked directly against the exported `room.glb`.
+- Full `sanity-check` (lint/format/build/test), run after the rebase: 621 tests (47 shared, 336 server, 238 client), all clean.
+- **Live browser verification**: pending — next step this session.
+
+### Next session
+
+Four gadgets still to build, each its own branch per the agreed plan (`docs/decisions.md` has the design detail for each): camera + pinboard, flashlight, walkie-talkies (private channel only, per the user's choice), calculator. Each needs its own "use" event once picked up — none of that exists yet, only pickup/put-back. Prop art direction already decided with the user: procedural Three.js geometry for the new gadgets (matching `RoomLamp`/`SoundboardWall`), HUD-icon-only for how a held item displays (no hand-attachment).
+
+---
+
 ## 2026-09-25 (late night) — Drawing lag fixed, maps, night sounds
 
 **Asked** (user, after the recommendations): "we only need 2 and 4" (the multi-map switcher, and night sounds), plus "check for lag when someone is drawing on the table. that was one thing I noticed right away."

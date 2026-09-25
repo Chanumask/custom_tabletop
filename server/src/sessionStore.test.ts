@@ -597,3 +597,82 @@ describe('chairs that come and go with the players', () => {
     expect(store.setSeated('abc', 'p1', true, 4)).toMatchObject({ ok: false });
   });
 });
+
+describe('SessionStore inventory (gadgets phase 1)', () => {
+  it('a fresh session starts with the whole catalog in the chest', () => {
+    const store = new SessionStore();
+    const state = store.join('abc', 'p1', 'Alice');
+    expect(state.inventory).toHaveLength(5);
+    expect(state.inventory.every((item) => item.heldBy === null)).toBe(true);
+  });
+
+  it('taking an item sets its holder', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    const result = store.takeItem('abc', 'p1', 'camera-1');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.inventory.find((item) => item.id === 'camera-1')?.heldBy).toBe('p1');
+  });
+
+  it('refuses to take an item someone else already holds', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+    store.takeItem('abc', 'p1', 'camera-1');
+    expect(store.takeItem('abc', 'p2', 'camera-1')).toEqual({
+      ok: false,
+      error: 'Someone else is already holding that.',
+    });
+  });
+
+  it('taking an item you already hold is a no-op success', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.takeItem('abc', 'p1', 'camera-1');
+    const result = store.takeItem('abc', 'p1', 'camera-1');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.inventory.find((item) => item.id === 'camera-1')?.heldBy).toBe('p1');
+  });
+
+  it('taking an unknown item returns an error', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    expect(store.takeItem('abc', 'p1', 'teapot')).toEqual({
+      ok: false,
+      error: 'Item not found.',
+    });
+  });
+
+  it('dropping an item you hold clears its holder', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.takeItem('abc', 'p1', 'camera-1');
+    const result = store.dropItem('abc', 'p1', 'camera-1');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.inventory.find((item) => item.id === 'camera-1')?.heldBy).toBeNull();
+  });
+
+  it('refuses to drop an item you are not holding', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+    store.takeItem('abc', 'p1', 'camera-1');
+    expect(store.dropItem('abc', 'p2', 'camera-1')).toEqual({
+      ok: false,
+      error: "You aren't holding that.",
+    });
+  });
+
+  it('a player who leaves drops whatever they were holding back into the chest', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+    store.takeItem('abc', 'p2', 'flashlight-1');
+
+    const state = store.leave('abc', 'p2');
+    expect(state?.inventory.find((item) => item.id === 'flashlight-1')?.heldBy).toBeNull();
+  });
+});

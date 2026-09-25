@@ -10,6 +10,7 @@ import {
   MAX_PLAYERS_PER_SESSION,
   PLAYER_COLORS,
   SOUNDBOARD_SLOT_COUNT,
+  STARTING_INVENTORY,
   emptyWhiteboard,
   spawnPointFor,
   parseYouTubeUrl,
@@ -275,6 +276,13 @@ export class SessionStore {
     // Their secret dice would otherwise linger, seen by no one.
     state.dice = state.dice.filter((die) => !(die.hidden && die.ownerId === playerId));
     this.credentials.get(sessionId)?.delete(playerId);
+    // Anything the leaving player was holding goes back in the chest —
+    // otherwise it would stay permanently "held" by a player who's gone.
+    for (const item of state.inventory) {
+      if (item.heldBy === playerId) {
+        item.heldBy = null;
+      }
+    }
     if (leaving) {
       addSystemEntry(state, `${leaving.name} ${farewell}`);
     }
@@ -927,6 +935,44 @@ export class SessionStore {
     return { ok: true, state };
   }
 
+  /** Not host-gated — a player can only ever take/drop their *own* held
+   * item (the room chest's gadgets, phase 1). Taking an item someone else
+   * already holds is refused; taking one you already hold is a no-op
+   * success (a client that missed a state update can't desync the server). */
+  takeItem(sessionId: string, playerId: string, itemId: string): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const item = state.inventory.find((candidate) => candidate.id === itemId);
+    if (!item) {
+      return { ok: false, error: 'Item not found.' };
+    }
+    if (item.heldBy !== null && item.heldBy !== playerId) {
+      return { ok: false, error: 'Someone else is already holding that.' };
+    }
+    item.heldBy = playerId;
+    return { ok: true, state };
+  }
+
+  /** Puts an item back in the chest — refused unless the requester is the
+   * one currently holding it. */
+  dropItem(sessionId: string, playerId: string, itemId: string): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const item = state.inventory.find((candidate) => candidate.id === itemId);
+    if (!item) {
+      return { ok: false, error: 'Item not found.' };
+    }
+    if (item.heldBy !== playerId) {
+      return { ok: false, error: "You aren't holding that." };
+    }
+    item.heldBy = null;
+    return { ok: true, state };
+  }
+
   /** The host's own controls (host.ts): the table as the host may change
    * it, or why not. */
   private asHost(
@@ -1205,6 +1251,10 @@ function normalizeRestoredState(sessionId: string, saved: GameState): GameState 
   state.permissions = { ...base.permissions, ...saved.permissions };
   const slots = saved.soundboardSlots ?? base.soundboardSlots;
   state.soundboardSlots = Array.from({ length: SOUNDBOARD_SLOT_COUNT }, (_, i) => slots[i] ?? null);
+  // An older save lacking `inventory` gets a fresh chest; a save that has
+  // one keeps it as-is (who's holding what survives a restart, same as
+  // `seated`).
+  state.inventory = saved.inventory ?? base.inventory;
   return state;
 }
 
@@ -1228,6 +1278,8 @@ function createEmptySession(sessionId: string, hostId: string): GameState {
       ...BUILTIN_SOUND_PRESETS.map((preset) => preset.id),
       ...Array<null>(SOUNDBOARD_SLOT_COUNT - BUILTIN_SOUND_PRESETS.length).fill(null),
     ],
+    // A fresh copy per session — same reasoning as soundboard's presets.
+    inventory: STARTING_INVENTORY.map((item) => ({ ...item })),
     lightOn: true,
     whiteboard: emptyWhiteboard(),
     log: [],

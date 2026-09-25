@@ -59,6 +59,21 @@ Checked live: a player dragged the host's mini and die, and the host saw both la
 
 ---
 
+## 2026-09-25 — Gadgets inventory: period-appropriate school-trip props, a chest, phase 1 scope
+
+**The setting:** the first story is a 1990s German school trip. Brainstormed with the owner for small hand-held items that (a) do something mechanically, (b) fit a real 90s school-trip bag, and (c) aren't already covered — the TV already stands in for a Walkman/CD player, so those were ruled out. Chosen: a Polaroid camera + wall pinboard, a flashlight, two walkie-talkies, a calculator. Ideas considered and dropped for now: a Gameboy, a pocket knife, a compass/orienteering map, a UV pen — fun but either purely decorative or a bigger lift than this pass warranted.
+
+**Decided with the owner (`AskUserQuestion`):**
+- **Walkie-talkies**: a private two-way channel only (only the two current holders can hear each other) for the first pass, not the tuned-frequency puzzle layer — that can layer on once the base mechanic exists.
+- **Prop art**: procedural Three.js geometry for each new gadget (matching `RoomLamp.ts`/`SoundboardWall.ts`'s existing style), not real CC0 models hunted down via the Blender MCP — period items like a chunky 90s calculator or a Walkman-era walkie-talkie are unlikely to exist ready-made on Poly Haven/Sketchfab anyway.
+- **Held-item display**: a HUD icon only, not attaching the model to the character's hand — avoids touching the character rig for this pass.
+
+**Access point:** rather than building a new chest prop, phase 1 reuses the room's *existing* decorative treasure chest (a Poly Haven asset placed during the M9/M10 room-dressing pass, `COL_Chest` in the model) — `RoomLoader.ts` now reads its footprint the same way it reads `Table_Top`/`Fireplace_Fire`, so the interactable spot always matches wherever the chest actually sits in the model, no hand-eyeballed constant.
+
+**Build order:** one branch per piece — chest/inventory plumbing first (phase 1, this entry), then camera+pinboard, flashlight, walkie-talkies, calculator, each adding its own "use" event once picked up. Full per-item plan (data model, interaction, effect) is in the phase-1 changelog entry and this session's conversation; not duplicated here since each gadget will get its own changelog entry as it lands.
+
+---
+
 ## 2026-09-25 — Night sounds: wind, crickets and an owl through the windows (a wolf on Halloween), synthesized
 
 **Decided (owner picked it from the recommendations).** The world outside now has sound (`client/src/nightAmbience.ts`). It's synthesized with Web Audio like the fire, so there are no audio files to ship or license:

@@ -38,6 +38,10 @@ export interface RoomAsset {
   glowSpots: THREE.Vector3[];
   /** Ceiling beams (`Beam_*`) — fairy lights hang along them. */
   beams: THREE.Box3[];
+  /** The decorative treasure chest's footprint (`COL_Chest`) — the gadgets
+   * inventory (phase 1) reuses the room's existing chest prop as its
+   * interactable spot rather than building a duplicate one. */
+  chestSpot: THREE.Vector3 | null;
 }
 
 /** Blender objects named `COL_*` are invisible collision footprints. */
@@ -146,6 +150,8 @@ export function describeRoom(
   });
 
   const whiteboard = root.getObjectByName('Whiteboard_Surface');
+  const chestCollider = root.getObjectByName('COL_Chest');
+  const chestSpot = chestCollider ? boxOf(chestCollider).getCenter(new THREE.Vector3()) : null;
   return {
     object3D: root,
     layout: {
@@ -168,6 +174,7 @@ export function describeRoom(
     flames,
     glowSpots,
     beams,
+    chestSpot,
   };
 }
 

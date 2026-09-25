@@ -76,6 +76,10 @@ export const SocketEvent = {
 
   ObjectInteract: 'object:interact',
 
+  /** The room chest's gadgets (phase 1) — take/drop a held item. */
+  ItemTake: 'item:take',
+  ItemDrop: 'item:drop',
+
   /** Save the whiteboard's lines (whiteboard.ts). */
   WhiteboardWrite: 'whiteboard:write',
   /** Chat, or a typed roll (/roll 2d6+3) — log.ts. */

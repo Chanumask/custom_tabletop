@@ -18,6 +18,7 @@ import {
   type LogEntry,
   type ObjectInteractRequest,
   type ObjectInteractResponse,
+  type InventoryItem,
   type Point2D,
   type TablePingRequest,
   playerColorHex,
@@ -86,6 +87,8 @@ import { findStrokeNear } from './eraser.js';
 import { formatKeyCode } from '../keyLabel.js';
 import { isInteractKeyPress } from '../keyboard.js';
 import { SoundboardAssignMenu } from '../SoundboardAssignMenu.js';
+import { InventoryDialog } from '../InventoryDialog.js';
+import { HeldItems } from '../HeldItems.js';
 
 // Module-level so each character model downloads once per page, not once
 // per room mount (leaving and rejoining a session reuses it).
@@ -118,6 +121,10 @@ const MOVE_ROTATION_EPSILON = 0.01;
 // How far past the table's own edge still counts as "approaching" it for
 // the sit-down interactable (Milestone 8).
 const TABLE_APPROACH_MARGIN = 1.3;
+/** Proximity range for the chest (the gadgets inventory, phase 1) — same
+ * approach-and-press-E model as the light/table, not aim-based (there's
+ * only one chest, unlike the wall board's 16 buttons). */
+const CHEST_RANGE = 1.4;
 // The table surface is unlit (it shows the map image in its true colors);
 // with the room light off it's dimmed to this instead, so it doesn't glow.
 const TABLE_DIMMED_BRIGHTNESS = 0.18;
@@ -203,6 +210,10 @@ export interface RoomViewProps {
   interactKey: string;
   onPlaySound: (soundId: string) => void;
   onObjectInteract: (objectId: string) => void;
+  /** The room chest's contents (the gadgets inventory, phase 1). */
+  inventory: InventoryItem[];
+  onTakeItem: (itemId: string) => void;
+  onDropItem: (itemId: string) => void;
   /** Registers a newly-uploaded/linked sound into the shared soundboard —
    * shared with the 2D panel's own upload form (SessionView.tsx), which
    * never passes `slotIndex`. Passing one (from the wall board's assign
@@ -268,6 +279,9 @@ function promptFor(
   if (nearestId === 'table') {
     return `Press ${keyLabel} to sit at the table`;
   }
+  if (nearestId === 'chest') {
+    return `Press ${keyLabel} to open the chest`;
+  }
   return null;
 }
 
@@ -288,12 +302,16 @@ function promptFor(
  * camera's own look direction instead of XZ distance. Pressing E on a filled
  * button plays its sound for everyone; on an empty one it opens
  * `SoundboardAssignMenu`, a DOM overlay for attaching a sound via link or
- * upload. Click-to-lock, Esc (browser default) to release; drawing only
- * while not locked. The light/table proximity interactables trigger via E
- * regardless of lock state (unchanged from Milestone 8); the board's
- * aim-based targeting only makes sense while actively looking around, so it
- * only resolves while pointer-locked. Sitting switches the viewport to a
- * square, table-filling
+ * upload. Also proximity + E, the room's existing decorative chest
+ * (`COL_Chest` in the model, `RoomLoader.ts`'s `chestSpot`): opens
+ * `InventoryDialog`, a fixed catalog of small gadgets a player can take or
+ * put back (the gadgets inventory, phase 1 — each gadget's own effect lands
+ * with that gadget; this phase only tracks who's holding what). Click-to-lock,
+ * Esc (browser default) to release; drawing only while not locked. The
+ * light/table/chest proximity interactables trigger via E regardless of lock
+ * state (unchanged from Milestone 8); the board's aim-based targeting only
+ * makes sense while actively looking around, so it only resolves while
+ * pointer-locked. Sitting switches the viewport to a square, table-filling
  * frame (`applyViewportSize`) and shows a small drawing toolbar (pen
  * color/size, plus an eraser reusing `drawing:delete` via a stroke hit-test,
  * `eraser.ts`) alongside it. */
@@ -314,6 +332,9 @@ export function RoomView({
   interactKey,
   onPlaySound,
   onObjectInteract,
+  inventory,
+  onTakeItem,
+  onDropItem,
   onUploadSound,
   onAssignSlot,
   canDraw,
@@ -425,6 +446,11 @@ export function RoomView({
   // ref for the once-registered key handler, like assignSlotIndex.
   const [whiteboardOpen, setWhiteboardOpen] = useState(false);
   const whiteboardOpenRef = useRef(false);
+  // The chest dialog (the gadgets inventory, phase 1) — mirrors
+  // assignSlotIndex/whiteboardOpen's open-flag + ref pattern.
+  const [inventoryOpen, setInventoryOpen] = useState(false);
+  const inventoryOpenRef = useRef(false);
+  const closeInventory = useCallback(() => setInventoryOpen(false), []);
   const whiteboardRef = useRef<WhiteboardLine[]>(whiteboard);
   const whiteboardCanvasRef = useRef<WhiteboardCanvas | null>(null);
   const whiteboardTargetedRef = useRef(false);
@@ -525,6 +551,10 @@ export function RoomView({
   useEffect(() => {
     whiteboardOpenRef.current = whiteboardOpen;
   }, [whiteboardOpen]);
+
+  useEffect(() => {
+    inventoryOpenRef.current = inventoryOpen;
+  }, [inventoryOpen]);
 
   // Re-ink when the lines change *or* when an author changes color.
   useEffect(() => {
@@ -930,6 +960,15 @@ export function RoomView({
               Math.max(room.layout.table.halfWidth, room.layout.table.halfDepth) +
               TABLE_APPROACH_MARGIN,
           },
+          ...(room.chestSpot
+            ? [
+                {
+                  id: 'chest',
+                  position: { x: room.chestSpot.x, z: room.chestSpot.z },
+                  range: CHEST_RANGE,
+                },
+              ]
+            : []),
         ];
 
         tableChairsRef.current = room.chairs;
@@ -1259,7 +1298,11 @@ export function RoomView({
           // The assign-sound overlay is a normal DOM form; while it's open,
           // the interact key should type into it (or do nothing) like any
           // other key, not re-trigger room interactions underneath it.
-          if (assignSlotIndexRef.current !== null || whiteboardOpenRef.current) {
+          if (
+            assignSlotIndexRef.current !== null ||
+            whiteboardOpenRef.current ||
+            inventoryOpenRef.current
+          ) {
             return;
           }
           // The room consumes this keystroke. Without this, a dialog it opens
@@ -1301,6 +1344,9 @@ export function RoomView({
             onObjectInteractRef.current('light');
           } else if (nearestId === 'table') {
             sitDown();
+          } else if (nearestId === 'chest') {
+            controller.controls.unlock();
+            setInventoryOpen(true);
           }
         };
         document.addEventListener('keydown', handleInteractKey);
@@ -1617,55 +1663,63 @@ export function RoomView({
           onShowOnTv={tvElement ? () => setClipOnCard(false) : undefined}
         />
       )}
-      {locked && seatedView !== 'table' && assignSlotIndex === null && !whiteboardOpen && (
-        <div className="crosshair" />
-      )}
+      {locked &&
+        seatedView !== 'table' &&
+        assignSlotIndex === null &&
+        !whiteboardOpen &&
+        !inventoryOpen && <div className="crosshair" />}
+      <HeldItems items={inventory.filter((item) => item.heldBy === playerId)} />
       {/* One bottom-center stack, so the prompt always sits above the hint
           instead of the two overlapping when the hint wraps. */}
       <div className="room-bottom-stack">
         {interactionPrompt &&
           assignSlotIndex === null &&
           !whiteboardOpen &&
+          !inventoryOpen &&
           // Seated in the chair view, the card below already says it.
           !(seated && !locked && seatedView !== 'table') && (
             <div className="interaction-prompt">{interactionPrompt}</div>
           )}
-        {!locked && seatedView !== 'table' && assignSlotIndex === null && !whiteboardOpen && (
-          <button
-            type="button"
-            className="room-view-overlay"
-            onClick={() => controllerRef.current?.controls.lock()}
-          >
-            <span className="hint-title">
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <rect x="6.5" y="3" width="11" height="18" rx="5.5" />
-                <path d="M12 3v6.5" />
-              </svg>
-              Click to look around
-            </span>
-            <span className="hint-keys">
-              {seated ? (
-                <>
-                  <HintKeys keys={[formatKeyCode(interactKey)]} label="stand up" />
-                  <HintKeys keys={['V']} label="table view" />
-                </>
-              ) : (
-                <>
-                  <HintKeys keys={['W', 'A', 'S', 'D']} label="move" />
-                  <HintKeys keys={['Shift']} label="run" />
-                  <HintKeys keys={[formatKeyCode(interactKey)]} label="interact" />
-                  <HintKeys keys={['1–6']} label="emote" />
-                </>
-              )}
-              <HintKeys keys={['Enter']} label="chat" />
-              <HintKeys keys={['Esc']} label="free the mouse" />
-            </span>
-            <span className="hint-mouse">
-              {canDraw ? 'Drag on the table to draw' : 'Drag minis and dice'} · click a die to roll
-              it · right-click to ping
-            </span>
-          </button>
-        )}
+        {!locked &&
+          seatedView !== 'table' &&
+          assignSlotIndex === null &&
+          !whiteboardOpen &&
+          !inventoryOpen && (
+            <button
+              type="button"
+              className="room-view-overlay"
+              onClick={() => controllerRef.current?.controls.lock()}
+            >
+              <span className="hint-title">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="6.5" y="3" width="11" height="18" rx="5.5" />
+                  <path d="M12 3v6.5" />
+                </svg>
+                Click to look around
+              </span>
+              <span className="hint-keys">
+                {seated ? (
+                  <>
+                    <HintKeys keys={[formatKeyCode(interactKey)]} label="stand up" />
+                    <HintKeys keys={['V']} label="table view" />
+                  </>
+                ) : (
+                  <>
+                    <HintKeys keys={['W', 'A', 'S', 'D']} label="move" />
+                    <HintKeys keys={['Shift']} label="run" />
+                    <HintKeys keys={[formatKeyCode(interactKey)]} label="interact" />
+                    <HintKeys keys={['1–6']} label="emote" />
+                  </>
+                )}
+                <HintKeys keys={['Enter']} label="chat" />
+                <HintKeys keys={['Esc']} label="free the mouse" />
+              </span>
+              <span className="hint-mouse">
+                {canDraw ? 'Drag on the table to draw' : 'Drag minis and dice'} · click a die to
+                roll it · right-click to ping
+              </span>
+            </button>
+          )}
       </div>
       {whiteboardOpen && (
         <WhiteboardEditor
@@ -1693,6 +1747,16 @@ export function RoomView({
             setAssignSlotIndex(null);
           }}
           onClose={closeAssignMenu}
+        />
+      )}
+      {inventoryOpen && (
+        <InventoryDialog
+          items={inventory}
+          players={players}
+          playerId={playerId}
+          onTake={(itemId) => onTakeItem(itemId)}
+          onDrop={(itemId) => onDropItem(itemId)}
+          onClose={closeInventory}
         />
       )}
       {seated && (

@@ -104,6 +104,26 @@ body {
   pointer-events: none;
 }
 
+/* What the local player is carrying from the chest (the gadgets inventory,
+ * phase 1) — a small, always-on corner HUD, informational only for now. */
+.held-items {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  pointer-events: none;
+}
+
+.held-item-badge {
+  padding: 0.3rem 0.65rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f3e6d3;
+  font-size: 0.8rem;
+}
+
 /* The wall-soundboard's assign-sound overlay (Milestone 8 follow-up),
  * opened by pressing the interact key on an empty button
  * (SoundboardAssignMenu.tsx) — a centered modal, distinct from the
@@ -498,6 +518,55 @@ body {
 
 .whiteboard-lines input::placeholder {
   color: rgba(43, 47, 54, 0.35);
+}
+
+/* The chest's contents (InventoryDialog.tsx, the gadgets inventory phase
+ * 1) — same centered-modal weight as .whiteboard-editor/.map-crop-dialog. */
+.inventory-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  width: min(24rem, calc(100vw - 2rem));
+  box-sizing: border-box;
+  padding: 1.1rem 1.2rem;
+  border-radius: 12px;
+  background: rgba(24, 17, 12, 0.97);
+  color: #f3e6d3;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+
+.inventory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inventory-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  background: rgba(243, 230, 211, 0.04);
+}
+
+.inventory-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.inventory-item-name {
+  font-weight: 600;
+}
+
+.inventory-item-status {
+  color: rgba(243, 230, 211, 0.6);
+  font-size: 0.78rem;
 }
 
 .ink-dot {
@@ -2253,7 +2322,8 @@ button.primary {
 
 .map-crop-dialog,
 .whiteboard-editor,
-.soundboard-assign-menu {
+.soundboard-assign-menu,
+.inventory-dialog {
   border: 1px solid var(--edge);
 }
 
