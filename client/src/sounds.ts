@@ -149,3 +149,28 @@ export function playDiceClatter(diceCount: number, durationSeconds: number): voi
     }
   }
 }
+
+/** A soft two-note chime for a ping on the table ("look here!"). */
+export function playPingSound(): void {
+  if (masterVolume === 0) {
+    return;
+  }
+  const ctx = getAudioContext();
+  if (ctx.state === 'suspended') {
+    void ctx.resume();
+  }
+  const start = ctx.currentTime + 0.01;
+  [880, 1320].forEach((frequency, index) => {
+    const at = start + index * 0.09;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(0.12 * masterVolume, at + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.35);
+    oscillator.connect(gain).connect(ctx.destination);
+    oscillator.start(at);
+    oscillator.stop(at + 0.36);
+  });
+}

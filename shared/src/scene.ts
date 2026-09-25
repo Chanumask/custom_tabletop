@@ -33,6 +33,8 @@ export interface SceneUpdateRequest {
   sceneId: string;
   name?: string;
   backgroundImage?: string;
+  /** One of GRID_CELL_OPTIONS (0 turns the grid off). */
+  gridCells?: number;
 }
 
 export type SceneUpdateResponse = { ok: true; state: GameState } | { ok: false; error: string };

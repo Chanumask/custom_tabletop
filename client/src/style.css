@@ -1715,3 +1715,36 @@ button.primary {
   color: rgba(243, 230, 211, 0.72);
   font-size: 0.78rem;
 }
+
+/* Map tab: the grid size picker (cells per side, or off). */
+.grid-picker {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.grid-picker-label {
+  margin-right: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.grid-picker button {
+  min-width: 2.2rem;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid rgba(243, 230, 211, 0.2);
+  border-radius: 6px;
+  background: rgba(243, 230, 211, 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.grid-picker button.active {
+  border-color: rgba(240, 196, 106, 0.8);
+  background: rgba(240, 196, 106, 0.18);
+  font-weight: 700;
+}

@@ -53,6 +53,7 @@ import {
   parseDrawingEndRequest,
   parseDrawingDeleteRequest,
   parseChatSendRequest,
+  parseTablePingRequest,
   parseDiceSpawnRequest,
   parseDiceRollRequest,
   parseDiceRemoveRequest,
@@ -83,6 +84,8 @@ export interface AppServerOptions {
 const DEFAULT_DISCONNECT_GRACE_MS = 45_000;
 /** Minimum spacing between one socket's emotes. */
 const EMOTE_MIN_INTERVAL_MS = 400;
+/** Pings are for pointing, not strobing: at most one per socket this often. */
+const PING_MIN_INTERVAL_MS = 300;
 /** Chat flood guard, per socket: at most this many lines per window. */
 const CHAT_WINDOW_MS = 5000;
 const CHAT_MAX_PER_WINDOW = 6;
@@ -406,6 +409,22 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       socket.to(request.sessionId).emit(SocketEvent.PlayerEmote, request);
     });
 
+    // "Look here!" on the table: relayed to everyone else (the pinger shows
+    // their own at once), never stored — like an emote, but on the map.
+    let lastPingAt = 0;
+    socket.on(SocketEvent.TablePing, (payload: unknown) => {
+      const request = parseTablePingRequest(payload);
+      if (!request || !actsAs(request.sessionId, request.playerId)) {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastPingAt < PING_MIN_INTERVAL_MS) {
+        return;
+      }
+      lastPingAt = now;
+      socket.to(request.sessionId).emit(SocketEvent.TablePing, request);
+    });
+
     // Chat and typed rolls: ack, then the new log entry alone to the whole
     // room (sender included — it's their confirmation too). Not a full-state
     // broadcast: chat is frequent and shouldn't resend the map each time.
@@ -528,6 +547,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         const result = sessions.updateScene(request.sessionId, request.playerId, request.sceneId, {
           name: request.name,
           backgroundImage: request.backgroundImage,
+          gridCells: request.gridCells,
         });
         ack?.(result);
         if (result.ok) {

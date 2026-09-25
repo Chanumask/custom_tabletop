@@ -21,3 +21,26 @@ export function tableLocalToCanvas(
   const v = localZ / (2 * halfDepth) + 0.5;
   return { x: u * canvasSize, y: v * canvasSize };
 }
+
+/** The inverse of `tableLocalToCanvas`: a canvas point back to the table's
+ * local x/z (relative to its center) — where to show a ping in the room. */
+export function canvasToTableLocal(
+  point: Point2D,
+  halfWidth: number,
+  halfDepth: number,
+  canvasSize: number,
+): { x: number; z: number } {
+  return {
+    x: (point.x / canvasSize - 0.5) * 2 * halfWidth,
+    z: (point.y / canvasSize - 0.5) * 2 * halfDepth,
+  };
+}
+
+/** Where a map grid's lines fall along one side of the canvas: `cells + 1`
+ * evenly spaced offsets from 0 to `canvasSize` (none when `cells` is 0). */
+export function gridLineOffsets(cells: number, canvasSize: number): number[] {
+  if (cells <= 0) {
+    return [];
+  }
+  return Array.from({ length: cells + 1 }, (_, index) => (index * canvasSize) / cells);
+}

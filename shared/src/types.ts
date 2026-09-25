@@ -132,6 +132,9 @@ export interface Scene {
   id: string;
   name: string;
   backgroundImage: string;
+  /** A square grid over the map, this many cells per side; 0 = none
+   * (GRID_CELL_OPTIONS in ping.ts). Host-set via scene:update. */
+  gridCells: number;
 
   drawings: Drawing[];
 }

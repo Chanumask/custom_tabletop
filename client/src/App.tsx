@@ -295,6 +295,13 @@ export function App() {
       'Failed to update the map',
     );
 
+  const handleSetMapGrid = (gridCells: number) =>
+    sendAction(
+      SocketEvent.SceneUpdate,
+      { sceneId: gameState?.activeSceneId, gridCells },
+      'Failed to change the grid',
+    );
+
   const handleSpawnDie = (kind: DieKind) =>
     sendAction(
       SocketEvent.DiceSpawn,
@@ -404,6 +411,7 @@ export function App() {
           playerId={playerId}
           onLeave={handleLeave}
           onSetMapBackground={handleSetMapBackground}
+          onSetMapGrid={handleSetMapGrid}
           onSpawnDie={handleSpawnDie}
           onRollDice={handleRollDice}
           onRemoveDie={handleRemoveDie}

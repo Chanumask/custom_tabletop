@@ -303,7 +303,7 @@ export class SessionStore {
       return { ok: false, error: 'A scene with that id already exists.' };
     }
 
-    state.scenes.push({ id: sceneId, name, backgroundImage, drawings: [] });
+    state.scenes.push({ id: sceneId, name, backgroundImage, gridCells: 0, drawings: [] });
     return { ok: true, state };
   }
 
@@ -332,7 +332,7 @@ export class SessionStore {
     sessionId: string,
     playerId: string,
     sceneId: string,
-    patch: { name?: string; backgroundImage?: string },
+    patch: { name?: string; backgroundImage?: string; gridCells?: number },
   ): GameStateMutationResult {
     const state = this.sessions.get(sessionId);
     if (!state) {
@@ -351,6 +351,9 @@ export class SessionStore {
     }
     if (patch.backgroundImage !== undefined) {
       scene.backgroundImage = patch.backgroundImage;
+    }
+    if (patch.gridCells !== undefined) {
+      scene.gridCells = patch.gridCells;
     }
     return { ok: true, state };
   }
@@ -757,7 +760,7 @@ function addSystemEntry(state: GameState, text: string): void {
  * scope note in docs/decisions.md: implemented and tested, not yet wired to
  * a multi-scene UI). */
 function createDefaultScene(): Scene {
-  return { id: DEFAULT_SCENE_ID, name: 'Map', backgroundImage: '', drawings: [] };
+  return { id: DEFAULT_SCENE_ID, name: 'Map', backgroundImage: '', gridCells: 0, drawings: [] };
 }
 
 /** The preferred color if nobody in the session wears it yet, otherwise the
