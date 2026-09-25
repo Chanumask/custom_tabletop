@@ -56,6 +56,20 @@ Then "yes build it". Full design and reasoning: [decisions.md](decisions.md), "S
   - Leaving kept the table. The host saw Reopen, and a guest was blocked until the host reopened, then got in.
   - The host link on a fresh "device" reopened the table with its chat intact, and the key was stripped from the URL.
   - That run also caught one bug, now fixed: a waiting guest's join screen never refreshed.
+### Deployed
+
+- **The first deploy failed at the image build.** Adding `TABLES_DIR` had put a literal `
+` into the Dockerfile. The unit and browser tests never build the image, so they couldn't catch it.
+  - The deploy aborted before restarting anything, so the old version kept serving.
+  - It did expose a second flaw: `REVISION` was written before the build, so it claimed the new commit.
+  - Fixed (`628c118`): a correct Dockerfile, and `/srv/apps/tabletop/REVISION` is now written only once the new container is healthy.
+- **Deployed `77adb27`.**
+  - The container runs as 10001, and `tables/` is owned by it.
+  - Checked live over sockets: host, write, leave, the table is kept (`saved: true`), a stranger is refused, reopened intact with the host key.
+  - The cross-browser suite passed 9/9 against https://tabletop.murri.me.
+  - This was the last deploy that ended games in progress; the old version couldn't save them.
+- **Cleanup:** my test runs had left 10 test tables saved on the server. I deleted only those codes and restarted the container (graceful save, then back healthy) so its saved-table list re-read the folder.
+
 - The cross-browser suite passed 9/9. One Firefox run flaked with a browser-protocol error; a rerun of Firefox and a full rerun both passed, and the dev server was confirmed not to restart on save writes. Lint, format and build are clean.
 
 ---
