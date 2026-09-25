@@ -78,6 +78,8 @@ export function SessionView({
 }: SessionViewProps) {
   const isHost = playerId === state.hostId;
   const [activeTab, setActiveTab] = useState<TabId>('players');
+  const { settings, updateSettings } = useSettings();
+  const collapsed = settings.menuCollapsed;
 
   function copyInviteLink() {
     const url = new URL(window.location.href);
@@ -90,81 +92,107 @@ export function SessionView({
   }
 
   return (
-    <div className="session-overlay">
+    <div className={`session-overlay${collapsed ? ' collapsed' : ''}`}>
       <div className="session-overlay-header">
-        <span>
+        <span className="session-code">
           Session <strong>{state.sessionId}</strong>
         </span>
-        <button type="button" className="invite-button" onClick={copyInviteLink}>
-          Copy invite link
-        </button>
+        <span className="session-header-actions">
+          <button
+            type="button"
+            className="invite-button"
+            title="Copy an invite link to send your players"
+            onClick={copyInviteLink}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+            </svg>
+            Invite
+          </button>
+          <button
+            type="button"
+            className="collapse-button"
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? 'Show the menu' : 'Hide the menu'}
+            title={collapsed ? 'Show the menu' : 'Hide the menu'}
+            onClick={() => updateSettings({ menuCollapsed: !collapsed })}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 15l6-6 6 6" />
+            </svg>
+          </button>
+        </span>
       </div>
 
-      <div className="tab-bar" role="tablist">
-        {TABS.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === tab.id}
-              className={activeTab === tab.id ? 'tab-button active' : 'tab-button'}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <Icon />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      {!collapsed && (
+        <>
+          <div className="tab-bar" role="tablist">
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
+                  className={activeTab === tab.id ? 'tab-button active' : 'tab-button'}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <Icon />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
-      <div className="tab-panel" role="tabpanel">
-        {activeTab === 'players' && (
-          <PlayersTab
-            state={state}
-            playerId={playerId}
-            isHost={isHost}
-            onMutePlayer={onMutePlayer}
-            onUnmutePlayer={onUnmutePlayer}
-            onTransferHost={onTransferHost}
-            onUpdateProfile={onUpdateProfile}
-          />
-        )}
-        {activeTab === 'map' && (
-          <MapTab
-            isHost={isHost}
-            state={state}
-            onSetMapBackground={onSetMapBackground}
-            onSetMapGrid={onSetMapGrid}
-          />
-        )}
-        {activeTab === 'dice' && (
-          <DiceTab
-            state={state}
-            playerId={playerId}
-            onSpawnDie={onSpawnDie}
-            onRollDice={onRollDice}
-            onRemoveDie={onRemoveDie}
-          />
-        )}
-        {activeTab === 'soundboard' && (
-          <SoundboardTab
-            state={state}
-            playerId={playerId}
-            isHost={isHost}
-            onPlaySound={onPlaySound}
-            onUploadSound={onUploadSound}
-            onAssignSlot={onAssignSlot}
-            onRemoveSound={onRemoveSound}
-          />
-        )}
-        {activeTab === 'settings' && <SettingsTab />}
-      </div>
+          <div className="tab-panel" role="tabpanel">
+            {activeTab === 'players' && (
+              <PlayersTab
+                state={state}
+                playerId={playerId}
+                isHost={isHost}
+                onMutePlayer={onMutePlayer}
+                onUnmutePlayer={onUnmutePlayer}
+                onTransferHost={onTransferHost}
+                onUpdateProfile={onUpdateProfile}
+              />
+            )}
+            {activeTab === 'map' && (
+              <MapTab
+                isHost={isHost}
+                state={state}
+                onSetMapBackground={onSetMapBackground}
+                onSetMapGrid={onSetMapGrid}
+              />
+            )}
+            {activeTab === 'dice' && (
+              <DiceTab
+                state={state}
+                playerId={playerId}
+                onSpawnDie={onSpawnDie}
+                onRollDice={onRollDice}
+                onRemoveDie={onRemoveDie}
+              />
+            )}
+            {activeTab === 'soundboard' && (
+              <SoundboardTab
+                state={state}
+                playerId={playerId}
+                isHost={isHost}
+                onPlaySound={onPlaySound}
+                onUploadSound={onUploadSound}
+                onAssignSlot={onAssignSlot}
+                onRemoveSound={onRemoveSound}
+              />
+            )}
+            {activeTab === 'settings' && <SettingsTab />}
+          </div>
 
-      <button type="button" className="leave-button" onClick={onLeave}>
-        Leave session
-      </button>
+          <button type="button" className="leave-button" onClick={onLeave}>
+            Leave session
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -632,14 +660,17 @@ function SettingsTab() {
   return (
     <div className="settings-tab">
       <label className="settings-row">
-        Volume
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={Math.round(settings.masterVolume * 100)}
-          onChange={(event) => updateSettings({ masterVolume: Number(event.target.value) / 100 })}
-        />
+        <span>Volume</span>
+        <span className="settings-volume">
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(settings.masterVolume * 100)}
+            onChange={(event) => updateSettings({ masterVolume: Number(event.target.value) / 100 })}
+          />
+          <output>{Math.round(settings.masterVolume * 100)}%</output>
+        </span>
       </label>
 
       <div className="settings-row">
@@ -648,12 +679,19 @@ function SettingsTab() {
           {rebinding ? 'Press a key…' : formatKeyCode(settings.interactKey)}
         </button>
       </div>
-      {rebindError && <p role="alert">{rebindError}</p>}
+      {rebinding && <p className="settings-hint">Press any key — Esc cancels.</p>}
+      {rebindError && (
+        <p className="add-sound-error" role="alert">
+          {rebindError}
+        </p>
+      )}
 
-      <label className="settings-row settings-check">
+      <label className="settings-row">
         <span>Fireplace sound</span>
         <input
           type="checkbox"
+          role="switch"
+          className="switch"
           checked={settings.fireSound}
           onChange={(event) => updateSettings({ fireSound: event.target.checked })}
         />

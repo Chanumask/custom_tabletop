@@ -16,11 +16,17 @@ describe('loadSettings', () => {
 
   it('round-trips whatever was saved', () => {
     const storage = fakeStorage();
-    saveSettings(storage, { masterVolume: 0.4, interactKey: 'KeyF', fireSound: false });
+    saveSettings(storage, {
+      masterVolume: 0.4,
+      interactKey: 'KeyF',
+      fireSound: false,
+      menuCollapsed: true,
+    });
     expect(loadSettings(storage)).toEqual({
       masterVolume: 0.4,
       interactKey: 'KeyF',
       fireSound: false,
+      menuCollapsed: true,
     });
   });
 

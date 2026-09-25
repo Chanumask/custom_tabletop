@@ -99,6 +99,7 @@ export class SoundboardWall {
   private readonly buttonMeshes: THREE.Mesh[] = [];
   private readonly raycaster = new THREE.Raycaster();
   private slots: (string | null)[] = [];
+  private targeted: number | null = null;
   private readonly labelCanvas = document.createElement('canvas');
   private readonly labelTexture: THREE.CanvasTexture;
 
@@ -175,6 +176,7 @@ export class SoundboardWall {
       const material = button.material as THREE.MeshStandardMaterial;
       material.color.setHex(filled ? FILLED_COLORS[index]! : EMPTY_COLOR);
     }
+    this.applyHighlight();
     this.drawLabels((index) => {
       const soundId = slots[index];
       return soundId ? (byId.get(soundId) ?? null) : null;
@@ -215,6 +217,30 @@ export class SoundboardWall {
       }
     }
     this.labelTexture.needsUpdate = true;
+  }
+
+  /** Lights up the button the player is aiming at (null: none), so it's
+   * clear which one E will press before pressing it. */
+  setTargeted(index: number | null): void {
+    if (index === this.targeted) {
+      return;
+    }
+    this.targeted = index;
+    this.applyHighlight();
+  }
+
+  private applyHighlight(): void {
+    for (const button of this.buttonMeshes) {
+      const material = button.material as THREE.MeshStandardMaterial;
+      if (this.buttons.get(button) === this.targeted) {
+        // A glow in the button's own color, and it stands a little proud.
+        material.emissive.copy(material.color).multiplyScalar(0.45);
+        button.position.x = -(PANEL_THICKNESS / 2 + BUTTON_DEPTH / 2) - 0.012;
+      } else {
+        material.emissive.setHex(0x000000);
+        button.position.x = -(PANEL_THICKNESS / 2 + BUTTON_DEPTH / 2);
+      }
+    }
   }
 
   getSlotSoundId(index: number): string | null {

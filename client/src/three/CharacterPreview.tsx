@@ -86,7 +86,7 @@ class PreviewStage {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(28, 1, 0.1, 20);
-  private readonly clock = new THREE.Clock();
+  private readonly timer = new THREE.Timer();
   private readonly turntable = new THREE.Group();
   private readonly observer: ResizeObserver;
   private readonly disposables: { dispose(): void }[] = [];
@@ -268,9 +268,10 @@ class PreviewStage {
     this.render(0);
   }
 
-  private readonly animate = () => {
+  private readonly animate = (timestamp?: number) => {
     this.frameId = requestAnimationFrame(this.animate);
-    this.render(Math.min(this.clock.getDelta(), MAX_FRAME_SECONDS));
+    this.timer.update(timestamp);
+    this.render(Math.min(this.timer.getDelta(), MAX_FRAME_SECONDS));
   };
 
   private render(dt: number): void {

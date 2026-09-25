@@ -16,12 +16,15 @@ export interface ClientSettings {
   interactKey: string;
   /** The fireplace's crackle (fireAmbience.ts) — on by default. */
   fireSound: boolean;
+  /** The session menu folded down to its header, leaving the room clear. */
+  menuCollapsed: boolean;
 }
 
 export const DEFAULT_SETTINGS: ClientSettings = {
   masterVolume: 1,
   interactKey: 'KeyE',
   fireSound: true,
+  menuCollapsed: false,
 };
 
 const STORAGE_KEY = 'customTabletop.settings';
