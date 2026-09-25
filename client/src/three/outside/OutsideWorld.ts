@@ -45,6 +45,7 @@ export class OutsideWorld {
   private readonly skyLight: THREE.HemisphereLight;
   private readonly palette: ReturnType<typeof buildSky>['palette'];
   private theme: OutsideTheme = 'classic';
+  private formatChecked = false;
 
   constructor(panes: THREE.Mesh[], reducedMotion = false) {
     this.kit = new Kit(reducedMotion);
@@ -147,6 +148,16 @@ export class OutsideWorld {
     const visible = this.paneBoxes.filter((box) => this.frustum.intersectsBox(box));
     if (visible.length === 0) return;
 
+    if (!this.formatChecked) {
+      // Half-float keeps the moon and lamps bright past 1.0 until the pane
+      // tone-maps them; a GPU that can't render to it gets plain 8-bit (the
+      // target's GPU side isn't made until its first use, so this is free).
+      this.formatChecked = true;
+      const floatTargets =
+        renderer.extensions.has('EXT_color_buffer_float') ||
+        renderer.extensions.has('EXT_color_buffer_half_float');
+      if (!floatTargets) this.target.texture.type = THREE.UnsignedByteType;
+    }
     renderer.getDrawingBufferSize(this.drawingBuffer);
     (this.paneMaterial.uniforms.viewSize!.value as THREE.Vector2).copy(this.drawingBuffer);
     const width = Math.max(1, Math.round(this.drawingBuffer.x * RESOLUTION_SCALE));
