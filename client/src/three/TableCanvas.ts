@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { gridLineOffsets } from './tableCoordinates.js';
+import { gridLineOffsets, segmentPixelRect } from './tableCoordinates.js';
 import type { Drawing, Point2D, Scene } from '@custom-tabletop/shared';
 import { computeCoverRect } from './imageFit.js';
 import { parchmentSheet } from './parchment.js';
@@ -53,12 +53,22 @@ export class TableCanvas {
   private readonly lastPoint = new Map<string, Point2D>();
   private readonly strokeStyle = new Map<string, StrokeStyle>();
   private loadToken = 0;
+  /** The same canvas as a second texture that's never rendered: the source
+   * `flush` uploads changed pixels from. (A texture three.js has never put
+   * on the GPU is read straight from its canvas.) */
+  private readonly stager: THREE.Texture;
+  /** Canvas pixels strokes changed since the last flush. */
+  private dirty: THREE.Box2 | null = null;
+  /** A full redraw is waiting for its whole-canvas upload. */
+  private fullUploadPending = true;
 
   constructor() {
     this.canvas = document.createElement('canvas');
     this.canvas.width = TABLE_CANVAS_SIZE * RESOLUTION_SCALE;
     this.canvas.height = TABLE_CANVAS_SIZE * RESOLUTION_SCALE;
-    const ctx = this.canvas.getContext('2d');
+    // CPU-backed: the per-frame partial uploads (flush) read straight from
+    // it, where a GPU canvas would first be read back whole every frame.
+    const ctx = this.canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) {
       throw new Error('2D canvas context unavailable');
     }
@@ -70,6 +80,47 @@ export class TableCanvas {
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.flipY = false;
     this.texture.colorSpace = THREE.SRGBColorSpace;
+    this.stager = new THREE.Texture(this.canvas);
+  }
+
+  /**
+   * Puts what strokes changed since the last frame on the GPU — only that
+   * rectangle, not the whole 2048² canvas (docs/decisions.md, "Drawing
+   * lag": re-uploading all 16 MB, and remaking its mipmaps, for every point
+   * dropped everyone at the table to ~7 fps while someone drew). Call once a
+   * frame, before rendering.
+   */
+  flush(renderer: THREE.WebGLRenderer): void {
+    if (this.fullUploadPending) {
+      // The whole canvas goes up with the next render anyway.
+      this.fullUploadPending = false;
+      this.dirty = null;
+      return;
+    }
+    if (!this.dirty) {
+      return;
+    }
+    const region = this.dirty;
+    this.dirty = null;
+    renderer.copyTextureToTexture(
+      this.stager,
+      this.texture,
+      region,
+      new THREE.Vector2(region.min.x, region.min.y),
+    );
+  }
+
+  /** Grows the dirty rectangle over a segment `from`–`to` of `width`
+   * (logical units), in canvas pixels. */
+  private markDirty(from: Point2D, to: Point2D, width: number): void {
+    const rect = segmentPixelRect(from, to, width, RESOLUTION_SCALE, TABLE_TEXTURE_PIXELS);
+    if (!rect) return;
+    const box = new THREE.Box2(
+      new THREE.Vector2(rect.minX, rect.minY),
+      new THREE.Vector2(rect.maxX, rect.maxY),
+    );
+    if (this.dirty) this.dirty.union(box);
+    else this.dirty = box;
   }
 
   /** Full redraw — background image (or the parchment fallback) plus every
@@ -111,6 +162,8 @@ export class TableCanvas {
       this.paintStroke(drawing.points, { color: drawing.color, width: drawing.width });
     }
     this.texture.needsUpdate = true;
+    this.fullUploadPending = true;
+    this.dirty = null;
   }
 
   /** The map grid, over the background and under the drawings: a dark line
@@ -159,7 +212,7 @@ export class TableCanvas {
       this.strokeDot(point, activeStyle);
     }
     this.lastPoint.set(drawingId, point);
-    this.texture.needsUpdate = true;
+    this.markDirty(from ?? point, point, activeStyle.width);
   }
 
   /** Stops tracking a finished/deleted stroke's last point and style, so an
@@ -172,6 +225,7 @@ export class TableCanvas {
 
   dispose(): void {
     this.texture.dispose();
+    this.stager.dispose();
   }
 
   private paintStroke(points: Point2D[], style: StrokeStyle): void {
