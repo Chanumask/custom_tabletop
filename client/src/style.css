@@ -2571,3 +2571,146 @@ button.primary {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* --- The in-game HUD, polished (docs/decisions.md, "UI polish") ---------- */
+
+/* "Click to look around": a glass card with keycaps, like the menu. */
+.room-bottom-stack .room-view-overlay {
+  gap: 0.5rem;
+  /* Centred, so it keeps clear of the session menu on the right. */
+  max-width: clamp(20rem, calc(100vw - 37rem), 38rem);
+  padding: 0.7rem 1.15rem 0.75rem;
+  border: 1px solid rgba(243, 230, 211, 0.14);
+  border-radius: 12px;
+  background: rgba(24, 17, 12, 0.8);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(6px);
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.room-bottom-stack .room-view-overlay:hover {
+  border-color: rgba(240, 196, 106, 0.45);
+  transform: translateY(-1px);
+}
+
+.room-bottom-stack .room-view-overlay:focus-visible {
+  outline: 2px solid #f0c46a;
+  outline-offset: 2px;
+}
+
+.hint-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #f0c46a;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.hint-title svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.hint-keys {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem 0.85rem;
+  color: rgba(243, 230, 211, 0.8);
+  font-size: 0.78rem;
+}
+
+.hint-key-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22rem;
+  white-space: nowrap;
+}
+
+.hint-key-group span {
+  margin-left: 0.15rem;
+}
+
+.hint-keys kbd {
+  min-width: 1.35rem;
+  padding: 0.06rem 0.34rem;
+  border: 1px solid rgba(243, 230, 211, 0.28);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: rgba(243, 230, 211, 0.08);
+  color: #f3e6d3;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.hint-mouse {
+  color: rgba(243, 230, 211, 0.58);
+  font-size: 0.74rem;
+}
+
+/* "Press E to …": the same glass, a warmer edge. */
+.room-bottom-stack .interaction-prompt {
+  padding: 0.5rem 1.05rem;
+  border: 1px solid rgba(240, 196, 106, 0.35);
+  border-radius: 999px;
+  background: rgba(24, 17, 12, 0.84);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(6px);
+  font-size: 0.9rem;
+  font-weight: 600;
+  animation: prompt-in 160ms ease-out;
+}
+
+@keyframes prompt-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* Notices sit at the top, clear of the toolbar and the bottom stack. */
+.toasts {
+  top: 4.6rem;
+  bottom: auto;
+}
+
+.toast {
+  border: 1px solid rgba(243, 230, 211, 0.14);
+  border-radius: 10px;
+  background: rgba(24, 17, 12, 0.92);
+  backdrop-filter: blur(6px);
+}
+
+.toast-error {
+  border-color: rgba(226, 119, 95, 0.55);
+  background: rgba(96, 28, 22, 0.94);
+}
+
+/* Map tab: the grid picker wraps under its label instead of overflowing. */
+.grid-picker {
+  flex-wrap: wrap;
+}
+
+.grid-picker-label {
+  flex-basis: 100%;
+  margin: 0 0 0.1rem;
+  text-align: center;
+}
+
+.grid-picker button {
+  flex: 1 1 0;
+  min-width: 0;
+}

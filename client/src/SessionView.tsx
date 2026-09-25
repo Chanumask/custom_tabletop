@@ -716,7 +716,10 @@ function DiceTab({
           })}
         </ul>
       )}
-      <p className="dice-hint">Aim at a die and press E to roll it — or click it at the table.</p>
+      <p className="dice-hint">
+        Click a die on the table to roll it, or drag it to move it — aiming at one and pressing E
+        rolls it too.
+      </p>
     </div>
   );
 }
