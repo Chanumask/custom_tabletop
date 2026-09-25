@@ -66,6 +66,8 @@ export interface Dice {
   rollCount: number;
   /** Who rolled it last (null until rolled). */
   rolledBy: string | null;
+  /** A secret die (host only): only its owner ever sees it, or its rolls. */
+  hidden?: boolean;
 }
 
 export interface SoundState {

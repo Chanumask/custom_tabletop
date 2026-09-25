@@ -206,6 +206,7 @@ function LogLine({
   return (
     <>
       <span aria-hidden="true">🎲 </span>
+      {entry.visibleTo && <span className="secret-tag">secret</span>}
       {name} rolled {rollSummary(entry)}
       {!single && <span className="chat-breakdown"> ({rollBreakdown(entry)})</span>}
       {': '}
