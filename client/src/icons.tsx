@@ -113,3 +113,113 @@ export function HostIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function CameraIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={SIZE} height={SIZE} className={className} aria-hidden="true">
+      <path
+        d="M9 6.5 10.2 4h3.6L15 6.5h3.2A1.8 1.8 0 0 1 20 8.3v9.2a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5V8.3a1.8 1.8 0 0 1 1.8-1.8H9Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="13" r="3.4" fill="none" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+export function FlashlightIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={SIZE} height={SIZE} className={className} aria-hidden="true">
+      <path
+        d="M7 9 4 6v-.5h6.5L14 9H7Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <rect
+        x="7"
+        y="9"
+        width="9"
+        height="4.5"
+        rx="1"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M16 9.5h2.5L21 12l-2.5 2.5H16Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M19.5 8.5 22 6M19.5 15.5 22 18"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+export function WalkieIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={SIZE} height={SIZE} className={className} aria-hidden="true">
+      <path d="M11 4h2l.6 2.5h-3.2L11 4Z" fill="currentColor" />
+      <rect
+        x="8"
+        y="6.5"
+        width="8"
+        height="13.5"
+        rx="1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M9.3 10h5.4M9.3 13h5.4"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+      <circle cx="12" cy="16.5" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function CalculatorIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={SIZE} height={SIZE} className={className} aria-hidden="true">
+      <rect
+        x="5"
+        y="3.5"
+        width="14"
+        height="17"
+        rx="1.8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <rect
+        x="7"
+        y="5.5"
+        width="10"
+        height="3.5"
+        rx="0.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <circle cx="8.2" cy="12.5" r="0.9" fill="currentColor" />
+      <circle cx="12" cy="12.5" r="0.9" fill="currentColor" />
+      <circle cx="15.8" cy="12.5" r="0.9" fill="currentColor" />
+      <circle cx="8.2" cy="16" r="0.9" fill="currentColor" />
+      <circle cx="12" cy="16" r="0.9" fill="currentColor" />
+      <circle cx="15.8" cy="16" r="0.9" fill="currentColor" />
+    </svg>
+  );
+}

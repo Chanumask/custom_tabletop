@@ -19,6 +19,7 @@ import {
   type ObjectInteractRequest,
   type ObjectInteractResponse,
   type InventoryItem,
+  type ItemKind,
   type Photo,
   type Point2D,
   type TablePingRequest,
@@ -276,7 +277,7 @@ function promptFor(
   boardTarget: { slotIndex: number; soundName: string | null } | null,
   whiteboardTargeted: boolean,
   targetedDie: DieKind | null = null,
-  holdingCamera = false,
+  heldItemKind: ItemKind | null = null,
 ): string | null {
   const keyLabel = formatKeyCode(interactKey);
   if (seatedView) {
@@ -305,10 +306,18 @@ function promptFor(
   if (nearestId === 'chest') {
     return `Press ${keyLabel} to open the chest`;
   }
-  if (holdingCamera) {
-    return `Press ${keyLabel} to take a photo`;
+  switch (heldItemKind) {
+    case 'camera':
+      return 'Press R to take a photo';
+    case 'flashlight':
+      return 'Press R to toggle the flashlight';
+    case 'walkie':
+      return 'Press R to talk on the walkie-talkie';
+    case 'calculator':
+      return 'Press R to use the calculator';
+    default:
+      return null;
   }
-  return null;
 }
 
 /** Full first-person view of the room: renders the real Blender-exported
@@ -536,8 +545,8 @@ export function RoomView({
     const seat =
       self?.seated && self.seatIndex !== null ? (seatsRef.current[self.seatIndex] ?? null) : null;
     if (seat) controllerRef.current?.moveChair(seat);
-    avatarsRef.current?.sync(players, playerId);
-  }, [players, playerId]);
+    avatarsRef.current?.sync(players, playerId, inventory);
+  }, [players, playerId, inventory]);
 
   useEffect(() => {
     playerIdRef.current = playerId;
@@ -906,9 +915,7 @@ export function RoomView({
     let handleInteractKey: ((event: KeyboardEvent) => void) | null = null;
     let handleEmoteKey: ((event: KeyboardEvent) => void) | null = null;
     let handleViewKey: ((event: KeyboardEvent) => void) | null = null;
-    let handleFlashlightKey: ((event: KeyboardEvent) => void) | null = null;
-    let handleWalkieKey: ((event: KeyboardEvent) => void) | null = null;
-    let handleCalculatorKey: ((event: KeyboardEvent) => void) | null = null;
+    let handleUseItemKey: ((event: KeyboardEvent) => void) | null = null;
     let fireAudioRef: FireAmbience | null = null;
     let startFireAudio: (() => void) | null = null;
     let startNight: (() => void) | null = null;
@@ -1079,7 +1086,7 @@ export function RoomView({
         seatsRef.current = room.seats;
         room.chairs?.apply(chairCount(playersRef.current.length));
         const avatars = new PlayerAvatars(scene, characterLibrary, room.seats);
-        avatars.sync(playersRef.current, playerId);
+        avatars.sync(playersRef.current, playerId, inventoryRef.current);
         avatarsRef.current = avatars;
 
         const diceManager = new DiceManager(scene, (count) =>
@@ -1494,10 +1501,6 @@ export function RoomView({
           } else if (nearestId === 'chest') {
             controller.controls.unlock();
             setInventoryOpen(true);
-          } else if (
-            inventoryRef.current.some((item) => item.kind === 'camera' && item.heldBy === playerId)
-          ) {
-            takePhoto();
           }
         };
         document.addEventListener('keydown', handleInteractKey);
@@ -1514,15 +1517,17 @@ export function RoomView({
         };
         document.addEventListener('keydown', handleViewKey);
 
-        // F: toggle the flashlight (gadgets phase 3) — a fixed key, not the
-        // rebindable interact key, so holding both the camera and the
-        // flashlight never makes E ambiguous between "take a photo" and
-        // "toggle the flashlight". A silent no-op without it (server would
-        // refuse it anyway; this just skips the round trip).
+        // R: use whatever single item the player currently holds (gadgets
+        // phase 6 — single item slot) — a fixed key, not the rebindable
+        // interact key, so E stays exclusively for room interactables (the
+        // light, the table, the chest, the soundboard, dice, the
+        // whiteboard) regardless of which gadget is held. A silent no-op
+        // with nothing held (server would refuse the camera/flashlight/
+        // walkie actions anyway; this just skips the round trip).
         // Any open dialog (the assign-sound overlay, the whiteboard editor,
         // the chest, the radio, the calculator) already owns input focus,
         // but its own buttons aren't a "typing target" — isTypingTarget
-        // alone wouldn't stop F/R/C from firing while one of them is open.
+        // alone wouldn't stop R from firing while one of them is open.
         const aDialogIsOpen = () =>
           assignSlotIndexRef.current !== null ||
           whiteboardOpenRef.current ||
@@ -1530,31 +1535,7 @@ export function RoomView({
           walkieOpenRef.current ||
           calculatorOpenRef.current;
 
-        handleFlashlightKey = (event: KeyboardEvent) => {
-          if (
-            event.code !== 'KeyF' ||
-            event.repeat ||
-            isTypingTarget(event.target) ||
-            aDialogIsOpen()
-          ) {
-            return;
-          }
-          if (
-            inventoryRef.current.some(
-              (item) => item.kind === 'flashlight' && item.heldBy === playerId,
-            )
-          ) {
-            onToggleFlashlightRef.current();
-          }
-        };
-        document.addEventListener('keydown', handleFlashlightKey);
-
-        // R: open the walkie-talkie's message dialog (gadgets phase 4) — a
-        // fixed key, separate from both E (the camera) and F (the
-        // flashlight) so holding several gadgets at once never creates a
-        // key conflict. A silent no-op without a walkie held, or while
-        // another dialog already owns typing.
-        handleWalkieKey = (event: KeyboardEvent) => {
+        handleUseItemKey = (event: KeyboardEvent) => {
           if (
             event.code !== 'KeyR' ||
             event.repeat ||
@@ -1563,42 +1544,36 @@ export function RoomView({
           ) {
             return;
           }
-          if (
-            inventoryRef.current.some((item) => item.kind === 'walkie' && item.heldBy === playerId)
-          ) {
-            // Consumes the keystroke — without this, the same "r" that
-            // opens the dialog gets typed into its now-focused input (the
-            // same stray-key issue Milestone 8's table sit-down fixed for
-            // E).
-            event.preventDefault();
-            controller.controls.unlock();
-            setWalkieOpen(true);
-          }
-        };
-        document.addEventListener('keydown', handleWalkieKey);
-
-        // C: open the calculator (gadgets phase 5) — a fixed key, same
-        // "no conflict while holding several gadgets" reasoning as F/R.
-        handleCalculatorKey = (event: KeyboardEvent) => {
-          if (
-            event.code !== 'KeyC' ||
-            event.repeat ||
-            isTypingTarget(event.target) ||
-            aDialogIsOpen()
-          ) {
+          const heldKind = inventoryRef.current.find((item) => item.heldBy === playerId)?.kind;
+          if (!heldKind) {
             return;
           }
-          if (
-            inventoryRef.current.some(
-              (item) => item.kind === 'calculator' && item.heldBy === playerId,
-            )
-          ) {
-            event.preventDefault();
-            controller.controls.unlock();
-            setCalculatorOpen(true);
+          switch (heldKind) {
+            case 'camera':
+              event.preventDefault();
+              takePhoto();
+              break;
+            case 'flashlight':
+              event.preventDefault();
+              onToggleFlashlightRef.current();
+              break;
+            case 'walkie':
+              // Consumes the keystroke — without this, the same "r" that
+              // opens the dialog gets typed into its now-focused input
+              // (the same stray-key issue Milestone 8's table sit-down
+              // fixed for E).
+              event.preventDefault();
+              controller.controls.unlock();
+              setWalkieOpen(true);
+              break;
+            case 'calculator':
+              event.preventDefault();
+              controller.controls.unlock();
+              setCalculatorOpen(true);
+              break;
           }
         };
-        document.addEventListener('keydown', handleCalculatorKey);
+        document.addEventListener('keydown', handleUseItemKey);
 
         // Chat was opened from a walking view: sending (or Esc) hands the
         // mouse straight back to looking around (ChatPanel.tsx).
@@ -1736,10 +1711,9 @@ export function RoomView({
                 }
               : null;
 
-          const holdingCamera = inventoryRef.current.some(
-            (item) => item.kind === 'camera' && item.heldBy === playerId,
-          );
-          const promptKey = `${nearestId}|${controller.seatedView}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}|${targetedDie}|${holdingCamera}`;
+          const heldItemKind =
+            inventoryRef.current.find((item) => item.heldBy === playerId)?.kind ?? null;
+          const promptKey = `${nearestId}|${controller.seatedView}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}|${targetedDie}|${heldItemKind}`;
           if (promptKey !== lastPromptKeyRef.current) {
             lastPromptKeyRef.current = promptKey;
             setInteractionPrompt(
@@ -1751,7 +1725,7 @@ export function RoomView({
                 boardTarget,
                 whiteboardTargeted,
                 targetedDieKind,
-                holdingCamera,
+                heldItemKind,
               ),
             );
           }
@@ -1821,14 +1795,8 @@ export function RoomView({
       if (handleViewKey) {
         document.removeEventListener('keydown', handleViewKey);
       }
-      if (handleFlashlightKey) {
-        document.removeEventListener('keydown', handleFlashlightKey);
-      }
-      if (handleWalkieKey) {
-        document.removeEventListener('keydown', handleWalkieKey);
-      }
-      if (handleCalculatorKey) {
-        document.removeEventListener('keydown', handleCalculatorKey);
+      if (handleUseItemKey) {
+        document.removeEventListener('keydown', handleUseItemKey);
       }
       cancelAnimationFrame(animationFrameId);
       timer.dispose();
@@ -1942,10 +1910,7 @@ export function RoomView({
         !walkieOpen &&
         !calculatorOpen && <div className="crosshair" />}
       {cameraFlash && <div className="camera-flash" />}
-      <HeldItems
-        items={inventory.filter((item) => item.heldBy === playerId)}
-        interactKey={interactKey}
-      />
+      <HeldItems items={inventory.filter((item) => item.heldBy === playerId)} />
       {/* One bottom-center stack, so the prompt always sits above the hint
           instead of the two overlapping when the hint wraps. */}
       <div className="room-bottom-stack">

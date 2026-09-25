@@ -6,6 +6,19 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-25 — One item slot, replacing the five fixed gadget keys (supersedes "HUD icon only, no hand attachment")
+
+**Decided (owner: "instead of fixed keys i want the player to have one item slot so he can always only hold a single item and switch that item also only at the chest... one item slot always visible in the bottom right corner... we will need to create the gadgets as meshes in blender... i want to make sure i see the other players as holding that item... r could be the use item button").** Reverses two calls made when the gadgets plan was first drafted: a player can now hold only one gadget at a time (not one of each), and held gadgets are genuinely modeled and hand-attached (not HUD-icon-only).
+
+- **Server (`SessionStore.takeItem`):** taking a new item now auto-releases whatever the player already held first (a `releaseItem` helper shared with `dropItem`), including turning the flashlight off if that's what got swapped away. The chest UI reflects this as a "Swap" button instead of "Take" whenever the player already holds something.
+- **Client keys:** **E** is now exclusively the room-interactables key (light, table, chest, soundboard aim, dice, whiteboard) — the camera's old E-fallback branch is gone. **R** is the single "use whatever's held" key, replacing the separate F (flashlight)/R (walkie)/C (calculator) bindings; it dispatches on `heldKind` (camera → take photo, flashlight → toggle, walkie → open dialog, calculator → open dialog). One `handleUseItemKey` listener replaces three.
+- **Held-item meshes are placeholder procedural geometry for now** (`client/src/three/gadgetMeshes.ts`'s `GadgetLibrary`), attached to each avatar's `Wrist.R` bone the same way `CharacterLibrary` loads a body — real Blender-modeled meshes are still to come (blocked on the user opening Blender). Swapping to real GLB models only touches `GadgetLibrary.load()`; `PlayerAvatars.ts` only depends on the module resolving to *some* `Object3D` per `ItemKind`.
+- **HUD:** the old multi-badge `HeldItems.tsx` (one row per held kind) became a single fixed-size slot, bottom-right, showing a 2D icon for the one held kind or an empty dashed placeholder — four new inline-SVG icons added to `icons.tsx` following its existing hand-drawn-line-art convention.
+
+Live-verified with two browser tabs: swapping in the chest correctly returns the previous item (and turns off the flashlight if it was held), the HUD icon updates per swap, R fires the right action for each of the four gadgets while E stays chest/light/etc.-only even while holding a gadget, and the second player's avatar visibly carries the held item's mesh in its right hand.
+
+---
+
 ## 2026-09-25 — Camera + pinboard: two Three.js/canvas pitfalls worth remembering
 
 **The pinboard is passive, not an interactable.** Unlike the wall soundboard (16 individually aimed-at buttons), the pinboard never needs its own raycast target — only the camera has a "use" action, and taking a photo always auto-pins it (oldest dropped once the 12-slot board is full). Building per-slot aim targeting for a board nobody ever presses directly would have been pure overhead.

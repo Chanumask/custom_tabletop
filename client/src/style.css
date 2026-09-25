@@ -125,38 +125,37 @@ body {
   }
 }
 
-/* What the local player is carrying from the chest (the gadgets inventory,
- * phase 1) — a small, always-on corner HUD, informational only for now.
- * Bottom-right: bottom-left is the chat toggle/panel's own corner
+/* The single item slot (gadgets phase 6): what the local player is
+ * currently carrying from the chest, always visible, one gadget at a
+ * time. Bottom-right: bottom-left is the chat toggle/panel's own corner
  * (.chat-panel), top-right is the session menu, bottom-center is the
  * interaction prompt/hint stack. */
-.held-items {
+.held-item-slot {
   position: absolute;
   right: 1rem;
   bottom: 1rem;
+  width: 3rem;
+  height: 3rem;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.35rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(243, 230, 211, 0.25);
   pointer-events: none;
 }
 
-.held-item-badge {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.65rem;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.55);
+.held-item-icon {
+  width: 1.6rem;
+  height: 1.6rem;
   color: #f3e6d3;
-  font-size: 0.8rem;
 }
 
-.held-item-badge kbd {
-  padding: 0 0.3rem;
-  border: 1px solid rgba(243, 230, 211, 0.4);
-  border-radius: 4px;
-  font-size: 0.72rem;
+.held-item-slot-empty {
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 3px;
+  border: 1.5px dashed rgba(243, 230, 211, 0.3);
 }
 
 /* The wall-soundboard's assign-sound overlay (Milestone 8 follow-up),

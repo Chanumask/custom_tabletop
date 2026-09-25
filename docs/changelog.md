@@ -6,6 +6,32 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 (gadgets phase 6) — One item slot, and R becomes the single "use item" key
+
+### What landed
+
+- **Server:** `SessionStore.takeItem` now enforces a single item slot per player — taking a second item auto-releases the first (a new `releaseItem` helper, shared with `dropItem`), turning the flashlight off if that's what got swapped away.
+- **Client keys:** E is now exclusively the room-interactables key; the camera's old E-fallback (used whenever nothing else was targeted) is gone. A single **R**, `handleUseItemKey`, replaces the separate F/R/C bindings and dispatches on whichever gadget is currently held — camera takes a photo, flashlight toggles, walkie/calculator open their dialogs. The bottom-center interaction-prompt hint (`promptFor`) now shows "Press R to …" for whichever gadget is held, for all four kinds (previously only the camera got a hint, since it alone piggybacked on E).
+- **`InventoryDialog.tsx`:** the "Take" button becomes "Swap" whenever the player already holds something else, with a hint line naming what taking a new item will put back.
+- **HUD:** `HeldItems.tsx` rewritten from a stack of corner badges (one per held kind) to a single fixed-size slot, bottom-right, always visible — a 2D icon for the held kind, or an empty dashed placeholder. Four new inline-SVG icons (camera/flashlight/walkie/calculator) added to `icons.tsx`, matching its existing hand-drawn-line-art style.
+- **`client/src/three/gadgetMeshes.ts`** (new): a `GadgetLibrary`/`GadgetSource` pair (mirrors `CharacterLibrary`) resolving an `ItemKind` to a `THREE.Object3D` — currently placeholder procedural shapes, documented as swappable for real `GLTFLoader` calls once Blender models exist.
+- **`PlayerAvatars.ts`:** each avatar now tracks `handR` (the `Wrist.R` bone), `heldItemKind`/`heldItemMesh`, and loads/attaches/detaches the held gadget's mesh as `sync()` receives inventory state — visible to every other player, not just a HUD badge for the holder.
+
+### Checked
+
+- New/updated tests: 4 new `SessionStore` swap-behavior tests (releases the old item, turns off a swapped-away flashlight, frees the old item for someone else to take) — server suite now 371 tests. Full `sanity-check` (lint/format/build/test): 687 tests (52 shared, 367 server, 268 client), all clean.
+- **Live browser verification with two real tabs**: took the camera (R → photo, uploaded and pinned), swapped to the flashlight in the chest (dialog showed "Swap"/hint text, camera returned to the chest, HUD icon changed), R toggled the beam on/off, E confirmed inert for gadget actions the whole time (only ever opened the chest when standing at it). Swapped to each walkie and the calculator in turn — R opened the right dialog each time. A second tab (Bob) confirmed Joel's held item (the calculator) renders as a visible mesh gripped in his avatar's right hand.
+
+### Next session
+
+The single-item-slot redesign is functionally complete and merged-ready (not yet merged into `main` — still on `feat/single-item-slot`). Left for later, not blocking:
+
+- **Real Blender-modeled gadget meshes** — currently placeholder procedural shapes. Blocked on the user opening Blender; only `gadgetMeshes.ts`'s `GadgetLibrary.load()` needs to change once GLBs exist under `client/public/models/gadgets/`.
+- The held-item hand offset/rotation (`HELD_ITEM_OFFSET` in `PlayerAvatars.ts`) was tuned by eye against the placeholder shapes — expect to retune once real meshes land.
+- M9's cross-browser pass (Edge/Firefox) and the wall-soundboard rework's live verification are still outstanding from before this session (see `CLAUDE.md`'s known gaps).
+
+---
+
 ## 2026-09-25 (gadgets phase 5) — The calculator, and the plan's last gadget lands
 
 ### What landed

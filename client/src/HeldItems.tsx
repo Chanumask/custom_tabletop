@@ -1,5 +1,5 @@
 import type { InventoryItem, ItemKind } from '@custom-tabletop/shared';
-import { formatKeyCode } from './keyLabel.js';
+import { CalculatorIcon, CameraIcon, FlashlightIcon, WalkieIcon } from './icons.js';
 
 const KIND_LABELS: Record<ItemKind, string> = {
   camera: 'Camera',
@@ -8,43 +8,30 @@ const KIND_LABELS: Record<ItemKind, string> = {
   calculator: 'Calculator',
 };
 
+const KIND_ICONS: Record<ItemKind, typeof CameraIcon> = {
+  camera: CameraIcon,
+  flashlight: FlashlightIcon,
+  walkie: WalkieIcon,
+  calculator: CalculatorIcon,
+};
+
 /**
- * A small corner HUD showing what the local player is currently carrying
- * from the chest (the gadgets inventory) — put things back via the chest
- * dialog. Shows a key hint for whichever gadgets have a "use" action
- * implemented so far; a kind with none yet (still to come) shows just its
- * name.
+ * The single item slot (gadgets phase 6) — always visible, bottom-right
+ * corner: an empty outline when the local player holds nothing, or a 2D
+ * icon for whichever one gadget they're currently carrying from the chest.
+ * Only one item can ever be held at a time (enforced server-side by
+ * `SessionStore.takeItem`), so this never needs to show more than one.
  */
-export function HeldItems({ items, interactKey }: { items: InventoryItem[]; interactKey: string }) {
-  if (items.length === 0) {
-    return null;
-  }
-  const hintFor = (kind: ItemKind): string | null => {
-    if (kind === 'camera') {
-      return formatKeyCode(interactKey);
-    }
-    if (kind === 'flashlight') {
-      return 'F';
-    }
-    if (kind === 'walkie') {
-      return 'R';
-    }
-    if (kind === 'calculator') {
-      return 'C';
-    }
-    return null;
-  };
+export function HeldItems({ items }: { items: InventoryItem[] }) {
+  const kind = items[0]?.kind ?? null;
+  const Icon = kind ? KIND_ICONS[kind] : null;
   return (
-    <div className="held-items">
-      {items.map((item) => {
-        const hint = hintFor(item.kind);
-        return (
-          <span key={item.id} className="held-item-badge">
-            {KIND_LABELS[item.kind]}
-            {hint && <kbd>{hint}</kbd>}
-          </span>
-        );
-      })}
+    <div className="held-item-slot" aria-label={kind ? `Holding: ${KIND_LABELS[kind]}` : 'Empty'}>
+      {Icon ? (
+        <Icon className="held-item-icon" />
+      ) : (
+        <span className="held-item-slot-empty" aria-hidden="true" />
+      )}
     </div>
   );
 }

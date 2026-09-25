@@ -675,6 +675,42 @@ describe('SessionStore inventory (gadgets phase 1)', () => {
     const state = store.leave('abc', 'p2');
     expect(state?.inventory.find((item) => item.id === 'flashlight-1')?.heldBy).toBeNull();
   });
+
+  it('a single item slot: taking a second item puts the first one back', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.takeItem('abc', 'p1', 'camera-1');
+    const result = store.takeItem('abc', 'p1', 'calculator-1');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.inventory.find((item) => item.id === 'camera-1')?.heldBy).toBeNull();
+    expect(result.state.inventory.find((item) => item.id === 'calculator-1')?.heldBy).toBe('p1');
+  });
+
+  it('swapping away the flashlight turns it off', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.takeItem('abc', 'p1', 'flashlight-1');
+    store.toggleFlashlight('abc', 'p1');
+    expect(store.get('abc')!.players[0]!.flashlightOn).toBe(true);
+
+    const result = store.takeItem('abc', 'p1', 'camera-1');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.players.find((p) => p.id === 'p1')?.flashlightOn).toBe(false);
+  });
+
+  it('a swap frees the old item for someone else to take', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+    store.takeItem('abc', 'p1', 'camera-1');
+    store.takeItem('abc', 'p1', 'calculator-1'); // swaps camera-1 back into the chest
+    const result = store.takeItem('abc', 'p2', 'camera-1');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.inventory.find((item) => item.id === 'camera-1')?.heldBy).toBe('p2');
+  });
 });
 
 describe('SessionStore photos (gadgets phase 2)', () => {

@@ -31,6 +31,7 @@ import {
   type ClipAction,
   type Dice,
   type GameState,
+  type InventoryItem,
   type Player,
   type PlayerColorId,
   type SessionPeekResponse,
@@ -937,9 +938,29 @@ export class SessionStore {
     return { ok: true, state };
   }
 
+  /** Clears `item.heldBy` — factored out of `takeItem`/`dropItem` since
+   * taking a new item (single item slot, gadgets phase 6) releases the
+   * current one the same way putting it back does, flashlight included:
+   * it shouldn't stay lit for a player no longer holding it, and the next
+   * person to take it should find it off, not however the last holder
+   * left it. */
+  private releaseItem(state: GameState, item: InventoryItem): void {
+    const playerId = item.heldBy;
+    item.heldBy = null;
+    if (item.kind === 'flashlight' && playerId) {
+      const player = state.players.find((candidate) => candidate.id === playerId);
+      if (player) {
+        player.flashlightOn = false;
+      }
+    }
+  }
+
   /** Not host-gated — a player can only ever take/drop their *own* held
-   * item (the room chest's gadgets, phase 1). Taking an item someone else
-   * already holds is refused; taking one you already hold is a no-op
+   * item (the room chest's gadgets). A player holds at most one item at a
+   * time: taking a new one first releases whatever they already had
+   * (`releaseItem`) — switching only happens at the chest, never by
+   * picking up a second thing mid-room. Taking an item someone else
+   * already holds is refused; taking the one you already hold is a no-op
    * success (a client that missed a state update can't desync the server). */
   takeItem(sessionId: string, playerId: string, itemId: string): GameStateMutationResult {
     const state = this.sessions.get(sessionId);
@@ -952,6 +973,12 @@ export class SessionStore {
     }
     if (item.heldBy !== null && item.heldBy !== playerId) {
       return { ok: false, error: 'Someone else is already holding that.' };
+    }
+    const current = state.inventory.find(
+      (candidate) => candidate.heldBy === playerId && candidate.id !== itemId,
+    );
+    if (current) {
+      this.releaseItem(state, current);
     }
     item.heldBy = playerId;
     return { ok: true, state };
@@ -971,16 +998,7 @@ export class SessionStore {
     if (item.heldBy !== playerId) {
       return { ok: false, error: "You aren't holding that." };
     }
-    item.heldBy = null;
-    // Putting the flashlight back turns it off — it shouldn't stay lit for
-    // a player no longer holding it, and the next person to take it should
-    // find it off, not however the last holder left it.
-    if (item.kind === 'flashlight') {
-      const player = state.players.find((candidate) => candidate.id === playerId);
-      if (player) {
-        player.flashlightOn = false;
-      }
-    }
+    this.releaseItem(state, item);
     return { ok: true, state };
   }
 

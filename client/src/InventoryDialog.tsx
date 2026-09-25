@@ -34,6 +34,10 @@ export interface InventoryDialogProps {
  * with that gadget. A DOM overlay over the WebGL canvas, same pattern as
  * `WhiteboardEditor`/`SoundboardAssignMenu`; the caller releases pointer
  * lock before showing it.
+ *
+ * One item slot (gadgets phase 6): the server auto-releases whatever a
+ * player already held the moment they take something else, so "Take" on a
+ * different item is really a swap — labeled as such here.
  */
 export function InventoryDialog({
   items,
@@ -53,11 +57,17 @@ export function InventoryDialog({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
+  const heldByPlayer = items.find((item) => item.heldBy === playerId) ?? null;
+
   return createPortal(
     <div className="modal-backdrop" role="dialog" aria-label="The chest">
       <div className="inventory-dialog">
         <p className="modal-title">The chest</p>
-        <p className="modal-hint">Small things worth bringing on a school trip.</p>
+        <p className="modal-hint">
+          {heldByPlayer
+            ? `You can only hold one thing at a time — taking another item puts the ${labelFor(heldByPlayer).toLowerCase()} back.`
+            : 'Small things worth bringing on a school trip.'}
+        </p>
         <ul className="inventory-list">
           {items.map((item) => {
             const holder = item.heldBy ? players.find((p) => p.id === item.heldBy) : null;
@@ -85,7 +95,7 @@ export function InventoryDialog({
                     disabled={item.heldBy !== null}
                     onClick={() => onTake(item.id)}
                   >
-                    Take
+                    {heldByPlayer ? 'Swap' : 'Take'}
                   </button>
                 )}
               </li>

@@ -3,6 +3,8 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import {
   playerColorHex,
   type EmoteId,
+  type InventoryItem,
+  type ItemKind,
   type Player,
   type PlayerColorId,
   type Vector3,
@@ -16,6 +18,7 @@ import {
   type Seat,
 } from './avatarMotion.js';
 import { EMOTE_CLIPS, type CharacterSource } from './characters.js';
+import { GadgetLibrary, type GadgetSource } from './gadgetMeshes.js';
 import { NameTag } from './nameTag.js';
 import { SpeechBubble, speechSeconds } from './speechBubble.js';
 
@@ -48,6 +51,12 @@ const SIT_FORWARD = 0.08;
 const SIT_THIGH = -Math.PI / 2;
 const SIT_KNEE = Math.PI / 2;
 const X_AXIS = new THREE.Vector3(1, 0, 0);
+
+/** Where a held gadget sits relative to the right wrist bone (local space)
+ * — a rough "gripped in the hand" offset, tuned by eye against the live
+ * rig; the same starting-point approach `RoomLamp`/`SoundboardWall` used
+ * for their own hand-eyeballed placement. */
+const HELD_ITEM_OFFSET: [number, number, number] = [0, -0.03, 0.05];
 
 /** The flashlight's beam (gadgets phase 3) — roughly chest height, aimed
  * forward (the models face local +Z, same as the seat-facing math above). */
@@ -90,6 +99,17 @@ interface Avatar {
   /** The flashlight's beam (gadgets phase 3) — a child of `group`, so it
    * follows position/facing for free; only its intensity toggles. */
   flashlight: THREE.SpotLight;
+  /** The right wrist bone (single held item, one gadget at a time) — held
+   * items are parented here so they follow the arm for free. Found once
+   * the model loads; null until then, or if this model has no such bone. */
+  handR: THREE.Object3D | null;
+  /** Which gadget this player currently holds (from `GameState.inventory`,
+   * `sync`'s third argument), and the loaded mesh for it, once it resolves. */
+  heldItemKind: ItemKind | null;
+  heldItemMesh: THREE.Object3D | null;
+  /** Cancels a stale gadget-mesh load if the held kind changes again (or
+   * the avatar is removed) before the previous one resolves. */
+  heldItemLoadToken: number;
 }
 
 /** GLTFLoader strips "." from node names ("UpperLeg.L" -> "UpperLegL"). */
@@ -119,13 +139,19 @@ export class PlayerAvatars {
     scene: THREE.Scene,
     private readonly characters: CharacterSource,
     private readonly seats: Seat[] = [],
+    private readonly gadgets: GadgetSource = new GadgetLibrary(),
   ) {
     this.group.name = 'player-avatars';
     scene.add(this.group);
   }
 
-  sync(players: Player[], selfId: string): void {
+  /** `inventory` (gadgets, single item slot) is optional so callers with
+   * nothing to show yet — or tests uninterested in held items — can omit
+   * it; a player with no entry there just shows empty-handed. */
+  sync(players: Player[], selfId: string, inventory: InventoryItem[] = []): void {
     const others = players.filter((player) => player.id !== selfId);
+    const heldKindOf = (playerId: string): ItemKind | null =>
+      inventory.find((item) => item.heldBy === playerId)?.kind ?? null;
 
     for (const player of others) {
       let avatar = this.avatars.get(player.id);
@@ -138,6 +164,7 @@ export class PlayerAvatars {
 
       avatar.target = { x: player.position.x, z: player.position.z, yaw: player.rotationY };
       avatar.flashlight.intensity = player.flashlightOn ? FLASHLIGHT_INTENSITY : 0;
+      this.setHeldItem(avatar, heldKindOf(player.id));
       avatar.seated = player.seated;
       avatar.seat =
         player.seated && player.seatIndex !== null ? (this.seats[player.seatIndex] ?? null) : null;
@@ -275,6 +302,10 @@ export class PlayerAvatars {
       speech: null,
       loadToken: 0,
       flashlight,
+      handR: null,
+      heldItemKind: null,
+      heldItemMesh: null,
+      heldItemLoadToken: 0,
     };
     this.avatars.set(player.id, avatar);
     this.loadModel(avatar);
@@ -335,15 +366,64 @@ export class PlayerAvatars {
           lowerL: bone(model, 'LowerLeg.L'),
           lowerR: bone(model, 'LowerLeg.R'),
         };
+        avatar.handR = bone(model, 'Wrist.R');
         avatar.locomotion = null;
         avatar.animating = false;
         avatar.group.add(model);
         applyPresence(avatar);
+        // A color change reloads the model (a fresh handR bone) — any
+        // gadget already held needs re-parenting onto it.
+        this.attachHeldItem(avatar);
       },
       (error: unknown) => {
         console.error(`Failed to load the ${color} character model:`, error);
       },
     );
+  }
+
+  /** Swaps the gadget this avatar is shown holding (single item slot,
+   * gadgets phase 6) — `null` empties the hand. A stale load (the kind
+   * changed again, or the avatar was removed, before the previous one
+   * resolved) is dropped via `heldItemLoadToken`. */
+  private setHeldItem(avatar: Avatar, kind: ItemKind | null): void {
+    if (avatar.heldItemKind === kind) {
+      return;
+    }
+    avatar.heldItemKind = kind;
+    const token = ++avatar.heldItemLoadToken;
+    if (avatar.heldItemMesh) {
+      avatar.heldItemMesh.parent?.remove(avatar.heldItemMesh);
+      avatar.heldItemMesh = null;
+    }
+    if (!kind) {
+      return;
+    }
+    this.gadgets.load(kind).then(
+      (source) => {
+        if (token !== avatar.heldItemLoadToken || !this.avatars.has(avatar.id)) {
+          return; // superseded (kind changed again) or removed meanwhile
+        }
+        avatar.heldItemMesh = source.clone(true);
+        this.attachHeldItem(avatar);
+      },
+      (error: unknown) => {
+        console.error(`Failed to load the ${kind} gadget model:`, error);
+      },
+    );
+  }
+
+  /** Parents the currently-loaded held-item mesh onto the right wrist bone
+   * (or the avatar group, if the model has no such bone yet) — called both
+   * once a gadget mesh finishes loading and again whenever the model
+   * itself reloads (a color change gets a fresh bone instance). */
+  private attachHeldItem(avatar: Avatar): void {
+    if (!avatar.heldItemMesh) {
+      return;
+    }
+    const parent = avatar.handR ?? avatar.group;
+    parent.add(avatar.heldItemMesh);
+    avatar.heldItemMesh.position.set(...HELD_ITEM_OFFSET);
+    avatar.heldItemMesh.rotation.set(0, 0, 0);
   }
 
   private updateAvatar(avatar: Avatar, dt: number): void {
@@ -470,6 +550,7 @@ export class PlayerAvatars {
 
   private removeAvatar(avatar: Avatar): void {
     avatar.loadToken += 1; // cancel any in-flight model load
+    avatar.heldItemLoadToken += 1; // cancel any in-flight gadget-mesh load
     this.detachModel(avatar);
     this.clearSpeech(avatar);
     avatar.nameTag.dispose();
