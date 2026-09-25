@@ -12,3 +12,4 @@ export * from './emote.js';
 export * from './whiteboard.js';
 export * from './log.js';
 export * from './diceNotation.js';
+export * from './ping.js';

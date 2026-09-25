@@ -3,6 +3,7 @@ import {
   EMOTES,
   MAX_PLAYER_NAME_LENGTH,
   DIE_KINDS,
+  GRID_CELL_OPTIONS,
   playerColorHex,
   type DieKind,
   type GameState,
@@ -25,6 +26,7 @@ export interface SessionViewProps {
   playerId: string;
   onLeave: () => void;
   onSetMapBackground: (url: string) => void;
+  onSetMapGrid: (gridCells: number) => void;
   onSpawnDie: (kind: DieKind) => void;
   onRollDice: (diceIds: string[]) => void;
   onRemoveDie: (diceId: string) => void;
@@ -60,6 +62,7 @@ export function SessionView({
   playerId,
   onLeave,
   onSetMapBackground,
+  onSetMapGrid,
   onSpawnDie,
   onRollDice,
   onRemoveDie,
@@ -129,7 +132,12 @@ export function SessionView({
           />
         )}
         {activeTab === 'map' && (
-          <MapTab isHost={isHost} state={state} onSetMapBackground={onSetMapBackground} />
+          <MapTab
+            isHost={isHost}
+            state={state}
+            onSetMapBackground={onSetMapBackground}
+            onSetMapGrid={onSetMapGrid}
+          />
         )}
         {activeTab === 'dice' && (
           <DiceTab
@@ -285,10 +293,12 @@ function MapTab({
   isHost,
   state,
   onSetMapBackground,
+  onSetMapGrid,
 }: {
   isHost: boolean;
   state: GameState;
   onSetMapBackground: (url: string) => void;
+  onSetMapGrid: (gridCells: number) => void;
 }) {
   const activeScene = state.scenes.find((scene) => scene.id === state.activeSceneId);
   const current = activeScene?.backgroundImage ?? '';
@@ -353,6 +363,21 @@ function MapTab({
           Clear map
         </button>
       )}
+      <div className="grid-picker" role="radiogroup" aria-label="Map grid">
+        <span className="grid-picker-label">Grid</span>
+        {GRID_CELL_OPTIONS.map((cells) => (
+          <button
+            key={cells}
+            type="button"
+            role="radio"
+            aria-checked={(activeScene?.gridCells ?? 0) === cells}
+            className={(activeScene?.gridCells ?? 0) === cells ? 'active' : ''}
+            onClick={() => onSetMapGrid(cells)}
+          >
+            {cells === 0 ? 'Off' : cells}
+          </button>
+        ))}
+      </div>
       {source && (
         <MapCropDialog source={source} onConfirm={handleConfirm} onCancel={() => setSource(null)} />
       )}

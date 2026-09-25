@@ -27,6 +27,8 @@ export interface TableDrawingOptions {
   /** Gets first say on a click (seated): e.g. clicking a die rolls it
    * instead of starting a stroke under it. Returns true if it used the click. */
   claimClick?: (raycaster: THREE.Raycaster) => boolean;
+  /** A right-click on the table: "look here!" (TablePings). */
+  onPing?: (point: Point2D) => void;
 }
 
 /**
@@ -37,6 +39,11 @@ export interface TableDrawingOptions {
  * disconnected from the 3D room. Active only while the pointer isn't locked
  * (see `isDrawingAllowed`); WASD + mouse-look owns the pointer otherwise.
  */
+/** Right-click pings, so the browser's context menu has no business here. */
+function preventContextMenu(event: Event): void {
+  event.preventDefault();
+}
+
 export class TableDrawing {
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointerNdc = new THREE.Vector2();
@@ -46,6 +53,16 @@ export class TableDrawing {
   private readonly handlePointerDown = (event: PointerEvent): void => {
     if (!this.options.isDrawingAllowed()) {
       return;
+    }
+    if (event.button === 2) {
+      const target = this.raycastToCanvasPoint(event);
+      if (target) {
+        this.options.onPing?.(target);
+      }
+      return;
+    }
+    if (event.button !== 0) {
+      return; // the middle button (and anything else) neither draws nor rolls
     }
     this.aim(event);
     if (this.options.claimClick?.(this.raycaster)) {
@@ -97,12 +114,14 @@ export class TableDrawing {
 
   connect(): void {
     this.options.domElement.addEventListener('pointerdown', this.handlePointerDown);
+    this.options.domElement.addEventListener('contextmenu', preventContextMenu);
     window.addEventListener('pointermove', this.handlePointerMove);
     window.addEventListener('pointerup', this.handlePointerUp);
   }
 
   dispose(): void {
     this.options.domElement.removeEventListener('pointerdown', this.handlePointerDown);
+    this.options.domElement.removeEventListener('contextmenu', preventContextMenu);
     window.removeEventListener('pointermove', this.handlePointerMove);
     window.removeEventListener('pointerup', this.handlePointerUp);
     this.strokeActive = false;

@@ -61,6 +61,8 @@ export const SocketEvent = {
   ChatSend: 'chat:send',
   /** Server → room: one new log entry (a chat line or typed roll). */
   LogEntry: 'log:entry',
+  /** "Look here!" on the table — relayed, never stored (ping.ts). */
+  TablePing: 'table:ping',
 } as const;
 
 export type SocketEventName = (typeof SocketEvent)[keyof typeof SocketEvent];

@@ -1,6 +1,8 @@
 import {
   MAX_CHAT_LENGTH,
   MAX_DICE_PER_ROLL,
+  isGridCells,
+  type TablePingRequest,
   MAX_PLAYER_NAME_LENGTH,
   type ChatSendRequest,
   isDieKind,
@@ -256,7 +258,7 @@ export function parseSceneUpdateRequest(payload: unknown): SceneUpdateRequest | 
     return null;
   }
 
-  const { sessionId, playerId, sceneId, name, backgroundImage } = payload as Record<
+  const { sessionId, playerId, sceneId, name, backgroundImage, gridCells } = payload as Record<
     string,
     unknown
   >;
@@ -265,11 +267,12 @@ export function parseSceneUpdateRequest(payload: unknown): SceneUpdateRequest | 
     !isNonEmptyString(playerId) ||
     !isNonEmptyString(sceneId) ||
     !isOptionalString(name) ||
-    !isOptionalString(backgroundImage)
+    !isOptionalString(backgroundImage) ||
+    (gridCells !== undefined && !isGridCells(gridCells))
   ) {
     return null;
   }
-  if (name === undefined && backgroundImage === undefined) {
+  if (name === undefined && backgroundImage === undefined && gridCells === undefined) {
     return null; // nothing to update
   }
 
@@ -279,6 +282,7 @@ export function parseSceneUpdateRequest(payload: unknown): SceneUpdateRequest | 
     sceneId: sceneId.trim(),
     name,
     backgroundImage,
+    ...(gridCells !== undefined ? { gridCells } : {}),
   };
 }
 
@@ -628,4 +632,21 @@ export function parseChatSendRequest(payload: unknown): ChatSendRequest | null {
   }
 
   return { sessionId: sessionId.trim(), playerId: playerId.trim(), text: cleaned };
+}
+
+export function parseTablePingRequest(payload: unknown): TablePingRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, point } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || !isPoint2D(point)) {
+    return null;
+  }
+
+  return {
+    sessionId: sessionId.trim(),
+    playerId: playerId.trim(),
+    point: { x: point.x, y: point.y },
+  };
 }

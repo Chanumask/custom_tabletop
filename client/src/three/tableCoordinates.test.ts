@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { tableLocalToCanvas } from './tableCoordinates.js';
+import { canvasToTableLocal, gridLineOffsets, tableLocalToCanvas } from './tableCoordinates.js';
 
 describe('tableLocalToCanvas', () => {
   it('maps the table center to the canvas center', () => {
@@ -26,5 +26,27 @@ describe('tableLocalToCanvas', () => {
     const result = tableLocalToCanvas(localX, localZ, 1, 1, 1000);
     expect(result.x / 1000).toBeCloseTo(localX / 2 + 0.5);
     expect(result.y / 1000).toBeCloseTo(localZ / 2 + 0.5);
+  });
+});
+
+describe('canvasToTableLocal', () => {
+  it('undoes tableLocalToCanvas, on a non-square table too', () => {
+    for (const [x, z] of [
+      [0, 0],
+      [0.7, -0.4],
+      [-1.2, 0.9],
+    ] as const) {
+      const canvas = tableLocalToCanvas(x, z, 1.5, 1, 1024);
+      const back = canvasToTableLocal(canvas, 1.5, 1, 1024);
+      expect(back.x).toBeCloseTo(x, 9);
+      expect(back.z).toBeCloseTo(z, 9);
+    }
+  });
+});
+
+describe('gridLineOffsets', () => {
+  it('spaces cells + 1 lines evenly edge to edge, or none', () => {
+    expect(gridLineOffsets(4, 1024)).toEqual([0, 256, 512, 768, 1024]);
+    expect(gridLineOffsets(0, 1024)).toEqual([]);
   });
 });

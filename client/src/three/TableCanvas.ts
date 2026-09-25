@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { gridLineOffsets } from './tableCoordinates.js';
 import type { Drawing, Point2D, Scene } from '@custom-tabletop/shared';
 import { computeCoverRect } from './imageFit.js';
 
@@ -98,11 +99,37 @@ export class TableCanvas {
       const rect = computeCoverRect(image.naturalWidth, image.naturalHeight, TABLE_CANVAS_SIZE);
       this.ctx.drawImage(image, rect.x, rect.y, rect.width, rect.height);
     }
+    this.paintGrid(scene.gridCells);
 
     for (const drawing of currentDrawings?.() ?? scene.drawings) {
       this.paintStroke(drawing.points, { color: drawing.color, width: drawing.width });
     }
     this.texture.needsUpdate = true;
+  }
+
+  /** The map grid, over the background and under the drawings: a dark line
+   * with a faint light edge, so it reads on parchment and dark maps alike. */
+  private paintGrid(cells: number): void {
+    const offsets = gridLineOffsets(cells, TABLE_CANVAS_SIZE);
+    if (offsets.length === 0) {
+      return;
+    }
+    const passes: [string, number][] = [
+      ['rgba(20, 14, 10, 0.38)', 1.6],
+      ['rgba(255, 248, 236, 0.22)', 0.7],
+    ];
+    for (const [style, width] of passes) {
+      this.ctx.strokeStyle = style;
+      this.ctx.lineWidth = width;
+      this.ctx.beginPath();
+      for (const offset of offsets) {
+        this.ctx.moveTo(offset, 0);
+        this.ctx.lineTo(offset, TABLE_CANVAS_SIZE);
+        this.ctx.moveTo(0, offset);
+        this.ctx.lineTo(TABLE_CANVAS_SIZE, offset);
+      }
+      this.ctx.stroke();
+    }
   }
 
   /** Draws one incremental segment of an in-progress stroke — from the

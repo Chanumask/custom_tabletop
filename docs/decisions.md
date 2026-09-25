@@ -6,6 +6,28 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-25 — Pings on the table (right-click) and a host-set map grid
+
+**Decided** (the "grid overlay + pings" idea).
+
+1. **Pings: right-click the table.** It works seated or unlocked (the table-drawing input, where right-click used to start a stroke) and while walking (right-click pings where the crosshair meets the table). Rings pulse three times in the pinger's color over a center mark for about 2 s, with a soft two-note chime. The browser's context menu is suppressed on the room canvas.
+   - Right-click, not the "hold-click" floated earlier: a hold would have delayed or ambiguated every stroke start. Right-click is a separate button that nothing else used, and it's how many games ping.
+2. **`table:ping` is fire-and-forget like `player:move`:** never stored, relayed to everyone but the sender (who draws theirs at once), and dropped if closer than 300 ms to that socket's previous ping. A ping is a pointing gesture, not state. Points travel in table-canvas coordinates like drawing points; `canvasToTableLocal` (tested as the inverse of `tableLocalToCanvas`) turns them back into a spot in the room.
+3. **Map grid: `Scene.gridCells` (0 = off, or 10/15/20/25/30 cells per side),** set by the host through the existing host-only `scene:update`, so there's no new event and no new authority rule. It's painted into the table canvas between the map image and the drawings, as a dark line with a faint light edge so it reads on parchment and dark maps. A grid change redraws because the redraw signature now includes `gridCells`. The picker is in the Map tab.
+
+**Verified:**
+- `ping.test.ts` (4): grid-size and ping parsing; with 3 clients a ping reaches the other two and not the sender, a second ping inside 300 ms is dropped, and a forged sender is ignored; only the host can set the grid.
+- `TablePings.test.ts` (2), `tableCoordinates.test.ts` (+2).
+
+Live (two tabs):
+- Alice set a 20-cell grid, and Bob's seated view showed it crisp over the parchment.
+- Alice's unlocked right-click at table point (0.35, −0.25) pulsed red on Bob's table exactly 3.5 cells right and 2.5 up of center, with the context menu blocked.
+- Bob's walking right-click pinged exactly under his crosshair (−0.4, 0.3), and it arrived on Alice's side at the same spot in his blue.
+
+490 tests; lint, format and build clean.
+
+---
+
 ## 2026-09-25 — Table chat and session log: chat, every roll, /roll notation, speech bubbles; per-color spawn points
 
 **Decided** (the "chat with speech bubbles and a shared log that records dice rolls" idea).
@@ -423,7 +445,7 @@ Live (Chrome, 3 tabs plus a 4th socket-client player):
 
 ## Table of Contents
 
-**2026-09-25** — Table chat and session log: `log:entry` deltas vs. full-state, typed `/roll` notation rolled server-side, speech bubbles, client-clock feed fading, per-color spawn points, bottom overlay stack; Real RPG dice: d4–d20 polyhedra landing on the server result, `rollCount` nonce fixes same-number re-rolls, pool rolls, in-world rolling, table-calibrated material; Join screen redesign: character preview on a pedestal, pure join-status logic, invite links paste into the code field, rejoin card, no new deps; Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
+**2026-09-25** — Pings (right-click, relayed not stored, 300 ms guard) and a host-set map grid via `scene:update`; Table chat and session log: `log:entry` deltas vs. full-state, typed `/roll` notation rolled server-side, speech bubbles, client-clock feed fading, per-color spawn points, bottom overlay stack; Real RPG dice: d4–d20 polyhedra landing on the server result, `rollCount` nonce fixes same-number re-rolls, pool rolls, in-world rolling, table-calibrated material; Join screen redesign: character preview on a pedestal, pure join-status logic, invite links paste into the code field, rejoin card, no new deps; Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
 
 **2026-09-24** — Player characters: six Quaternius models built by a glTF-Transform script, interpolation, chair sitting, emotes, name tags, Blender MCP read_homefile crash gotcha, frame-delta cap; map crop/preview dialog, uploads named by validated type; room rework: square table, furnished Blender room, geometry read from the model, true-color table surface; soundboard links validated, YouTube as a visible clip, board management; player colors, pre-join peek, live profile edits, invite links, toasts; identity binding, reconnect grace period, host handover, resume-only rejoin; wall soundboard rework (4x4 aim-and-E grid, `sound:play` opened to everyone); session menu rework (tabs, client-only settings, rebindable interact key, no YouTube downloader); Milestone 9: host authority hardening, an audit pass (not a new feature), the roadmap's stale "host-gated" list corrected, two real socket-level coverage gaps closed (scene:create, scene:change), player:unmute given its first test coverage, cross-browser pass logged as unverified (Chrome-only tooling); Milestone 8: room interactables, one generic object:interact event, proximity+E over raycast/click, table sit-down mode as a pure camera takeover, seated status visible via avatar squash, a soundboard console reusing sound:play, a real prompt-text bug caught live, a square full-screen seated table view, a seated drawing toolbar (per-stroke color/width, an eraser reusing drawing:delete), a latent drawing:delete remote-redraw bug caught and fixed, a React-controlled-input automation-testing gotcha, a real user-reported eraser bug (local drawing state never updated in real time) caught and fixed; File uploads (M5/M7 extension): REST upload + socket-register two-step, soundboard becomes real shared state, cover-fit stopgap for map images, three related asks captured as roadmap entries instead of implemented; Milestone 7: soundboard & mute, synthesized tones, self-mute plus host moderation, sender included in the sound broadcast; Milestone 6: dice, server-authoritative roll result, motion decoupled from result label, `Dice.sceneId` dropped, client-picked spawn position; Milestone 5: tabletop map & drawing, draw-on-the-table interaction, runtime UV remap, single-scene scope cut, `Point2D` spec deviation
 

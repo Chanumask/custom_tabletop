@@ -14,6 +14,9 @@ import {
   type Dice,
   type DieKind,
   type LogEntry,
+  type Point2D,
+  type TablePingRequest,
+  playerColorHex,
   type SoundState,
   type PlayerEmoteRequest,
   type WhiteboardLine,
@@ -34,11 +37,14 @@ import { isTypingTarget } from '../keyboard.js';
 import { WhiteboardCanvas } from './WhiteboardCanvas.js';
 import { WhiteboardEditor } from '../WhiteboardEditor.js';
 import { inkColorFor } from '../whiteboardInk.js';
-import { TableCanvas } from './TableCanvas.js';
+import { TABLE_CANVAS_SIZE, TableCanvas } from './TableCanvas.js';
 import { TableDrawing } from './TableDrawing.js';
 import { remapTableTopUV } from './tableTopUV.js';
 import { DiceManager, TUMBLE_SECONDS } from './DiceManager.js';
-import { playDiceClatter } from '../sounds.js';
+import { playDiceClatter, playPingSound } from '../sounds.js';
+import { TablePings } from './TablePings.js';
+import { canvasToTableLocal, tableLocalToCanvas } from './tableCoordinates.js';
+import type { TableSurface } from './RoomLayout.js';
 import { RESUME_LOOK_EVENT } from '../ChatPanel.js';
 import { rollBubble } from '../logFormat.js';
 import {
@@ -386,7 +392,7 @@ export function RoomView({
   // canvas without a full redraw.
   useEffect(() => {
     activeSceneRef.current = activeScene;
-    const signature = `${activeScene.id}|${activeScene.backgroundImage}`;
+    const signature = `${activeScene.id}|${activeScene.backgroundImage}|${activeScene.gridCells}`;
     if (signature !== lastRedrawnSignatureRef.current) {
       lastRedrawnSignatureRef.current = signature;
       void tableCanvasRef.current?.redraw(activeScene, () => activeSceneRef.current.drawings);
@@ -475,6 +481,38 @@ export function RoomView({
       avatarsRef.current?.playEmote(request.playerId, request.emote);
     };
     socket.on(SocketEvent.PlayerEmote, handleRemoteEmote);
+
+    // Pings ("look here!" on the table): shown at once for the pinger,
+    // relayed by the server to everyone else.
+    const tablePings = new TablePings(scene);
+    let pingSurface: TableSurface | null = null;
+    const showPing = (point: Point2D, pingerId: string) => {
+      if (!pingSurface) {
+        return;
+      }
+      const local = canvasToTableLocal(
+        point,
+        pingSurface.halfWidth,
+        pingSurface.halfDepth,
+        TABLE_CANVAS_SIZE,
+      );
+      const pinger = playersRef.current.find((candidate) => candidate.id === pingerId);
+      tablePings.ping(
+        pingSurface.center.x + local.x,
+        pingSurface.height,
+        pingSurface.center.z + local.z,
+        pinger ? playerColorHex(pinger.color) : '#f3e6d3',
+      );
+      playPingSound();
+    };
+    const sendPing = (point: Point2D) => {
+      showPing(point, playerId);
+      socket.emit(SocketEvent.TablePing, { sessionId, playerId, point } satisfies TablePingRequest);
+    };
+    const handleRemotePing = (request: TablePingRequest) =>
+      showPing(request.point, request.playerId);
+    socket.on(SocketEvent.TablePing, handleRemotePing);
+    let handleLockedPing: ((event: MouseEvent) => void) | null = null;
 
     // Live, point-by-point stroke updates from other players — a full
     // scene redraw is for background/membership changes (the effect
@@ -674,7 +712,7 @@ export function RoomView({
         tableMaterial.color.setScalar(lightOnRef.current ? 1 : TABLE_DIMMED_BRIGHTNESS);
         tableTopMesh.material = tableMaterial;
         tableMaterialRef.current = tableMaterial;
-        lastRedrawnSignatureRef.current = `${activeSceneRef.current.id}|${activeSceneRef.current.backgroundImage}`;
+        lastRedrawnSignatureRef.current = `${activeSceneRef.current.id}|${activeSceneRef.current.backgroundImage}|${activeSceneRef.current.gridCells}`;
         void tableCanvas.redraw(activeSceneRef.current, currentDrawings);
         tableCanvasRef.current = tableCanvas;
 
@@ -694,6 +732,7 @@ export function RoomView({
             return false;
           },
           getTool: () => drawToolRef.current,
+          onPing: sendPing,
           onStrokeStart: (point) => {
             currentDrawingId = crypto.randomUUID();
             const color = drawColorRef.current;
@@ -783,6 +822,32 @@ export function RoomView({
           },
         });
         tableDrawing.connect();
+
+        // Walking (mouse-look): right-click pings whatever spot of the table
+        // the crosshair is on.
+        pingSurface = room.layout.table;
+        const pingRaycaster = new THREE.Raycaster();
+        handleLockedPing = (event: MouseEvent) => {
+          if (!controller.controls.isLocked || controller.isSeated || event.button !== 2) {
+            return;
+          }
+          pingRaycaster.setFromCamera(SCREEN_CENTER, camera);
+          const [hit] = pingRaycaster.intersectObject(tableTopMesh, false);
+          if (!hit) {
+            return;
+          }
+          const table = room.layout.table;
+          sendPing(
+            tableLocalToCanvas(
+              hit.point.x - table.center.x,
+              hit.point.z - table.center.z,
+              table.halfWidth,
+              table.halfDepth,
+              TABLE_CANVAS_SIZE,
+            ),
+          );
+        };
+        renderer.domElement.addEventListener('mousedown', handleLockedPing);
       }
 
       // Proximity + E (Milestone 8) for the light and the table; aim + E
@@ -878,6 +943,7 @@ export function RoomView({
         const delta = Math.min(clock.getDelta(), MAX_FRAME_SECONDS);
         controller.update(delta);
         diceManagerRef.current?.update(delta, camera);
+        tablePings.update(delta);
         avatarsRef.current?.update(delta);
         renderer.render(scene, camera);
 
@@ -994,6 +1060,11 @@ export function RoomView({
       window.removeEventListener('resize', handleResize);
       socket.off(SocketEvent.PlayerMove, handleRemoteMove);
       socket.off(SocketEvent.PlayerEmote, handleRemoteEmote);
+      socket.off(SocketEvent.TablePing, handleRemotePing);
+      if (handleLockedPing) {
+        renderer.domElement.removeEventListener('mousedown', handleLockedPing);
+      }
+      tablePings.dispose();
       socket.off(SocketEvent.DrawingStart, handleDrawingStart);
       socket.off(SocketEvent.DrawingUpdate, handleDrawingUpdate);
       socket.off(SocketEvent.DrawingEnd, handleDrawingEnd);
@@ -1056,7 +1127,7 @@ export function RoomView({
               · Esc release
             </span>
             <span className="room-view-keys">
-              Drag on the table to draw · click a die to roll it
+              Drag on the table to draw · click a die to roll it · right-click to ping
             </span>
           </button>
         )}
