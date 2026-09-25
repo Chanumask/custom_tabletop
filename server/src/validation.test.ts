@@ -481,7 +481,7 @@ describe('parsePlayerUpdateRequest', () => {
     [{ sessionId: 'a', playerId: 'p' }],
     [{ sessionId: 'a', playerId: 'p', name: '   ' }],
     [{ sessionId: 'a', playerId: 'p', name: 'x'.repeat(25) }],
-    [{ sessionId: 'a', playerId: 'p', color: 'teal' }],
+    [{ sessionId: 'a', playerId: 'p', color: 'magenta' }],
   ])('rejects malformed payload %#', (payload) => {
     expect(parsePlayerUpdateRequest(payload)).toBeNull();
   });

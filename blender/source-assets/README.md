@@ -12,7 +12,7 @@ To rebuild from scratch, download the packs below and unzip them into this folde
 | Ultimate Modular Men (Feb 2022) | Quaternius | CC0 1.0 | https://quaternius.com/packs/ultimatemodularcharacters.html | Player character models |
 | Ultimate Modular Women (April 2022) | Quaternius | CC0 1.0 | https://quaternius.com/packs/ultimatemodularwomen.html | Player character models |
 
-The six player characters are built from these packs by a script, not by hand in Blender:
+The eight player characters are built from these packs by a script, not by hand in Blender:
 
 ```
 node scripts/build-characters.mjs

@@ -18,12 +18,12 @@ export interface PlayerMoveRequest {
 }
 
 /**
- * The six selectable player colors. A player's color is unique within a
+ * The eight selectable player colors. A player's color is unique within a
  * session and drives everything that represents them: their character
  * model (each color has its own distinct model, wearing a shirt in that
  * color — client/src/three/characters.ts), their name tag, whiteboard text,
- * etc. Six colors means a session holds at most six players, which matches
- * the table's seating.
+ * etc. Eight colors means a session holds at most eight players, which
+ * matches the table's eight chairs.
  */
 export const PLAYER_COLORS = [
   { id: 'red', label: 'Red', hex: '#d9443b' },
@@ -32,6 +32,8 @@ export const PLAYER_COLORS = [
   { id: 'yellow', label: 'Yellow', hex: '#e9c33b' },
   { id: 'purple', label: 'Purple', hex: '#9160d6' },
   { id: 'orange', label: 'Orange', hex: '#ec8a36' },
+  { id: 'pink', label: 'Pink', hex: '#e35d9c' },
+  { id: 'teal', label: 'Teal', hex: '#2aa9a0' },
 ] as const;
 
 export type PlayerColorId = (typeof PLAYER_COLORS)[number]['id'];
@@ -68,7 +70,7 @@ export type PlayerUpdateResponse = { ok: true; state: GameState } | { ok: false;
  * origin), on the south side where the room's entrance view is. */
 const SPAWN_ARC_RADIUS = 3;
 /** Each color's place on that arc (degrees from due south, +x to the east):
- * neighbours in join order stand on opposite sides, so a table of six
+ * neighbours in join order stand on opposite sides, so a table of eight
  * never starts out standing inside each other. */
 const SPAWN_ANGLE_DEG: Record<PlayerColorId, number> = {
   red: -10,
@@ -77,6 +79,8 @@ const SPAWN_ANGLE_DEG: Record<PlayerColorId, number> = {
   yellow: 30,
   purple: -50,
   orange: 50,
+  pink: -70,
+  teal: 70,
 };
 
 /**

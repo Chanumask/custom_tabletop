@@ -37,7 +37,7 @@ function join(
 const nextState = waitForState;
 
 /** Player colors & profiles: unique colors per session (which caps a
- * session at six players), a pre-join peek for the join screen, and live
+ * session at eight players), a pre-join peek for the join screen, and live
  * in-session name/color changes everyone sees. */
 describe('Player colors & profiles', () => {
   let app: AppServer;
@@ -96,18 +96,18 @@ describe('Player colors & profiles', () => {
     ).toBe(false);
   });
 
-  it('a seventh player is turned away, but a returning player still gets back in', async () => {
+  it('a ninth player is turned away, but a returning player still gets back in', async () => {
     const players: ClientSocket[] = [];
-    for (let i = 1; i <= 6; i += 1) {
+    for (let i = 1; i <= 8; i += 1) {
       const client = await connected();
       players.push(client);
       expect((await join(client, 'pc-3', `p${i}`)).ok).toBe(true);
     }
 
-    const seventh = await connected();
-    expect(await join(seventh, 'pc-3', 'p7')).toEqual({
+    const ninth = await connected();
+    expect(await join(ninth, 'pc-3', 'p9')).toEqual({
       ok: false,
-      error: 'That session is full (6 players max).',
+      error: 'That session is full (8 players max).',
     });
 
     const p3Again = await connected();

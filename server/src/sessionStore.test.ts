@@ -70,15 +70,15 @@ describe('SessionStore', () => {
     expect(state.players[0]?.color).toBe('purple');
   });
 
-  it('admits at most six players, but always admits a returning one', () => {
+  it('admits at most eight players, but always admits a returning one', () => {
     const store = new SessionStore();
-    for (let i = 1; i <= 6; i += 1) {
+    for (let i = 1; i <= 8; i += 1) {
       store.join('abc', `p${i}`, `Player ${i}`);
     }
-    expect(store.canAdmit('abc', 'p7')).toBe(false);
+    expect(store.canAdmit('abc', 'p9')).toBe(false);
     expect(store.canAdmit('abc', 'p3')).toBe(true);
     expect(store.canAdmit('fresh', 'anyone')).toBe(true);
-    expect(() => store.join('abc', 'p7', 'Too many')).toThrow();
+    expect(() => store.join('abc', 'p9', 'Too many')).toThrow();
   });
 
   it('peek summarizes a session without joining it', () => {

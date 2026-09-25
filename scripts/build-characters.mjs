@@ -1,4 +1,4 @@
-// Builds the six player character models (client/public/models/characters/
+// Builds the eight player character models (client/public/models/characters/
 // <color>.glb) from the Quaternius "Ultimate Modular Men/Women" packs
 // (CC0 — see blender/source-assets/README.md for where to download them).
 //
@@ -34,8 +34,9 @@ const PACKS = {
 const OUT_DIR = path.join(ROOT, 'client/public/models/characters');
 
 /** Player color -> character. `shirt` is the source material on the
- * character's `*_Body` part that is its top. Chosen so all six read as
- * different people (three men, three women; different hair, beard,
+ * character's `*_Body` part that is its top. Chosen so all eight read as
+ * different people (four men, four women — the witch and the hoodie were
+ * added for tables of eight; different hair, beard,
  * mohawks, backpack/vest) and so each shirt color sits well with the rest
  * of the outfit (the purple top next to a magenta mohawk, the orange tank
  * next to a red one). */
@@ -46,6 +47,8 @@ const CHARACTERS = [
   { color: 'yellow', pack: 'women', file: 'Adventurer', shirt: 'LightGreen' },
   { color: 'purple', pack: 'women', file: 'Punk', shirt: 'Pink' },
   { color: 'orange', pack: 'men', file: 'Punk', shirt: 'White' },
+  { color: 'pink', pack: 'women', file: 'Witch', shirt: 'Purple' },
+  { color: 'teal', pack: 'men', file: 'Casual_Hoodie', shirt: 'Purple' },
 ];
 
 /** Locomotion plus the emotes (client/src/three/emotes.ts). */

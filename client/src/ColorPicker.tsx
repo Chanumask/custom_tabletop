@@ -11,7 +11,7 @@ export interface ColorPickerProps {
 }
 
 /**
- * The six player-color swatches (shared/src/player.ts's PLAYER_COLORS) as a
+ * The eight player-color swatches (shared/src/player.ts's PLAYER_COLORS) as a
  * radio group — used on the join screen and in the in-session profile
  * editor, so picking a color looks and behaves the same in both places.
  */

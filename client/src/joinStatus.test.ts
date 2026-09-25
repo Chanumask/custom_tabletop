@@ -12,7 +12,7 @@ const table = (playerCount: number): SessionPeekResponse => ({
   exists: true,
   playerCount,
   hostName: 'Alice',
-  takenColors: ['red', 'blue', 'green', 'yellow', 'purple', 'orange'].slice(
+  takenColors: ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'teal'].slice(
     0,
     playerCount,
   ) as SessionPeekResponse['takenColors'],
@@ -32,8 +32,8 @@ describe('describeJoinStatus — joining', () => {
       tone: 'warn',
       blocked: true,
     });
-    expect(describeJoinStatus('join', 'ABCDE', table(6))).toMatchObject({
-      message: 'That table is full (6 players).',
+    expect(describeJoinStatus('join', 'ABCDE', table(8))).toMatchObject({
+      message: 'That table is full (8 players).',
       blocked: true,
     });
   });
