@@ -705,8 +705,14 @@ export function RoomView({
           startFireAudio = () => fireAudio.start();
           document.addEventListener('pointerdown', startFireAudio);
           document.addEventListener('keydown', startFireAudio);
+          // Across the floor only: the top-down table view lifts the camera
+          // high above the table, which isn't "further from the fire".
           updateFireAudio = (dt: number) =>
-            fireAudio.update(dt, camera.position.distanceTo(fireSpot), fireSoundRef.current);
+            fireAudio.update(
+              dt,
+              Math.hypot(camera.position.x - fireSpot.x, camera.position.z - fireSpot.z),
+              fireSoundRef.current,
+            );
         }
 
         if (room.tvScreen) {
