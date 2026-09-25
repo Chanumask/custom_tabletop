@@ -5,6 +5,8 @@ import {
   DIE_KINDS,
   GRID_CELL_OPTIONS,
   SAVED_TABLE_TTL_DAYS,
+  TABLE_UNITS,
+  type Point2D,
   playerColorHex,
   type DieKind,
   type GameState,
@@ -43,6 +45,8 @@ export interface SessionViewProps {
   onNotify: (text: string, kind?: ToastKind) => void;
   /** The table's host key — only while this player is the host. */
   hostKey?: string | null;
+  /** Put your mini on the table, or (null) take it off. */
+  onMoveMini: (targetPlayerId: string, point: Point2D | null) => void;
 }
 
 type TabId = 'players' | 'map' | 'dice' | 'soundboard' | 'settings';
@@ -80,6 +84,7 @@ export function SessionView({
   onRemoveSound,
   onNotify,
   hostKey,
+  onMoveMini,
 }: SessionViewProps) {
   const isHost = playerId === state.hostId;
   const [activeTab, setActiveTab] = useState<TabId>('players');
@@ -169,8 +174,10 @@ export function SessionView({
               <MapTab
                 isHost={isHost}
                 state={state}
+                playerId={playerId}
                 onSetMapBackground={onSetMapBackground}
                 onSetMapGrid={onSetMapGrid}
+                onMoveMini={onMoveMini}
               />
             )}
             {activeTab === 'dice' && (
@@ -359,24 +366,75 @@ function ProfileEditor({
   );
 }
 
+/** Your mini (docs/decisions.md, "Minis"): put it on the table or take it
+ * off; moving it is a drag on the table itself. */
+function MiniSection({
+  state,
+  playerId,
+  onMoveMini,
+}: {
+  state: GameState;
+  playerId: string;
+  onMoveMini: (targetPlayerId: string, point: Point2D | null) => void;
+}) {
+  const onTable = Boolean(state.minis[playerId]);
+  function putOnTable() {
+    // Near the middle, a little apart from anyone else's.
+    const spread = TABLE_UNITS * 0.16;
+    onMoveMini(playerId, {
+      x: TABLE_UNITS / 2 + (Math.random() - 0.5) * spread,
+      y: TABLE_UNITS / 2 + (Math.random() - 0.5) * spread,
+    });
+  }
+  return (
+    <div className="mini-section">
+      <p className="tab-section-label">Your mini</p>
+      <p className="mini-hint">
+        {onTable
+          ? 'Drag it around the map with the mouse (click Esc first if you’re looking around).'
+          : 'A little figure of your character to move around the map.'}
+      </p>
+      {onTable ? (
+        <button type="button" onClick={() => onMoveMini(playerId, null)}>
+          Take it off the table
+        </button>
+      ) : (
+        <button type="button" className="primary" onClick={putOnTable}>
+          Put it on the table
+        </button>
+      )}
+    </div>
+  );
+}
+
 function MapTab({
   isHost,
   state,
+  playerId,
   onSetMapBackground,
   onSetMapGrid,
+  onMoveMini,
 }: {
   isHost: boolean;
   state: GameState;
+  playerId: string;
   onSetMapBackground: (url: string) => void;
   onSetMapGrid: (gridCells: number) => void;
+  onMoveMini: (targetPlayerId: string, point: Point2D | null) => void;
 }) {
   const activeScene = state.scenes.find((scene) => scene.id === state.activeSceneId);
   const current = activeScene?.backgroundImage ?? '';
   const [link, setLink] = useState('');
   const [source, setSource] = useState<MapSource | null>(null);
+  const minis = <MiniSection state={state} playerId={playerId} onMoveMini={onMoveMini} />;
 
   if (!isHost) {
-    return <p className="tab-empty-note">Only the host can change the map.</p>;
+    return (
+      <>
+        {minis}
+        <p className="tab-empty-note">Only the host can change the map.</p>
+      </>
+    );
   }
 
   function handleFile(event: ChangeEvent<HTMLInputElement>) {
@@ -404,6 +462,8 @@ function MapTab({
 
   return (
     <div>
+      {minis}
+      <p className="tab-section-label">Map</p>
       <div className="map-current">
         {current ? (
           <img src={current} alt="Current map" className="map-thumb" />

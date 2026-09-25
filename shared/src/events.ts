@@ -35,6 +35,12 @@ export const SocketEvent = {
   ClipControl: 'clip:control',
   ClipLock: 'clip:lock',
 
+  /** Minis and dragged dice (minis.ts): fire-and-forget, relayed. */
+  MiniMove: 'mini:move',
+  MiniMoved: 'mini:moved',
+  DiceMove: 'dice:move',
+  DiceMoved: 'dice:moved',
+
   SceneCreate: 'scene:create',
   SceneChange: 'scene:change',
   SceneUpdate: 'scene:update',

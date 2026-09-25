@@ -16,6 +16,8 @@ import {
   SESSION_ENDED_ERROR,
   TABLE_WAITING_FOR_HOST_ERROR,
   type ClipControlResponse,
+  type DiceMoved,
+  type MiniMoved,
   type ClipLockResponse,
   type SessionHostKey,
   SocketEvent,
@@ -47,6 +49,8 @@ import { SessionStore } from './sessionStore.js';
 import {
   parseSessionJoinRequest,
   parseClipControlRequest,
+  parseDiceMoveRequest,
+  parseMiniMoveRequest,
   parseClipLockRequest,
   parseSessionLeaveRequest,
   parseSessionTransferHostRequest,
@@ -933,6 +937,43 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         io.to(request.sessionId).emit(SocketEvent.SoundPlay, request);
       },
     );
+
+    // Minis and dragged dice (minis.ts): frequent while dragging, so like
+    // player:move they're fire-and-forget — checked, kept in state (late
+    // joiners, saved tables), relayed to everyone else. Refusals are silent.
+    socket.on(SocketEvent.MiniMove, (payload: unknown) => {
+      const request = parseMiniMoveRequest(payload);
+      if (!request || !actsAs(request.sessionId, request.playerId)) return;
+      const result = sessions.moveMini(
+        request.sessionId,
+        request.playerId,
+        request.targetPlayerId,
+        request.point,
+      );
+      if (!result.ok) return;
+      socket.to(request.sessionId).emit(SocketEvent.MiniMoved, {
+        sessionId: request.sessionId,
+        targetPlayerId: request.targetPlayerId,
+        point: result.state.minis[request.targetPlayerId] ?? null,
+      } satisfies MiniMoved);
+    });
+
+    socket.on(SocketEvent.DiceMove, (payload: unknown) => {
+      const request = parseDiceMoveRequest(payload);
+      if (!request || !actsAs(request.sessionId, request.playerId)) return;
+      const result = sessions.moveDie(
+        request.sessionId,
+        request.playerId,
+        request.diceId,
+        request.position,
+      );
+      if (!result.ok) return;
+      socket.to(request.sessionId).emit(SocketEvent.DiceMoved, {
+        sessionId: request.sessionId,
+        diceId: request.diceId,
+        position: request.position,
+      } satisfies DiceMoved);
+    });
 
     // The shared clip: anyone may pause/play/seek/stop it unless the host
     // has locked it (clip.ts).

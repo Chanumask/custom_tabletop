@@ -13,6 +13,7 @@ import {
   emptyWhiteboard,
   spawnPointFor,
   parseYouTubeUrl,
+  clampToTable,
   CLIP_LOCKED_ERROR,
   type ClipAction,
   type Dice,
@@ -240,6 +241,7 @@ export class SessionStore {
     const hostName =
       state.players.find((player) => player.id === state.hostId)?.name ?? leaving?.name ?? null;
     state.players = state.players.filter((player) => player.id !== playerId);
+    delete state.minis[playerId];
     this.credentials.get(sessionId)?.delete(playerId);
     if (leaving) {
       addSystemEntry(state, `${leaving.name} left the table`);
@@ -842,6 +844,53 @@ export class SessionStore {
     return { ok: true, state };
   }
 
+  /** Put a mini on the table, move it, or take it off (`point: null`).
+   * Your own; the host may move anyone's (minis.ts). */
+  moveMini(
+    sessionId: string,
+    actorId: string,
+    targetPlayerId: string,
+    point: Point2D | null,
+  ): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    if (actorId !== targetPlayerId && state.hostId !== actorId) {
+      return { ok: false, error: "Only the host can move someone else's mini." };
+    }
+    if (!state.players.some((player) => player.id === targetPlayerId)) {
+      return { ok: false, error: 'Player not found.' };
+    }
+    if (point) {
+      state.minis[targetPlayerId] = clampToTable(point);
+    } else {
+      delete state.minis[targetPlayerId];
+    }
+    return { ok: true, state };
+  }
+
+  /** Drag a die somewhere else on the table: your own; the host may move
+   * any. The client knows the table's shape — the position is only
+   * sanity-checked here. */
+  moveDie(
+    sessionId: string,
+    actorId: string,
+    diceId: string,
+    position: Vector3,
+  ): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    const die = state?.dice.find((candidate) => candidate.id === diceId);
+    if (!state || !die) {
+      return { ok: false, error: 'Die not found.' };
+    }
+    if (die.ownerId !== actorId && state.hostId !== actorId) {
+      return { ok: false, error: "Only the host can move someone else's die." };
+    }
+    die.position = { ...position };
+    return { ok: true, state };
+  }
+
   hasSound(sessionId: string, soundId: string): boolean {
     return this.sessions.get(sessionId)?.soundboard.some((sound) => sound.id === soundId) ?? false;
   }
@@ -966,6 +1015,7 @@ function createEmptySession(sessionId: string, hostId: string): GameState {
     log: [],
     clip: null,
     clipLocked: false,
+    minis: {},
   };
 }
 

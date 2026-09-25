@@ -5,6 +5,12 @@ import {
   SESSION_ENDED_ERROR,
   SocketEvent,
   type ClipAction,
+  type DiceMoveRequest,
+  type DiceMoved,
+  type MiniMoveRequest,
+  type MiniMoved,
+  type Point2D,
+  type Vector3,
   type ClipControlRequest,
   type ClipControlResponse,
   type ClipLockRequest,
@@ -75,6 +81,18 @@ function readInviteCode(): string | null {
   consumeHostLink();
   const code = new URLSearchParams(window.location.search).get('join');
   return code ? code.trim().toUpperCase() : null;
+}
+
+/** `minis` with one player's mini moved, placed, or (null) taken off. */
+function withMini(
+  minis: Record<string, Point2D>,
+  playerId: string,
+  point: Point2D | null,
+): Record<string, Point2D> {
+  const next = { ...minis };
+  if (point) next[playerId] = point;
+  else delete next[playerId];
+  return next;
 }
 
 function hasHostKey(sessionId: string): boolean {
@@ -238,6 +256,27 @@ export function App() {
     // duplicated tab sharing the same sessionStorage, typically) — this tab
     // no longer speaks for that player, so it drops back to the join screen
     // instead of silently sending events the server now ignores.
+    // Someone else moved a mini or dragged a die (minis.ts).
+    socket.on(SocketEvent.MiniMoved, (message: MiniMoved) => {
+      setGameState((current) =>
+        current?.sessionId === message.sessionId
+          ? { ...current, minis: withMini(current.minis, message.targetPlayerId, message.point) }
+          : current,
+      );
+    });
+    socket.on(SocketEvent.DiceMoved, (message: DiceMoved) => {
+      setGameState((current) =>
+        current?.sessionId === message.sessionId
+          ? {
+              ...current,
+              dice: current.dice.map((die) =>
+                die.id === message.diceId ? { ...die, position: message.position } : die,
+              ),
+            }
+          : current,
+      );
+    });
+
     // Became the host (a handover, or the host left): keep the table's key.
     socket.on(SocketEvent.SessionHostKey, (message: SessionHostKey) => {
       saveHostKey(window.localStorage, message.sessionId, message.hostKey);
@@ -427,6 +466,48 @@ export function App() {
       'Failed to hand over the host role',
     );
 
+  // Minis and dragged dice: shown at once here, then sent (minis.ts).
+  const handleMoveMini = useCallback(
+    (targetPlayerId: string, point: Point2D | null) => {
+      const socket = socketRef.current;
+      const state = gameStateRef.current;
+      if (!socket || !state) return;
+      setGameState((current) =>
+        current ? { ...current, minis: withMini(current.minis, targetPlayerId, point) } : current,
+      );
+      socket.emit(SocketEvent.MiniMove, {
+        sessionId: state.sessionId,
+        playerId,
+        targetPlayerId,
+        point,
+      } satisfies MiniMoveRequest);
+    },
+    [playerId],
+  );
+
+  const handleMoveDie = useCallback(
+    (diceId: string, position: Vector3) => {
+      const socket = socketRef.current;
+      const state = gameStateRef.current;
+      if (!socket || !state) return;
+      setGameState((current) =>
+        current
+          ? {
+              ...current,
+              dice: current.dice.map((die) => (die.id === diceId ? { ...die, position } : die)),
+            }
+          : current,
+      );
+      socket.emit(SocketEvent.DiceMove, {
+        sessionId: state.sessionId,
+        playerId,
+        diceId,
+        position,
+      } satisfies DiceMoveRequest);
+    },
+    [playerId],
+  );
+
   // The shared YouTube clip: anyone's pause/play/seek/stop goes to the
   // server and comes back to everyone as state (clip.ts).
   const handleClipControl = (action: ClipAction, position: number) => {
@@ -525,6 +606,10 @@ export function App() {
             players={gameState.players}
             activeScene={activeScene}
             dice={gameState.dice}
+            minis={gameState.minis}
+            hostId={gameState.hostId}
+            onMoveMini={handleMoveMini}
+            onMoveDie={handleMoveDie}
             lightOn={gameState.lightOn}
             soundboard={gameState.soundboard}
             soundboardSlots={gameState.soundboardSlots}
@@ -560,6 +645,7 @@ export function App() {
             onRemoveSound={handleRemoveSound}
             onNotify={toast}
             hostKey={gameState.hostId === playerId ? hostKey : null}
+            onMoveMini={handleMoveMini}
           />
         </Suspense>
         <ChatPanel log={gameState.log} players={gameState.players} onSend={handleSendChat} />

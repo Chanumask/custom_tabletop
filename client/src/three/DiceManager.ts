@@ -21,6 +21,8 @@ import { contrastRatio } from '../whiteboardInk.js';
 
 /** How long a roll tumbles before it settles on its result. */
 export const TUMBLE_SECONDS = 1.1;
+/** A carried die hovers this much above the table (m). */
+const DRAG_LIFT = 0.02;
 const HOP_HEIGHT = 0.14;
 const LABEL_SIZE = 0.11;
 const LABEL_GAP = 0.06;
@@ -247,6 +249,18 @@ export class DiceManager {
    * beside their die instead of above it, where they'd hide its top face. */
   setSeated(seated: boolean): void {
     this.seated = seated;
+  }
+
+  /** A local drag: the die follows the pointer at once (it's settled
+   * where the pointer leaves it; the move is sent separately). */
+  carry(id: string, position: { x: number; y: number; z: number }): void {
+    const entry = this.dice.get(id);
+    if (!entry) return;
+    entry.root.position.set(
+      position.x,
+      position.y + dieShape(entry.kind).restHeight + DRAG_LIFT,
+      position.z,
+    );
   }
 
   /** Advances tumbles and badge pop-ins. Call once per frame. */
