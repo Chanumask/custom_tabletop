@@ -12,6 +12,9 @@ import {
   SOUNDBOARD_SLOT_COUNT,
   emptyWhiteboard,
   spawnPointFor,
+  parseYouTubeUrl,
+  CLIP_LOCKED_ERROR,
+  type ClipAction,
   type Dice,
   type GameState,
   type Player,
@@ -771,6 +774,74 @@ export class SessionStore {
     return { ok: true, state };
   }
 
+  /** Starts a soundboard entry as the shared clip, if it's a YouTube link
+   * (clip.ts). Returns the new state, or null for any other sound. */
+  startClip(sessionId: string, playerId: string, soundId: string): GameState | null {
+    const state = this.sessions.get(sessionId);
+    const sound = state?.soundboard.find((candidate) => candidate.id === soundId);
+    const youtube = sound ? parseYouTubeUrl(sound.url) : null;
+    if (!state || !sound || !youtube) {
+      return null;
+    }
+    state.clip = {
+      id: randomUUID(),
+      soundId,
+      videoId: youtube.videoId,
+      title: sound.name,
+      playedBy: state.players.find((player) => player.id === playerId)?.name ?? 'someone',
+      playing: true,
+      position: youtube.startSeconds,
+      anchorAt: Date.now(),
+    };
+    return state;
+  }
+
+  /** Pause/play/seek/stop the shared clip, or mark it ended. While the host
+   * has locked it, only the host may — except `ended`, which isn't a
+   * choice anyone made. A control for an older clip changes nothing. */
+  controlClip(
+    sessionId: string,
+    actorId: string,
+    clipId: string,
+    action: ClipAction,
+    position: number,
+    now = Date.now(),
+  ): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const clip = state.clip;
+    if (!clip || clip.id !== clipId) {
+      return { ok: false, error: 'That clip has already finished.' };
+    }
+    if (state.clipLocked && action !== 'ended' && state.hostId !== actorId) {
+      return { ok: false, error: CLIP_LOCKED_ERROR };
+    }
+    if (action === 'stop' || action === 'ended') {
+      state.clip = null;
+      return { ok: true, state };
+    }
+    clip.position = position;
+    clip.anchorAt = now;
+    if (action === 'play') clip.playing = true;
+    if (action === 'pause') clip.playing = false;
+    return { ok: true, state };
+  }
+
+  /** Host only: lock (or unlock) the shared clip's controls. */
+  setClipLocked(sessionId: string, actorId: string, locked: boolean): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    if (state.hostId !== actorId) {
+      return { ok: false, error: 'Only the host can lock the TV.' };
+    }
+    state.clipLocked = locked;
+    return { ok: true, state };
+  }
+
   hasSound(sessionId: string, soundId: string): boolean {
     return this.sessions.get(sessionId)?.soundboard.some((sound) => sound.id === soundId) ?? false;
   }
@@ -893,6 +964,8 @@ function createEmptySession(sessionId: string, hostId: string): GameState {
     lightOn: true,
     whiteboard: emptyWhiteboard(),
     log: [],
+    clip: null,
+    clipLocked: false,
   };
 }
 

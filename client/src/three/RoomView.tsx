@@ -50,7 +50,7 @@ import { TablePings } from './TablePings.js';
 import { Ambience } from './Ambience.js';
 import { FireAmbience } from '../fireAmbience.js';
 import { TV_PLAYER_HEIGHT, TV_PLAYER_WIDTH, TvScreen } from './TvScreen.js';
-import { YouTubeClip, YouTubeEmbed, type ActiveClip } from '../YouTubeClip.js';
+import { ClipControls, YouTubeClip, YouTubeEmbed, type ClipView } from '../YouTubeClip.js';
 import { createPortal } from 'react-dom';
 import { RoomLoading } from '../RoomLoading.js';
 import { canvasToTableLocal, tableLocalToCanvas } from './tableCoordinates.js';
@@ -159,11 +159,8 @@ export interface RoomViewProps {
   onRollDice: (diceIds: string[]) => void;
   /** Whether to play the fireplace's crackle (a client setting). */
   fireSound: boolean;
-  /** The YouTube clip playing for everyone (on the room's TV), if any. */
-  clip: ActiveClip | null;
-  clipVolume: number;
-  onClipClose: () => void;
-  onClipError: (message: string) => void;
+  /** The YouTube clip everyone is watching (on the room's TV), if any. */
+  clipView: ClipView | null;
   /** The session log: new chat lines and typed rolls pop up as speech
    * bubbles over whoever said them. */
   log: LogEntry[];
@@ -252,10 +249,7 @@ export function RoomView({
   onRollDice,
   log,
   fireSound,
-  clip,
-  clipVolume,
-  onClipClose,
-  onClipError,
+  clipView,
 }: RoomViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FirstPersonController | null>(null);
@@ -366,11 +360,11 @@ export function RoomView({
   // A new clip always starts on the TV.
   useEffect(() => {
     setClipOnCard(false);
-  }, [clip?.key]);
+  }, [clipView?.clip.id]);
 
   useEffect(() => {
-    tvRef.current?.setPlaying(clip !== null && !clipOnCard);
-  }, [clip, clipOnCard, tvElement]);
+    tvRef.current?.setPlaying(clipView !== null && !clipOnCard);
+  }, [clipView, clipOnCard, tvElement]);
 
   useEffect(() => {
     seatedViewRef.current = seatedView;
@@ -1330,50 +1324,36 @@ export function RoomView({
           <p className="room-loading-detail">Check your connection and reload the page.</p>
         </div>
       )}
-      {clip &&
+      {clipView &&
         tvElement &&
         !clipOnCard &&
         createPortal(
-          <YouTubeEmbed
-            clip={clip}
-            volume={clipVolume}
-            width={TV_PLAYER_WIDTH}
-            height={TV_PLAYER_HEIGHT}
-            onEnded={onClipClose}
-            onError={onClipError}
-          />,
+          <YouTubeEmbed view={clipView} width={TV_PLAYER_WIDTH} height={TV_PLAYER_HEIGHT} />,
           tvElement,
         )}
-      {clip && tvElement && !clipOnCard && (
+      {clipView && tvElement && !clipOnCard && (
         <div className="tv-now-playing" role="status">
           <span className="tv-now-icon" aria-hidden="true">
             📺
           </span>
           <span className="tv-now-text">
-            <span className="tv-now-title" title={clip.title}>
-              {clip.title}
+            <span className="tv-now-title" title={clipView.clip.title}>
+              {clipView.clip.title}
             </span>
-            <span className="tv-now-by">on the TV · played by {clip.playedBy}</span>
+            <span className="tv-now-by">
+              on the TV · played by {clipView.clip.playedBy}
+              {!clipView.clip.playing && ' · paused'}
+            </span>
           </span>
           <button type="button" onClick={() => setClipOnCard(true)}>
             Pop out
           </button>
-          <button
-            type="button"
-            className="youtube-clip-close"
-            aria-label="Stop the clip"
-            onClick={onClipClose}
-          >
-            ×
-          </button>
+          <ClipControls view={clipView} />
         </div>
       )}
-      {clip && (!tvElement || clipOnCard) && (
+      {clipView && (!tvElement || clipOnCard) && (
         <YouTubeClip
-          clip={clip}
-          volume={clipVolume}
-          onClose={onClipClose}
-          onError={onClipError}
+          view={clipView}
           onShowOnTv={tvElement ? () => setClipOnCard(false) : undefined}
         />
       )}

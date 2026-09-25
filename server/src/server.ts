@@ -15,6 +15,8 @@ import {
   MAX_PLAYERS_PER_SESSION,
   SESSION_ENDED_ERROR,
   TABLE_WAITING_FOR_HOST_ERROR,
+  type ClipControlResponse,
+  type ClipLockResponse,
   type SessionHostKey,
   SocketEvent,
   type PlayerUpdateResponse,
@@ -44,6 +46,8 @@ import {
 import { SessionStore } from './sessionStore.js';
 import {
   parseSessionJoinRequest,
+  parseClipControlRequest,
+  parseClipLockRequest,
   parseSessionLeaveRequest,
   parseSessionTransferHostRequest,
   parseSessionPeekRequest,
@@ -462,7 +466,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         if (isHost) {
           hostKeySentTo.set(request.sessionId, request.playerId);
         }
-        ack?.({ ok: true, state, ...(hostKey ? { hostKey } : {}) });
+        ack?.({ ok: true, state, serverNow: Date.now(), ...(hostKey ? { hostKey } : {}) });
         broadcastPatch(request.sessionId, state, PRESENCE_KEYS);
       },
     );
@@ -919,7 +923,66 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
 
         ack?.({ ok: true });
+        // A YouTube link becomes the shared clip (clip.ts) — state everyone
+        // follows — rather than a fire-and-forget "play this" broadcast.
+        const withClip = sessions.startClip(request.sessionId, request.playerId, request.soundId);
+        if (withClip) {
+          broadcastPatch(request.sessionId, withClip, ['clip']);
+          return;
+        }
         io.to(request.sessionId).emit(SocketEvent.SoundPlay, request);
+      },
+    );
+
+    // The shared clip: anyone may pause/play/seek/stop it unless the host
+    // has locked it (clip.ts).
+    socket.on(
+      SocketEvent.ClipControl,
+      (payload: unknown, ack?: (response: ClipControlResponse) => void) => {
+        const request = parseClipControlRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'A clip id, a known action and a position are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+        const result = sessions.controlClip(
+          request.sessionId,
+          request.playerId,
+          request.clipId,
+          request.action,
+          request.position,
+        );
+        if (!result.ok) {
+          ack?.(result);
+          return;
+        }
+        ack?.({ ok: true });
+        broadcastPatch(request.sessionId, result.state, ['clip']);
+      },
+    );
+
+    socket.on(
+      SocketEvent.ClipLock,
+      (payload: unknown, ack?: (response: ClipLockResponse) => void) => {
+        const request = parseClipLockRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId and locked are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+        const result = sessions.setClipLocked(request.sessionId, request.playerId, request.locked);
+        if (!result.ok) {
+          ack?.(result);
+          return;
+        }
+        ack?.({ ok: true });
+        broadcastPatch(request.sessionId, result.state, ['clipLocked']);
       },
     );
 

@@ -7,6 +7,7 @@
  * left undefined; these are placeholder shapes, expected to grow when the
  * milestone that actually uses them lands (see docs/roadmap.md).
  */
+import type { SharedClip } from './clip.js';
 import type { PlayerColorId } from './player.js';
 import type { WhiteboardLine } from './whiteboard.js';
 import type { DieKind } from './dice.js';
@@ -172,6 +173,11 @@ export interface GameState {
    * "light") — a session-wide flag, not per-player: whoever flips it changes
    * the room for everyone, the same way a real light switch would. */
   lightOn: boolean;
+
+  /** The YouTube clip everyone is watching, if any (clip.ts). */
+  clip: SharedClip | null;
+  /** Host-set: while true, only the host can control the clip. */
+  clipLocked: boolean;
 
   /** The north wall's whiteboard — `WHITEBOARD_LINE_COUNT` lines (whiteboard.ts). */
   whiteboard: WhiteboardLine[];

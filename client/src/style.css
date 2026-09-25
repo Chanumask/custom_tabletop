@@ -2324,3 +2324,55 @@ button.primary {
 .saved-table button {
   align-self: flex-start;
 }
+
+/* The shared clip's controls (YouTubeClip.tsx ClipControls): play/pause for
+ * everyone, the host's lock, stop — in the TV banner and the corner card. */
+.clip-control,
+.tv-now-playing > button.clip-control {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid rgba(243, 230, 211, 0.22);
+  border-radius: 7px;
+  background: rgba(243, 230, 211, 0.08);
+  color: inherit;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.clip-control:hover {
+  border-color: rgba(243, 230, 211, 0.4);
+  background: rgba(243, 230, 211, 0.16);
+}
+
+.clip-control.active,
+.tv-now-playing > button.clip-control.active {
+  border-color: rgba(240, 196, 106, 0.6);
+  background: rgba(240, 196, 106, 0.18);
+  color: #f0c46a;
+}
+
+.clip-control svg,
+.clip-locked svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.clip-locked {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  color: rgba(243, 230, 211, 0.55);
+}

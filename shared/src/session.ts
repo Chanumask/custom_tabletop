@@ -42,6 +42,9 @@ export type SessionJoinResponse =
       /** Only when the joiner is the host: the table's host key, to keep
        * (it reopens the table later, and makes the host link). */
       hostKey?: string;
+      /** The server's clock (epoch ms) when it answered — the client's
+       * offset to it keeps a shared clip in step (clip.ts). */
+      serverNow: number;
     }
   | { ok: false; error: string };
 

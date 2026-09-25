@@ -4,6 +4,11 @@ import type { Socket } from 'socket.io-client';
 import {
   SESSION_ENDED_ERROR,
   SocketEvent,
+  type ClipAction,
+  type ClipControlRequest,
+  type ClipControlResponse,
+  type ClipLockRequest,
+  type ClipLockResponse,
   type SessionHostKey,
   parseYouTubeUrl,
   type GameState,
@@ -19,7 +24,7 @@ import {
   type SessionPatch,
 } from '@custom-tabletop/shared';
 import { Toasts } from './Toasts.js';
-import type { ActiveClip } from './YouTubeClip.js';
+import type { ClipView } from './YouTubeClip.js';
 import { ChatPanel } from './ChatPanel.js';
 import { useToasts } from './useToasts.js';
 import { createSocket } from './socket.js';
@@ -126,10 +131,12 @@ export function App() {
   const [hostKey, setHostKey] = useState<string | null>(null);
   const { settings } = useSettings();
   const { toasts, toast, dismiss } = useToasts();
-  // The soundboard's visible YouTube player (YouTubeClip.tsx), if a clip is
-  // currently playing.
-  const [clip, setClip] = useState<ActiveClip | null>(null);
-  const clipCounter = useRef(0);
+  // serverClock - localClock (ms), from the join ack: the shared clip's
+  // anchor is on the server's clock (clip.ts).
+  const [serverOffset, setServerOffset] = useState(0);
+  // A clip this browser couldn't play (e.g. blocked here): hidden locally,
+  // without stopping it for everyone else.
+  const [failedClipId, setFailedClipId] = useState<string | null>(null);
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -173,6 +180,7 @@ export function App() {
               saveHostKey(window.localStorage, sessionId, response.hostKey);
             }
             setHostKey(response.hostKey ?? null);
+            setServerOffset(response.serverNow - Date.now());
             const intent = { playerName, sessionId };
             lastJoinRef.current = intent;
             saveLastJoin(window.sessionStorage, intent);
@@ -255,11 +263,8 @@ export function App() {
       if (!entry) {
         return;
       }
-      const youtube = parseYouTubeUrl(entry.url);
-      if (youtube) {
-        const playedBy =
-          state?.players.find((player) => player.id === request.playerId)?.name ?? 'someone';
-        setClip({ key: ++clipCounter.current, ...youtube, title: entry.name, playedBy });
+      // YouTube links arrive as the shared clip in state instead (clip.ts).
+      if (parseYouTubeUrl(entry.url)) {
         return;
       }
       playSound(entry).catch(() => toast(`Couldn’t play “${entry.name}”.`, 'error'));
@@ -422,6 +427,59 @@ export function App() {
       'Failed to hand over the host role',
     );
 
+  // The shared YouTube clip: anyone's pause/play/seek/stop goes to the
+  // server and comes back to everyone as state (clip.ts).
+  const handleClipControl = (action: ClipAction, position: number) => {
+    const socket = socketRef.current;
+    const state = gameStateRef.current;
+    if (!socket || !state?.clip) return;
+    socket.emit(
+      SocketEvent.ClipControl,
+      {
+        sessionId: state.sessionId,
+        playerId,
+        clipId: state.clip.id,
+        action,
+        position,
+      } satisfies ClipControlRequest,
+      (response: ClipControlResponse) => {
+        if (!response.ok && action !== 'ended') toast(response.error, 'error');
+      },
+    );
+  };
+
+  const handleClipLock = (locked: boolean) => {
+    const socket = socketRef.current;
+    const state = gameStateRef.current;
+    if (!socket || !state) return;
+    socket.emit(
+      SocketEvent.ClipLock,
+      { sessionId: state.sessionId, playerId, locked } satisfies ClipLockRequest,
+      (response: ClipLockResponse) => {
+        if (!response.ok) toast(response.error, 'error');
+      },
+    );
+  };
+
+  const sharedClip = gameState?.clip ?? null;
+  const clipView: ClipView | null =
+    gameState && sharedClip && sharedClip.id !== failedClipId
+      ? {
+          clip: sharedClip,
+          serverOffset,
+          volume: settings.masterVolume,
+          canControl: !gameState.clipLocked || gameState.hostId === playerId,
+          isHost: gameState.hostId === playerId,
+          locked: gameState.clipLocked,
+          onControl: handleClipControl,
+          onLock: handleClipLock,
+          onError: (message) => {
+            toast(message, 'error');
+            setFailedClipId(sharedClip.id);
+          },
+        }
+      : null;
+
   const handleSendChat = (text: string) =>
     new Promise<boolean>((resolve) => {
       const socket = socketRef.current;
@@ -481,10 +539,7 @@ export function App() {
             onRollDice={handleRollDice}
             log={gameState.log}
             fireSound={settings.fireSound}
-            clip={clip}
-            clipVolume={settings.masterVolume}
-            onClipClose={() => setClip(null)}
-            onClipError={(message) => toast(message, 'error')}
+            clipView={clipView}
           />
           <SessionView
             state={gameState}
