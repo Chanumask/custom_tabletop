@@ -9,7 +9,6 @@ APP_DIR="$2"
 
 rm -rf "$APP_DIR/src"
 mv "$APP_DIR/src.new" "$APP_DIR/src"
-echo "$COMMIT" > "$APP_DIR/src/REVISION"
 mkdir -p "$APP_DIR/uploads" "$APP_DIR/tables"
 # The container's own uid (compose `user:`) owns what it writes.
 chown -R 10001:10001 "$APP_DIR/uploads" "$APP_DIR/tables"
@@ -23,6 +22,9 @@ echo "Waiting for the container to report healthy..."
 for _ in $(seq 1 30); do
   status="$(docker inspect -f '{{.State.Health.Status}}' tabletop-tabletop-1 2>/dev/null || true)"
   if [ "$status" = "healthy" ]; then
+    # Recorded only now, so REVISION always names what's actually running
+    # (a failed build leaves the previous container, and REVISION, as is).
+    echo "$COMMIT" > "$APP_DIR/REVISION"
     echo "Healthy: running ${COMMIT:0:7}"
     # Only this project's old, now-untagged images.
     docker image prune --force --filter "label=com.docker.compose.project=tabletop" > /dev/null || true

@@ -21,7 +21,8 @@ FROM node:24-alpine
 ENV NODE_ENV=production \
     PORT=3001 \
     CLIENT_DIST=/app/client/dist \
-    UPLOADS_DIR=/data/uploads \n    TABLES_DIR=/data/tables
+    UPLOADS_DIR=/data/uploads \
+    TABLES_DIR=/data/tables
 WORKDIR /app
 
 COPY package.json package-lock.json ./

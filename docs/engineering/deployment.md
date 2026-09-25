@@ -16,7 +16,8 @@ The game is served from **https://tabletop.murri.me** on the owner's VPS (`ssh r
   ```
   /srv/apps/tabletop/
     docker-compose.yml   ← copied from deploy/docker-compose.yml on every deploy
-    src/                 ← the deployed commit's source (REVISION holds the hash)
+    REVISION             ← the commit that's running (written once it's healthy)
+    src/                 ← the source of the last deploy attempt
     uploads/             ← uploaded maps and sounds (volume, owned by uid 10001)
     tables/              ← saved tables, one JSON file each (volume, owned by uid 10001)
   ```
@@ -64,7 +65,7 @@ Run these on the VPS, in `/srv/apps/tabletop`:
 
 | Task | Command |
 |---|---|
-| Which commit is running | `cat src/REVISION` |
+| Which commit is running | `cat REVISION` |
 | Is it healthy | `docker compose -p tabletop ps` |
 | Logs | `docker compose -p tabletop logs -f` |
 | Stop | `docker compose -p tabletop down` |
