@@ -576,3 +576,24 @@ describe('SessionStore', () => {
     });
   });
 });
+
+describe('chairs that come and go with the players', () => {
+  it('a player on a chair that goes away moves to a free one when someone leaves', () => {
+    const store = new SessionStore();
+    for (const id of ['p1', 'p2', 'p3', 'p4', 'p5']) store.join('abc', id, id);
+    // Five players, five chairs: p5 sits on the fifth (seat 4).
+    expect(store.setSeated('abc', 'p5', true, 4).ok).toBe(true);
+    expect(store.setSeated('abc', 'p1', true, 0).ok).toBe(true);
+    const state = store.leave('abc', 'p2')!;
+    const p5 = state.players.find((player) => player.id === 'p5')!;
+    expect(p5.seated).toBe(true);
+    expect(p5.seatIndex).toBe(1); // seat 0 is p1's
+  });
+
+  it('refuses a chair the table doesn\u2019t have', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'p1');
+    expect(store.setSeated('abc', 'p1', true, 3).ok).toBe(true);
+    expect(store.setSeated('abc', 'p1', true, 4)).toMatchObject({ ok: false });
+  });
+});

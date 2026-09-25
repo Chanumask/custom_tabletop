@@ -29,10 +29,12 @@ import {
   EMOTES,
   WHITEBOARD_LINE_COUNT,
   SOUNDS_OFF_ERROR,
+  chairCount,
 } from '@custom-tabletop/shared';
 import { loadRoom } from './RoomLoader.js';
 import { FirstPersonController, type SeatedView } from './FirstPersonController.js';
-import { pickChair } from './avatarMotion.js';
+import { pickChair, type Seat } from './avatarMotion.js';
+import type { TableChairs } from './tableChairs.js';
 import {
   addRoomLighting,
   configureRoomToneMapping,
@@ -363,6 +365,8 @@ export function RoomView({
   onMoveDieRef.current = onMoveDie;
   const roomLightsRef = useRef<RoomLights | null>(null);
   const lampRef = useRef<RoomLamp | null>(null);
+  const tableChairsRef = useRef<TableChairs | null>(null);
+  const seatsRef = useRef<Seat[]>([]);
   const lightOnRef = useRef<boolean>(lightOn);
   const tableMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
   const soundboardRef = useRef<SoundState[]>(soundboard);
@@ -445,6 +449,13 @@ export function RoomView({
   // from player:move broadcasts instead, handled inside the effect below.
   useEffect(() => {
     playersRef.current = players;
+    // The chairs first (one per player, four at least), so avatars and
+    // this player's own seat land on where the chairs now are.
+    tableChairsRef.current?.apply(chairCount(players.length));
+    const self = players.find((candidate) => candidate.id === playerId);
+    const seat =
+      self?.seated && self.seatIndex !== null ? (seatsRef.current[self.seatIndex] ?? null) : null;
+    if (seat) controllerRef.current?.moveChair(seat);
     avatarsRef.current?.sync(players, playerId);
   }, [players, playerId]);
 
@@ -921,6 +932,9 @@ export function RoomView({
           },
         ];
 
+        tableChairsRef.current = room.chairs;
+        seatsRef.current = room.seats;
+        room.chairs?.apply(chairCount(playersRef.current.length));
         const avatars = new PlayerAvatars(scene, characterLibrary, room.seats);
         avatars.sync(playersRef.current, playerId);
         avatarsRef.current = avatars;

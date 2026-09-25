@@ -41,8 +41,9 @@ The client reads gameplay geometry **out of the exported model by object name** 
 | `Whiteboard_Surface` | The whiteboard's writable quad (UV 0..1 across it, facing into the room). |
 | `Chandelier` | Hidden while a player is seated (it hangs where the top-down camera sits). |
 | `Floor` / `Ceiling` | Walkable bounds / wall height. |
-| `TV_Screen` | The console TV's screen quad — shared YouTube clips play on it (TvScreen.ts). |
-| `Window_View` | The window pane — the client paints a starry night sky on it. |
+| `TV_Screen` | The TV's screen quad (4:3, facing the room) — shared YouTube clips play on it (TvScreen.ts). |
+| `Window_View*` | The window panes — each looks out on the world outside (outside/OutsideWorld.ts). |
+| `Chair_{N,E,S,W}{0,1}` + `COL_Chair_*` | The eight table chairs, two spots per side, each with its collider. The client sets out as many as there are players (four at least), moving a side's lone chair to the middle of the side and hiding the rest (tableChairs.ts). |
 | `Fireplace_Fire` / `Fireplace_Embers` | Where the animated fire, sparks and fire light go; the ember bed's glow flickers with it. |
 | `Flame_*` | Candle and lamp flames — made unlit, flickering and haloed; nearby flames share a light. |
 | `Glow_*` | Other soft light sources to halo (the lanterns). |

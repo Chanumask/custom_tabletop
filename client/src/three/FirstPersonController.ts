@@ -183,6 +183,17 @@ export class FirstPersonController {
     this.applySeatedPose();
   }
 
+  /** The chair moved while sitting on it (the table's chairs rearrange as
+   * players come and go — tableChairs.ts): sit there instead, in the same
+   * view. A no-op while standing or when nothing changed. */
+  moveChair(chair: ChairPose): void {
+    if (!this.standingState || !this.chair) return;
+    const { x, z, yaw } = this.chair;
+    if (x === chair.x && z === chair.z && yaw === chair.yaw) return;
+    this.chair = chair;
+    if (this.view === 'chair') this.applySeatedPose();
+  }
+
   /** Switches between the chair and the top-down table view (seated only;
    * the chair view needs a chair). The table view releases mouse-look —
    * it's for drawing, rolling and pinging with the cursor. */
