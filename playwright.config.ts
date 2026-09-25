@@ -14,25 +14,29 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',
     trace: 'retain-on-failure',
     actionTimeout: 15_000,
     viewport: { width: 1280, height: 800 },
   },
-  webServer: [
-    {
-      command: 'npm run dev -w server',
-      url: 'http://localhost:3001/health',
-      reuseExistingServer: true,
-      timeout: 60_000,
-    },
-    {
-      command: 'npm run dev -w client',
-      url: 'http://localhost:5173',
-      reuseExistingServer: true,
-      timeout: 60_000,
-    },
-  ],
+  // E2E_BASE_URL points the tests at an already-running app (a production
+  // build, or the deployed site) instead of starting the dev servers.
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : [
+        {
+          command: 'npm run dev -w server',
+          url: 'http://localhost:3001/health',
+          reuseExistingServer: true,
+          timeout: 60_000,
+        },
+        {
+          command: 'npm run dev -w client',
+          url: 'http://localhost:5173',
+          reuseExistingServer: true,
+          timeout: 60_000,
+        },
+      ],
   projects: [
     {
       name: 'chromium',

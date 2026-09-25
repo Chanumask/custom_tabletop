@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { uploadNameFromUrl } from './uploadStorage.js';
 import {
   BUILTIN_SOUND_PRESETS,
   appendLogEntry,
@@ -257,6 +258,21 @@ export class SessionStore {
     state.hostId = targetPlayerId;
     addSystemEntry(state, `${target.name} is now the host`);
     return { ok: true, state };
+  }
+
+  /** File names of every uploaded map or sound a live session still
+   * refers to — the uploads pruning must never delete (uploadStorage.ts). */
+  referencedUploads(): Set<string> {
+    const names = new Set<string>();
+    const add = (url: string) => {
+      const name = uploadNameFromUrl(url);
+      if (name) names.add(name);
+    };
+    for (const state of this.sessions.values()) {
+      state.scenes.forEach((scene) => add(scene.backgroundImage));
+      state.soundboard.forEach((sound) => add(sound.url));
+    }
+    return names;
   }
 
   get(sessionId: string): GameState | undefined {
