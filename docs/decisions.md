@@ -6,6 +6,45 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-25 — The cozy room: fireplace, console TV with the shared YouTube clip on it, lounge nook, warm pooled light, glows without bloom
+
+**Decided** (user: "make sure that the room feels super cozy and is way more polished and beautiful … go all in on that", and "add the youtube link watch to a tv that is modeled in the room" — "match the room").
+
+1. **The room (Blender via MCP):**
+   - **West wall:** a stone fireplace as the focal point (chimney breast to the ceiling, slate hearth, walnut mantel with a candelabra, a three-arm candleholder and a mantel clock), a kite shield above it, and a rocking chair turned toward it. The reading lamp (the light switch) moved beside the armchair to make room, together with its collider.
+   - **North wall, right of the whiteboard:** a lounge nook. A leather sofa with pillows, an end table with tea for two, a big plant, and a curtained window onto a painted night sky.
+   - **South wall:** a scripted 1960s walnut console TV (tapered legs, cream bezel, speaker grille, brass knobs, rabbit ears) with a lantern on top, flanked by candle sconces.
+   - **Surfaces:** oak planks on the ceiling between the beams, walls re-plastered in a warm honey-ochre, a plaid wool rug by the fire, and a second plant by the door.
+   - **Fixed:** the side table's plant, which had sunk 0.53 m below its own pot.
+   - All assets are CC0 (Poly Haven), listed in blender-workflow.md.
+2. **Glows are halos, not bloom.** An `EffectComposer` bloom pass tone-maps the whole frame, including the table's map, which must stay in its true colors (an unlit, non-tone-mapped surface since the map-crop work). So every light source gets additive halo sprites or points instead: flames, lantern glass, the chandelier, fairy lights, sparks. It's cheap, controllable, and leaves the map untouched.
+3. **`Ambience.ts` (client), driven from the render loop:**
+   - A fire of seven billboard flame tongues on a canvas-drawn texture, flickering in height and opacity, with a haze halo, rising sparks, a flickering orange point light in front of the firebox, and the ember bed's emissive glow pulsing with it.
+   - Candle and lamp flames made unlit, flickering and haloed. Nearby flames share one light, because every point light costs every lit pixel (14 lights before merging, 11 after).
+   - Fairy lights strung in sagging swags along each `Beam_*`: instanced bulbs plus twinkling additive points.
+   - A night sky painted on the window: stars that twinkle, a moon with a halo, a hilly treeline.
+   - Dust drifting through the room.
+   - A soft CSS vignette.
+   - `prefers-reduced-motion` stills the flicker, twinkle and drift.
+   - With the room light switched off, the fire and candles stay lit and carry a little further.
+4. **Light pools instead of flat light.** The hemisphere drops 0.75 → 0.42 and the corner fills 9 → 5, now at 1.95 m instead of 2.4 m, where they burned patches into the new plank ceiling. The chandelier's single point light, which also left a hotspot on the ceiling, is now a downward spot pooling on the table plus a softer bounce light. The parquet's roughness is raised at load (sharp plastic highlights).
+5. **The TV really shows the clip.** YouTube's player is an iframe, which WebGL can't draw. `TvScreen` places it with a `CSS3DRenderer` layer exactly on the `TV_Screen` rectangle, underneath the canvas (`z-index: -1` inside an `isolation: isolate` room view). While a clip plays, the screen mesh renders with `NoBlending` and alpha 0, punching a hole in the (now `alpha: true`) canvas.
+   - Anything in front of the TV still draws over it, so occlusion is correct.
+   - The player is hidden (but kept playing, for the sound) when the screen faces away or in the top-down table view, where CSS would mirror it or misalign it.
+   - A cool light flickers from the screen while it plays.
+   - A "now playing on the TV" card (title, who played it, Pop out, ×) replaces the corner player. Pop out moves the clip to the old card, which offers "On the TV" back.
+   - It's still YouTube's own visible player, in keeping with their policies.
+6. **Fireplace sound (`fireAmbience.ts`):** synthesized, looped low-passed noise for the roar plus random band-passed crackles, louder the closer you are (silent beyond 8 m). It starts on the first click or key press (browser audio policy), follows the master volume, and has a Settings toggle ("Fireplace sound", on by default).
+7. **Smaller download despite far more room:** `room.glb` went from 13.4 MB to 9.3 MB by exporting WebP textures and meshopt geometry and decimating the heaviest props. The treasure chest had 95k triangles; the room totals ~230k. `room.blend` stays ~22 MB, all packed images repacked as JPEG.
+
+**Verified:**
+- `RoomLoader.test.ts` (+2: the new anchors, and none when absent), `fireAmbience.test.ts` (loudness falloff), the settings round-trip with `fireSound`.
+- Live (Chrome), checked by eye from several angles: the fire flickering in the firebox and lighting the hearth, candles glowing on the mantel and sconces, fairy lights along both beams, stars and moon in the window, the lounge nook, the TV.
+- A YouTube link (Big Buck Bunny) played on the TV screen, aligned inside the bezel and letterboxed 4:3, with the now-playing card showing.
+- 125 draw calls, ~116k triangles in view.
+
+---
+
 ## 2026-09-25 — Seated: a real chair view (free look) plus the table view; stable chairs; the interact key no longer types into dialogs
 
 **Decided** (user: "when sitting there should absolutely be the ability to view around and see the other players … you should be able to choose"; and "on entering the whiteboard there is automatically written e").
@@ -470,7 +509,7 @@ Live (Chrome, 3 tabs plus a 4th socket-client player):
 
 ## Table of Contents
 
-**2026-09-25** — Seated chair view with free look + V table view, server-kept `seatIndex` chairs (explicit sit/stand), interact key consumed so it never types into dialogs; Pings (right-click, relayed not stored, 300 ms guard) and a host-set map grid via `scene:update`; Table chat and session log: `log:entry` deltas vs. full-state, typed `/roll` notation rolled server-side, speech bubbles, client-clock feed fading, per-color spawn points, bottom overlay stack; Real RPG dice: d4–d20 polyhedra landing on the server result, `rollCount` nonce fixes same-number re-rolls, pool rolls, in-world rolling, table-calibrated material; Join screen redesign: character preview on a pedestal, pure join-status logic, invite links paste into the code field, rejoin card, no new deps; Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
+**2026-09-25** — The cozy room: fireplace, console TV with the YouTube clip on it (CSS3D under a hole in the canvas), lounge nook, glows as halos not bloom, pooled light, fire sound, WebP+meshopt room (9.3 MB); Seated chair view with free look + V table view, server-kept `seatIndex` chairs (explicit sit/stand), interact key consumed so it never types into dialogs; Pings (right-click, relayed not stored, 300 ms guard) and a host-set map grid via `scene:update`; Table chat and session log: `log:entry` deltas vs. full-state, typed `/roll` notation rolled server-side, speech bubbles, client-clock feed fading, per-color spawn points, bottom overlay stack; Real RPG dice: d4–d20 polyhedra landing on the server result, `rollCount` nonce fixes same-number re-rolls, pool rolls, in-world rolling, table-calibrated material; Join screen redesign: character preview on a pedestal, pure join-status logic, invite links paste into the code field, rejoin card, no new deps; Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
 
 **2026-09-24** — Player characters: six Quaternius models built by a glTF-Transform script, interpolation, chair sitting, emotes, name tags, Blender MCP read_homefile crash gotcha, frame-delta cap; map crop/preview dialog, uploads named by validated type; room rework: square table, furnished Blender room, geometry read from the model, true-color table surface; soundboard links validated, YouTube as a visible clip, board management; player colors, pre-join peek, live profile edits, invite links, toasts; identity binding, reconnect grace period, host handover, resume-only rejoin; wall soundboard rework (4x4 aim-and-E grid, `sound:play` opened to everyone); session menu rework (tabs, client-only settings, rebindable interact key, no YouTube downloader); Milestone 9: host authority hardening, an audit pass (not a new feature), the roadmap's stale "host-gated" list corrected, two real socket-level coverage gaps closed (scene:create, scene:change), player:unmute given its first test coverage, cross-browser pass logged as unverified (Chrome-only tooling); Milestone 8: room interactables, one generic object:interact event, proximity+E over raycast/click, table sit-down mode as a pure camera takeover, seated status visible via avatar squash, a soundboard console reusing sound:play, a real prompt-text bug caught live, a square full-screen seated table view, a seated drawing toolbar (per-stroke color/width, an eraser reusing drawing:delete), a latent drawing:delete remote-redraw bug caught and fixed, a React-controlled-input automation-testing gotcha, a real user-reported eraser bug (local drawing state never updated in real time) caught and fixed; File uploads (M5/M7 extension): REST upload + socket-register two-step, soundboard becomes real shared state, cover-fit stopgap for map images, three related asks captured as roadmap entries instead of implemented; Milestone 7: soundboard & mute, synthesized tones, self-mute plus host moderation, sender included in the sound broadcast; Milestone 6: dice, server-authoritative roll result, motion decoupled from result label, `Dice.sceneId` dropped, client-picked spawn position; Milestone 5: tabletop map & drawing, draw-on-the-table interaction, runtime UV remap, single-scene scope cut, `Point2D` spec deviation
 

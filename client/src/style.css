@@ -23,6 +23,9 @@ body {
 .room-view {
   position: absolute;
   inset: 0;
+  /* Its own stacking context, so the TV's CSS3D layer (z-index -1) sits
+   * just under the WebGL canvas without dropping behind the page. */
+  isolation: isolate;
   /* Centers the canvas both when it fills the container (walking around)
    * and when it's shrunk to a square (seated at the table, Milestone 8's
    * applyViewportSize) — harmless in the fill case since the canvas then
@@ -630,10 +633,80 @@ button.primary {
   cursor: pointer;
 }
 
-.youtube-clip-player {
-  width: 356px;
-  height: 200px;
+.youtube-embed {
   background: #000;
+}
+
+.youtube-clip-tv {
+  flex: none;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid rgba(243, 230, 211, 0.25);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+/* The console TV's player layer (TvScreen.ts): under the canvas, which
+ * lets it show through the screen. Never takes input. */
+.tv-layer {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.tv-screen {
+  background: #000;
+}
+
+/* "Now playing on the TV" — top-left, where the clip card would be. */
+.tv-now-playing {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  max-width: min(26rem, calc(100vw - 20rem));
+  padding: 0.45rem 0.55rem 0.45rem 0.75rem;
+  border-radius: 10px;
+  background: rgba(20, 14, 10, 0.88);
+  color: #f3e6d3;
+  font-size: 0.8rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.tv-now-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tv-now-title {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tv-now-by {
+  color: rgba(243, 230, 211, 0.6);
+  font-size: 0.72rem;
+}
+
+.tv-now-playing > button:not(.youtube-clip-close) {
+  flex: none;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid rgba(243, 230, 211, 0.25);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
 /* Rejected-action notices (useToasts.ts) — bottom-center, click to dismiss. */
@@ -1764,4 +1837,18 @@ button.primary {
   border-color: rgba(240, 196, 106, 0.8);
   background: rgba(240, 196, 106, 0.18);
   font-weight: 700;
+}
+
+/* A soft vignette over the room — the edges fall off into shadow the way
+ * a warm, lamplit room does. Never blocks input. */
+.room-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(
+    ellipse 75% 70% at 50% 52%,
+    rgba(0, 0, 0, 0) 55%,
+    rgba(12, 6, 2, 0.38) 100%
+  );
+  pointer-events: none;
 }

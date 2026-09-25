@@ -1,12 +1,9 @@
 import * as THREE from 'three';
 
-/** A spot along the room's west wall, clear of the table — exact placement
- * is eyeballed against the real Blender room in a browser check rather than
- * computed, the same "placeholder position, verify visually" approach
- * already used for lighting tuning (RoomLighting.ts). The room's back-left
- * corner is where the bookshelf already stands, so this sits further out
- * along the same wall instead. */
-export const LAMP_POSITION = { x: -4.3, z: -0.5 };
+/** The reading lamp beside the armchair (south-west corner) — it moved
+ * here when the fireplace took the middle of the west wall. Its collider
+ * (`COL_Lamp`) lives in the room model at the same spot. */
+export const LAMP_POSITION = { x: -3.3, z: 3.55 };
 export const LAMP_RANGE = 1.6;
 
 const LAMP_ON_COLOR = 0xffe9b0;

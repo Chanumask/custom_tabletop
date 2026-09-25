@@ -14,11 +14,14 @@ export interface ClientSettings {
   /** A `KeyboardEvent.code` value (e.g. "KeyE") — which key triggers a
    * room interactable (client/src/three/RoomView.tsx). */
   interactKey: string;
+  /** The fireplace's crackle (fireAmbience.ts) — on by default. */
+  fireSound: boolean;
 }
 
 export const DEFAULT_SETTINGS: ClientSettings = {
   masterVolume: 1,
   interactKey: 'KeyE',
+  fireSound: true,
 };
 
 const STORAGE_KEY = 'customTabletop.settings';

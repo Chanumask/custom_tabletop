@@ -650,7 +650,14 @@ function SettingsTab() {
       </div>
       {rebindError && <p role="alert">{rebindError}</p>}
 
-      <p className="tab-empty-note">More settings will land here as they're added.</p>
+      <label className="settings-row settings-check">
+        <span>Fireplace sound</span>
+        <input
+          type="checkbox"
+          checked={settings.fireSound}
+          onChange={(event) => updateSettings({ fireSound: event.target.checked })}
+        />
+      </label>
     </div>
   );
 }

@@ -38,18 +38,29 @@ export function addRoomLighting(scene: THREE.Scene, layout: RoomLayout): RoomLig
     entries.push({ light, baseIntensity: light.intensity });
   };
 
-  add(new THREE.HemisphereLight(0xfff1dc, 0x5a4330, 0.75));
+  // Kept low on purpose: the room should pool light around its sources
+  // (chandelier, fire, candles, lamps — Ambience.ts), not glow evenly.
+  add(new THREE.HemisphereLight(0xffe6c8, 0x4a3322, 0.42));
 
-  const key = new THREE.PointLight(0xffc27a, 55, 12, 2);
+  // The chandelier: a spot pooling warm light on the table (a point light
+  // this close under the plank ceiling burned a hotspot into it), plus a
+  // softer point light for the rest of the room.
+  const key = new THREE.SpotLight(0xffbb70, 70, 10, 1.05, 0.75, 2);
   key.position.set(table.center.x, CHANDELIER_BULB_HEIGHT, table.center.z);
+  key.target.position.set(table.center.x, 0, table.center.z);
+  scene.add(key.target);
   add(key);
+  const bounce = new THREE.PointLight(0xffc488, 16, 11, 2);
+  bounce.position.set(table.center.x, CHANDELIER_BULB_HEIGHT - 0.25, table.center.z);
+  add(bounce);
 
   const insetX = 1.6;
   const insetZ = 1.4;
   for (const x of [bounds.minX + insetX, bounds.maxX - insetX]) {
     for (const z of [bounds.minZ + insetZ, bounds.maxZ - insetZ]) {
-      const fill = new THREE.PointLight(0xffe2bd, 9, 9, 2);
-      fill.position.set(x, 2.4, z);
+      const fill = new THREE.PointLight(0xffd6a8, 5, 8, 2);
+      // Well below the plank ceiling, so it doesn't burn a bright patch into it.
+      fill.position.set(x, 1.95, z);
       add(fill);
     }
   }
@@ -73,4 +84,18 @@ export function setRoomLightsOn(lights: RoomLights, on: boolean): void {
 export function configureRoomToneMapping(renderer: THREE.WebGLRenderer): void {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
+}
+
+/** Material touch-ups the glTF can't carry: the parquet's roughness map is
+ * too glossy under point lights (sharp plastic highlights). */
+export function tuneRoomMaterials(root: THREE.Object3D): void {
+  root.traverse((node) => {
+    if (!(node instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(node.material) ? node.material : [node.material];
+    for (const material of materials) {
+      if (material instanceof THREE.MeshStandardMaterial && /parquet/i.test(material.name)) {
+        material.roughness = 1.45;
+      }
+    }
+  });
 }

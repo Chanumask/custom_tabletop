@@ -16,8 +16,12 @@ describe('loadSettings', () => {
 
   it('round-trips whatever was saved', () => {
     const storage = fakeStorage();
-    saveSettings(storage, { masterVolume: 0.4, interactKey: 'KeyF' });
-    expect(loadSettings(storage)).toEqual({ masterVolume: 0.4, interactKey: 'KeyF' });
+    saveSettings(storage, { masterVolume: 0.4, interactKey: 'KeyF', fireSound: false });
+    expect(loadSettings(storage)).toEqual({
+      masterVolume: 0.4,
+      interactKey: 'KeyF',
+      fireSound: false,
+    });
   });
 
   it('fills in defaults for fields missing from an older/partial saved shape', () => {
