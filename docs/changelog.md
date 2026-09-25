@@ -31,7 +31,9 @@ Dated log of what happened each session. Newest first.
 - **Night sounds:** the audio graph checked in Chromium and Firefox (chirps, owl, wolf, context running).
 - **A side finding:** black screenshots of WebKit's top-down view turned out to be a headless-screenshot quirk. The view renders (pixels read back from GL).
 
-Not pushed or deployed yet.
+### Deployed
+
+Pushed (`a9b6f68..78b73d1`) and deployed at the owner's go-ahead. The container reported healthy on `78b73d1`, the live bundle carries the maps, the night sounds and the drawing fix, and the smoke tests passed 3/3 in Chromium against https://tabletop.murri.me.
 
 ---
 
