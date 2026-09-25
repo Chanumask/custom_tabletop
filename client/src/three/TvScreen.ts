@@ -5,6 +5,16 @@ import { CSS3DObject, CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer
 export const TV_PLAYER_WIDTH = 800;
 export const TV_PLAYER_HEIGHT = 600;
 
+/** The CSS layer works in millimetres rather than the room's metres (its
+ * scene and camera scaled up by this): in metres the 800px player is
+ * scaled by ~0.001, which some engines mishandle (WebKit measured the
+ * screen at 1x1px). Same picture, well-conditioned numbers. */
+const CSS_SCALE = 1000;
+
+/** Frames in a row the screen may land in the wrong place before the TV
+ * gives up on this browser (see `verify`). */
+const MAX_MISPLACED_FRAMES = 10;
+
 /**
  * The room's console TV as a real screen: YouTube's own player (an iframe,
  * which can't be drawn into WebGL) is placed exactly over the `TV_Screen`
@@ -20,6 +30,7 @@ export class TvScreen {
   readonly element: HTMLDivElement;
   private readonly css = new CSS3DRenderer();
   private readonly cssScene = new THREE.Scene();
+  private readonly cssCamera = new THREE.PerspectiveCamera();
   private readonly object: CSS3DObject;
   private readonly offMaterial: THREE.Material | THREE.Material[];
   private readonly holeMaterial = new THREE.MeshBasicMaterial({
@@ -31,11 +42,18 @@ export class TvScreen {
   private readonly normal: THREE.Vector3;
   private readonly center: THREE.Vector3;
   private playing = false;
+  /** Whether this browser draws the CSS 3D layer where it belongs: null
+   * until checked on the first frames the screen is in view. */
+  private supported: boolean | null = null;
+  private misplacedFrames = 0;
 
+  /** `onUnsupported` fires (once) if this browser can't place the CSS 3D
+   * layer — the caller then plays clips in the corner player instead. */
   constructor(
     container: HTMLElement,
     scene: THREE.Scene,
     private readonly screen: THREE.Mesh,
+    private readonly onUnsupported: () => void = () => {},
   ) {
     this.offMaterial = screen.material;
     screen.updateMatrixWorld(true);
@@ -50,9 +68,9 @@ export class TvScreen {
     this.element.style.width = `${TV_PLAYER_WIDTH}px`;
     this.element.style.height = `${TV_PLAYER_HEIGHT}px`;
     this.object = new CSS3DObject(this.element);
-    this.object.position.copy(this.center);
+    this.object.position.copy(this.center).multiplyScalar(CSS_SCALE);
     this.object.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), this.normal);
-    this.object.scale.setScalar(width / TV_PLAYER_WIDTH);
+    this.object.scale.setScalar((width * CSS_SCALE) / TV_PLAYER_WIDTH);
     this.cssScene.add(this.object);
 
     this.css.domElement.className = 'tv-layer';
@@ -89,7 +107,47 @@ export class TvScreen {
     this.glow.intensity = 1.1 + 0.25 * Math.sin(time * 9.7) * Math.sin(time * 3.1);
     const size = this.css.getSize();
     if (size.width !== width || size.height !== height) this.css.setSize(width, height);
-    this.css.render(this.cssScene, camera);
+    const cssCamera = this.cssCamera;
+    camera.getWorldPosition(cssCamera.position).multiplyScalar(CSS_SCALE);
+    camera.getWorldQuaternion(cssCamera.quaternion);
+    cssCamera.fov = camera.fov;
+    cssCamera.aspect = camera.aspect;
+    cssCamera.zoom = camera.zoom;
+    cssCamera.near = camera.near * CSS_SCALE;
+    cssCamera.far = camera.far * CSS_SCALE;
+    cssCamera.updateProjectionMatrix();
+    cssCamera.updateMatrixWorld();
+    this.css.render(this.cssScene, cssCamera);
+    if (facing && this.supported === null) {
+      this.verify(camera, width, height);
+    }
+  }
+
+  /** Checks the player really sits over the TV on screen. Some engines
+   * (e.g. WebKit builds without 3D-transform compositing) flatten or
+   * misplace the CSS 3D layer, which would leave a black hole where the
+   * screen is; after a few such frames the TV reports itself unsupported. */
+  private verify(camera: THREE.PerspectiveCamera, width: number, height: number): void {
+    const projected = this.center.clone().project(camera);
+    if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) {
+      return; // off-screen: nothing to compare yet
+    }
+    const layer = this.css.domElement.getBoundingClientRect();
+    const rect = this.element.getBoundingClientRect();
+    const offset = Math.hypot(
+      rect.left - layer.left + rect.width / 2 - ((projected.x + 1) / 2) * width,
+      rect.top - layer.top + rect.height / 2 - ((1 - projected.y) / 2) * height,
+    );
+    const tolerance = Math.max(30, 0.35 * Math.max(rect.width, rect.height));
+    if (rect.width > 2 && rect.height > 2 && offset <= tolerance) {
+      this.supported = true;
+      return;
+    }
+    this.misplacedFrames += 1;
+    if (this.misplacedFrames >= MAX_MISPLACED_FRAMES) {
+      this.supported = false;
+      this.onUnsupported();
+    }
   }
 
   dispose(): void {

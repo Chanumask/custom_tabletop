@@ -710,7 +710,13 @@ export function RoomView({
         }
 
         if (room.tvScreen) {
-          const tv = new TvScreen(container, scene, room.tvScreen);
+          const tv = new TvScreen(container, scene, room.tvScreen, () => {
+            // This browser can't show the TV (TvScreen.verify): clips play
+            // in the corner player instead, picking up where they were.
+            tvRef.current = null;
+            tv.dispose();
+            if (!disposed) setTvElement(null);
+          });
           tvRef.current = tv;
           setTvElement(tv.element);
         }
