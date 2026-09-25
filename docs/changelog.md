@@ -6,6 +6,39 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 (small hours) — TV on a sideboard, anyone moves minis and dice, chairs that scale, a quality pass
+
+**Asked** (user):
+- The TV "a bit higher, like on a sideboard".
+- A normal player should be able to move the host's dice and mini.
+- Chairs should scale with the lobby: 4 by default, more with more people, back down as they leave, never below 4.
+- Check whether any model doesn't match the room's quality, and improve it.
+
+### What landed
+
+- **Moving things:** anyone moves any mini that's on the table and any die they can see. Putting a mini on or off stays with its owner or the host, and secret dice stay the owner's.
+- **Quality pass:** close-ups of every object in the running app.
+  - Replaced: the script-built console TV became a tabletop CRT on a carved sideboard, with the screen at eye level.
+  - Also replaced: the pastel book boxes (now leather-bound volumes), the sphere-on-a-stick floor lamp (now a Victorian lamp with a glowing pleated shade), the ball-on-a-stick sconces, and the door's box handle.
+  - Fixed: the whiteboard frame is walnut, and the newer windows got curtains.
+  - Details: [decisions.md](decisions.md), "The room's quality pass".
+- **Chairs:** `min(8, max(4, players))`, set out by the client from the model's eight chairs (a side's lone chair in its middle). The server moves anyone off a chair that goes away.
+- **Test fix:** the restart/rejoin test failed once under load (a 150 ms grace period a busy machine could miss). It now has a grace period it can meet.
+
+### Checked
+
+- **Unit tests:** 629 (52 shared, 331 server, 246 client).
+- **Cross-browser:** `npm run test:e2e` passes 9/9 in Chromium, Firefox and WebKit.
+- **Live runs:**
+  - a player dragging the host's mini and die, with the host seeing both land;
+  - a YouTube clip playing on the new TV, inside the bezel at any angle;
+  - chairs with six browsers: 4 → 5 → 6 → back to 4, and a seated player re-seated.
+- **Room size:** `room.glb` 8.96 → 10.42 MB. Its Poly Haven colour maps were swapped for the official JPGs after a conversion through Blender's view transform darkened them.
+
+Not pushed or deployed yet.
+
+---
+
 ## 2026-09-25 (late night) — Drawing lag fixed, maps, night sounds
 
 **Asked** (user, after the recommendations): "we only need 2 and 4" (the multi-map switcher, and night sounds), plus "check for lag when someone is drawing on the table. that was one thing I noticed right away."

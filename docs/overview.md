@@ -44,6 +44,12 @@ Earlier this day:
 
 **Then** (same night): drawing no longer lags (both screens held ~7 fps while someone drew; now 60), the host prepares several maps and puts one on the table at a time, and the night outside can be heard through the windows.
 
+**And then:**
+- the TV sits on a carved sideboard at eye level;
+- anyone moves anyone's mini or dice;
+- the table has as many chairs as players (four at least);
+- a quality pass replaced the room's weakest models.
+
 Nothing on the roadmap is left. What's next is whatever playtesting turns up, plus the "later" list in [roadmap.md](roadmap.md): map presets, wall drawing, fog of war, an initiative tracker.
 
 ### Earlier on 2026-09-25
