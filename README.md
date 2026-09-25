@@ -4,15 +4,15 @@ A browser-based virtual tabletop for running tabletop RPG sessions with friends:
 
 ## Status
 
-**Milestones 1–9 done, plus the follow-up change requests and extras (2026-09-25):**
-- Six color-coded animated characters, a live character preview on the join screen, invite links.
-- A furnished room with a square, true-color map table (crop on upload, optional grid).
-- A synced whiteboard.
-- Real d4–d20 dice that land on the rolled number.
-- Chat with `/roll` and speech bubbles.
-- Right-click pings and a shared YouTube player.
+**All ten roadmap milestones are done**, plus the owner's follow-up change requests and a round of extras. Everything a table needs:
+- **The room.** A cozy, lived-in Blender room with a crackling fireplace, candles, fairy lights, a moonlit window, a lounge nook and a console TV. You walk around it in first person and see each other's animated characters. Six colors, one character each; they walk, run, sit and emote.
+- **The table.** A square table with the map in true colors (crop it on upload, lay an optional grid) or aged parchment when there's no map. Anyone can draw on it live. Sit down to look around from your chair, or press V for a top-down view.
+- **Dice.** Real d4–d20 that tumble and land on the server's roll, with sound. You can also type `/roll 2d6+3` in chat.
+- **Talking.** Chat with speech bubbles, a session log of every roll, and right-click pings on the table.
+- **Sound and video.** A 4x4 wall soundboard (built-in tones, uploaded files, audio links). YouTube clips play on the TV for everyone.
+- **The rest.** A shared whiteboard. A light switch for a fire-lit room. Invite links. A collapsible session menu with volume, a rebindable interact key and a fire-sound toggle.
 
-Before that, as of M9, a host and players could: walk around the room and see each other live; swap the table's map background by URL or file upload and draw on it together; spawn/roll/remove dice; play sounds from a shared soundboard (built-in tones or uploaded files) via a 2D panel or a physical in-room console; flip the room's light switch; and sit down at the table for a full-screen, square top-down view of it with a pen/eraser drawing toolbar. Every host-only action (map/scene changes, playing a sound, muting another player) is now proven, server-side, to reject a non-host. Remaining: Milestone 10 (performance & polish) — the last of the original ten. **Known gap:** Milestone 9's cross-browser pass (Edge, Firefox) wasn't performed; only Chrome has been tested. Full detail in [docs/overview.md](docs/overview.md) and [docs/roadmap.md](docs/roadmap.md).
+It runs at 60 fps (1080p, mid-range GPU). The join screen loads ~70 KB gzipped, and the room downloads behind it. Each player uses ~13 KB/s in a busy six-player game. Tested end to end in Chromium, Firefox, WebKit and Edge (`npm run test:e2e`). Full detail: [docs/overview.md](docs/overview.md) and [docs/roadmap.md](docs/roadmap.md).
 
 ## Running it locally
 
@@ -21,7 +21,7 @@ npm install
 npm run dev
 ```
 
-Starts the server (`http://localhost:3001`, health check at `/health`) and the client (`http://localhost:5173`) together. Open the client URL in a browser, enter a name, and either generate a session code (hosts) or enter an existing one to join. Open it in a second tab/browser to see multiplayer in action. Full command reference: [docs/engineering/tooling.md](docs/engineering/tooling.md).
+Starts the server (`http://localhost:3001`, health check at `/health`) and the client (`http://localhost:5173`) together. Open the client URL in a browser, enter a name, and either generate a session code (hosts) or enter an existing one to join. Open it in a second tab/browser to see multiplayer in action. `npm test` runs the unit tests, and `npm run test:e2e` runs the cross-browser smoke tests (first time: `npx playwright install`). Full command reference: [docs/engineering/tooling.md](docs/engineering/tooling.md).
 
 ## Stack
 

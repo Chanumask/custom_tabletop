@@ -8,19 +8,30 @@
 
 Scope is deliberately narrow at the start: get a host and a few players walking around one room together, sharing a table map, drawing on it, and rolling dice together in real time, before adding anything beyond that.
 
-## Where it stands (2026-09-25)
+## Where it stands (2026-09-25, end of day)
 
-**Milestones 1–9, plus the owner's seven follow-up change requests and a round of extras, are done.** On top of everything below:
-- Players pick one of six colors, each its own animated character that walks, runs, sits on the chairs and emotes, with a name tag.
-- The join screen previews your character live.
-- The room is a fully furnished Blender room with a square table showing the map in true colors (crop/preview on upload, optional grid).
-- There's a synced whiteboard.
-- The dice are real d4–d20 that land on the rolled number.
-- A chat/session log records every roll, supports `/roll` notation, and shows speech bubbles.
-- Right-click pings, and YouTube clips play as a visible shared player.
-- A four-player end-to-end test proves every client converges to the same game.
+**All ten roadmap milestones are done**, plus the owner's seven follow-up change requests and two rounds of extras. The final round (see [changelog.md](changelog.md)) covered:
+- **Seated play.** Sitting down shows the view from your chair (free look, see the others) or, with V, the top-down table.
+- **The cozy room.** A fireplace with a fire sound, candles, fairy lights, a moonlit window, a lounge nook, warm pooled light and a lights-off mode lit by the fire.
+- **The TV.** A console TV that plays the shared YouTube clip in the room, falling back to a corner player where a browser can't.
+- **Performance (M10).** The join screen loads 5x less up front, the room preloads behind it, and updates are delta-only. A six-player load test runs at ~13 KB/s per player, and the room renders at 60 fps.
+- **Cross-browser tests.** Playwright smoke tests run in Chromium, Firefox and WebKit, and in Edge on demand. They closed M9's missing browser pass and caught two real WebKit bugs.
+- **A visual QA and polish pass.** In-game controls match the join screen, the session menu collapses, and the bare table is aged parchment. The room's lighting, shield and chandelier were fixed.
 
-Remaining: Milestone 10 (performance & polish, notably code-splitting the ~930 KB bundle) and the cross-browser pass. See [roadmap.md](roadmap.md) and [changelog.md](changelog.md).
+Earlier this day:
+- Six color-coded animated characters with a live preview on the join screen.
+- A square true-color map table with crop and grid.
+- A synced whiteboard.
+- Real d4–d20 dice.
+- Chat with `/roll` and speech bubbles.
+- Pings.
+- A four-player convergence test.
+
+Nothing on the roadmap is left. What's next is whatever playtesting turns up, plus the "later" list in [roadmap.md](roadmap.md): map presets, wall drawing, persistence.
+
+### Earlier on 2026-09-25
+
+Milestones 1–9 plus the change requests and first extras were done; Milestone 10 and the cross-browser pass remained.
 
 ### Before this round (2026-09-24)
 

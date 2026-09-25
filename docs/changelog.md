@@ -6,6 +6,77 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 (later) — The plan: seated look-around, the cozy room and TV, M10, cross-browser tests, a polish pass
+
+**Asked** (user):
+- "do a plan that adressses everytrhing besides 5-8", plus:
+  - a TV in the room that plays the YouTube links, matching the room;
+  - "when sitting there should absolutly be the ability to view around and see the other players … you should be able to choose";
+  - no stray "e" typed into the whiteboard;
+  - "make sure that the room feels super cozy and is way more polished and beautiful … go all in".
+- Then, going to bed: "finish everything and push after you are done. ALSO do a check on everyhting visually and functionally and go a ahead an polish or change anything you find worthy do adress. it should be maximum quality."
+- The movement problem first reported was retracted: it worked after clicking "Click to look around".
+
+Every decision is in [decisions.md](decisions.md), in the 2026-09-25 entries from "Seated: a real chair view" upward.
+
+### What landed (feature branches merged into `main`, then pushed)
+
+- **Seated view** (`4938762`):
+  - Sitting looks out from your chair with free mouse-look, so you see the others at the table. V switches to the top-down table view.
+  - Chairs are server-kept (`seatIndex`) and stable.
+  - The interact key is consumed, so it never types into the dialog it opens (the stray "e").
+- **The cozy room and the TV** (`0a9241b`):
+  - A fireplace with a flickering fire, sparks and an optional crackle; candles; fairy lights along the beams; a moonlit window; a lounge nook; warm pooled lighting and a vignette.
+  - A console TV that plays the shared YouTube clip in the room (a CSS3D layer under a hole in the canvas), with Pop out / On the TV.
+  - The room model was re-exported as WebP + meshopt (33 → 9.3 MB).
+- **Milestone 10, performance** (`750bc8b`, `5ad6593`):
+  - The join screen's bundle went from 992 to 211 KB. The room's code and model preload behind it, with a real progress card.
+  - `session:patch` broadcasts only the keys that changed.
+  - `npm run load-test` (six players): ~13 KB/s per player, was ~29.
+- **Cross-browser smoke tests** (`db1927e`, `4860769`):
+  - `npm run test:e2e` runs Playwright in Chromium, Firefox and WebKit (Edge passes on demand) on the real GPU.
+  - It covers a host rendering the room, two players seeing each other and chatting, and a dice roll with its sound, all with no page errors.
+  - This closed Milestone 9's browser pass.
+- **The polish pass**, after scripted screenshot tours of every view, dialog and menu:
+  - `ff5d40c`, the room:
+    - The misaligned shield over the fireplace is re-seated.
+    - The firebox floor is soot, and the ember bed glows like coals.
+    - Candle lights no longer burn hotspots into the walls.
+  - `eb725d6`, the table: the bare table is seeded, aged parchment with a compass rose, the same for everyone.
+  - `63f20ca`, the UI:
+    - In-game buttons, fields, pickers, dropdowns and a switch now use the join screen's palette.
+    - The session menu collapses.
+    - The settings are laid out as rows.
+    - The wall-board button you aim at lights up.
+    - `THREE.Clock` became `THREE.Timer`.
+  - `b63c055`, the TV: a clip resumes where it was when moved between the TV and the card.
+  - `e2a2969`, the chandelier: it reads as a brass lantern instead of white patches, and dialogs portaled to `<body>` get the theme.
+  - `ce219c0`, audio: a browser without Web Audio stays silent instead of crashing (a WebKit bug found by the new tests).
+  - `debb489`, the TV again: its CSS layer runs in millimetres, and where a browser can't place it (Windows WebKit), clips fall back to the corner player automatically.
+
+### Checked
+
+- **515 unit tests** (47 shared, 255 server, 213 client) and **9 e2e runs** (3 tests × 3 engines), plus Edge. Lint, format and build are clean.
+- Visual QA, via scripted tours on the real GPU with two players:
+  - The join screen at phone, tablet and short-desktop sizes.
+  - Every room angle, lights on and off.
+  - Seated views, both ways, seeing the other player; dice; drawing; the grid; map upload and crop.
+  - Whiteboard write and sync; the wall board (aim, highlight, play, the assign menu); chat, `/roll`, speech bubbles, emotes and walking; the TV in all three engines; every menu tab.
+- The wall soundboard's live check, outstanding since 2026-09-24, is done: aim + E plays, an empty button opens the assign menu, and Shift+E reassigns.
+- Performance: 60 fps (vsync-bound) at 1080p, 135 draw calls, ~160k triangles.
+
+### Notes for next time
+
+- **Nothing in flight.** The roadmap is complete, and `main` is pushed.
+- Ideas are in roadmap.md's "later" list: map presets, wall drawing, persistence.
+- **macOS Safari is untested**; only Playwright's Windows WebKit was run. There the TV falls back to the corner player. Real Safari may well show the TV; the self-check decides at runtime.
+- **The QA harness** (screenshot tours) isn't committed; the smoke tests are. For a visual pass, script `window.__tabletop` (dev only) from a Playwright test the same way: set `camera.position`, then `camera.lookAt(...)`.
+- **Environment gotchas** (on top of the previous entry's):
+  - Headless Chromium needs `--use-angle=d3d11` on Windows, or WebGL runs on SwiftShader.
+  - Bash heredocs with quotes in them can fail to parse in this tool; write the file with the Write tool instead.
+
+---
+
 ## 2026-09-25 — The seven follow-up change requests, plus chat, real dice, pings and a grid
 
 **Asked** (user, relaying a follow-up prompt from the repo's owner):
@@ -80,7 +151,7 @@ On top: make the Blender MCP work at full potential, keep everything needed in g
 
 ### Next session
 
-- **Not pushed.** `main` is 13 merge/feature commits ahead of `origin/main` (`9dddec9`). Ask before `git push`.
+- **Not pushed** at the time (pushed later that day, at the user's go-ahead).
 - **Remaining:**
   - Milestone 10 (performance & polish). The JS bundle is ~930 KB (three.js dominates), so code-split the room/three.js away from the join screen. Also load-test drawing and dice with many players.
   - Milestone 9's cross-browser pass (Edge/Firefox), which this environment can't drive.
