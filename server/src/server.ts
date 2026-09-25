@@ -15,6 +15,8 @@ import {
   SESSION_ENDED_ERROR,
   SocketEvent,
   type PlayerUpdateResponse,
+  type SessionPatch,
+  type GameState,
   type SessionPeekResponse,
   type SessionJoinResponse,
   type SessionLeaveResponse,
@@ -84,6 +86,10 @@ export interface AppServerOptions {
 const DEFAULT_DISCONNECT_GRACE_MS = 45_000;
 /** Minimum spacing between one socket's emotes. */
 const EMOTE_MIN_INTERVAL_MS = 400;
+
+type PatchKey = keyof SessionPatch['patch'];
+/** What a join, leave, reconnect or removal changes. */
+const PRESENCE_KEYS: PatchKey[] = ['players', 'hostId', 'log'];
 /** Pings are for pointing, not strobing: at most one per socket this often. */
 const PING_MIN_INTERVAL_MS = 300;
 /** Chat flood guard, per socket: at most this many lines per window. */
@@ -140,10 +146,20 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
   /** playerKey -> pending "remove after the grace period" timer. */
   const removalTimers = new Map<string, NodeJS.Timeout>();
 
-  const broadcastState = (sessionId: string) => {
+  /** Sends the room only the parts of the state an action changed
+   * (`SessionPatch`) rather than the full snapshot with every drawing. */
+  const broadcastPatch = (sessionId: string, state: GameState, keys: PatchKey[]) => {
+    const patch: SessionPatch['patch'] = {};
+    for (const key of keys) {
+      (patch as Record<string, unknown>)[key] = state[key];
+    }
+    io.to(sessionId).emit(SocketEvent.SessionPatch, { sessionId, patch } satisfies SessionPatch);
+  };
+
+  const broadcastPresence = (sessionId: string) => {
     const state = sessions.get(sessionId);
     if (state) {
-      io.to(sessionId).emit(SocketEvent.SessionState, state);
+      broadcastPatch(sessionId, state, PRESENCE_KEYS);
     }
   };
 
@@ -177,14 +193,14 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     }
 
     if (sessions.setConnected(identity.sessionId, identity.playerId, false)) {
-      broadcastState(identity.sessionId);
+      broadcastPresence(identity.sessionId);
     }
     cancelRemoval(key);
     const timer = setTimeout(() => {
       removalTimers.delete(key);
       const result = sessions.removeIfDisconnected(identity.sessionId, identity.playerId);
       if (result.removed) {
-        broadcastState(identity.sessionId);
+        broadcastPresence(identity.sessionId);
       }
     }, disconnectGraceMs);
     timer.unref();
@@ -275,7 +291,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         socket.join(request.sessionId);
 
         ack?.({ ok: true, state });
-        io.to(request.sessionId).emit(SocketEvent.SessionState, state);
+        broadcastPatch(request.sessionId, state, PRESENCE_KEYS);
       },
     );
 
@@ -298,7 +314,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         ack?.({ ok: true });
 
         if (state) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, state);
+          broadcastPatch(request.sessionId, state, PRESENCE_KEYS);
         }
       },
     );
@@ -340,7 +356,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         });
         ack?.(result);
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastPatch(request.sessionId, result.state, ['players', 'log']);
         }
       },
     );
@@ -365,7 +381,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         );
         ack?.(result);
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastPatch(request.sessionId, result.state, ['hostId', 'log']);
         }
       },
     );
@@ -644,7 +660,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         );
         ack?.(result);
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastPatch(request.sessionId, result.state, ['dice', 'log']);
         }
       },
     );
@@ -668,7 +684,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         const result = sessions.rollDice(request.sessionId, request.diceIds, request.playerId);
         ack?.(result);
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastPatch(request.sessionId, result.state, ['dice', 'log']);
         }
       },
     );
@@ -689,7 +705,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         const result = sessions.removeDice(request.sessionId, request.diceId);
         ack?.(result);
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastPatch(request.sessionId, result.state, ['dice', 'log']);
         }
       },
     );
@@ -753,7 +769,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         );
         ack?.(result);
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastPatch(request.sessionId, result.state, ['soundboard', 'soundboardSlots']);
         }
       },
     );
@@ -780,7 +796,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         );
         ack?.(result);
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastPatch(request.sessionId, result.state, ['soundboard', 'soundboardSlots']);
         }
       },
     );
@@ -803,7 +819,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         const result = sessions.removeSound(request.sessionId, request.playerId, request.soundId);
         ack?.(result);
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastPatch(request.sessionId, result.state, ['soundboard', 'soundboardSlots']);
         }
       },
     );
@@ -832,7 +848,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         );
         ack?.(result);
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastPatch(request.sessionId, result.state, ['players']);
         }
       },
     );
@@ -858,7 +874,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         );
         ack?.(result);
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastPatch(request.sessionId, result.state, ['players']);
         }
       },
     );
@@ -903,7 +919,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
 
         ack?.(result);
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastPatch(request.sessionId, result.state, ['lightOn', 'players']);
         }
       },
     );
@@ -928,7 +944,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         const result = sessions.writeWhiteboard(request.sessionId, request.playerId, request.lines);
         ack?.(result);
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastPatch(request.sessionId, result.state, ['whiteboard']);
         }
       },
     );

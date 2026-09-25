@@ -59,6 +59,9 @@ export const SocketEvent = {
   WhiteboardWrite: 'whiteboard:write',
   /** Chat, or a typed roll (/roll 2d6+3) — log.ts. */
   ChatSend: 'chat:send',
+  /** Server → room: just the parts of GameState an action changed (types.ts
+   * `SessionPatch`) — most actions send this instead of a full snapshot. */
+  SessionPatch: 'session:patch',
   /** Server → room: one new log entry (a chat line or typed roll). */
   LogEntry: 'log:entry',
   /** "Look here!" on the table — relayed, never stored (ping.ts). */

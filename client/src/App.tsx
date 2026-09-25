@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+
 import type { Socket } from 'socket.io-client';
 import {
   SESSION_ENDED_ERROR,
@@ -14,6 +15,7 @@ import {
   appendLogEntry,
   type ChatSendResponse,
   type LogEntryBroadcast,
+  type SessionPatch,
 } from '@custom-tabletop/shared';
 import { Toasts } from './Toasts.js';
 import type { ActiveClip } from './YouTubeClip.js';
@@ -33,12 +35,22 @@ import {
   type JoinIntent,
 } from './joinMemory.js';
 import { BrandMark, JoinForm } from './JoinForm.js';
-import { SessionView } from './SessionView.js';
-import { RoomView } from './three/RoomView.js';
+import { RoomLoading } from './RoomLoading.js';
+import { preloadRoom } from './roomAssets.js';
 import { PLACEHOLDER_ROOM_LAYOUT } from './three/RoomLayout.js';
 import { randomDiceSpawnPosition } from './diceSpawn.js';
 import { playSound, setMasterVolume } from './sounds.js';
 import { useSettings } from './useSettings.js';
+
+// The game view — three.js, the room, the session menu — is its own chunk:
+// the join screen doesn't need it, so it loads (and the room model starts
+// downloading) in the background while the player picks a name.
+const loadRoomView = () => import('./three/RoomView.js');
+const loadSessionView = () => import('./SessionView.js');
+const RoomView = lazy(() => loadRoomView().then((module) => ({ default: module.RoomView })));
+const SessionView = lazy(() =>
+  loadSessionView().then((module) => ({ default: module.SessionView })),
+);
 
 type AckResponse = { ok: true } | { ok: false; error: string };
 
@@ -162,6 +174,14 @@ export function App() {
 
     socket.on(SocketEvent.SessionState, (state: GameState) => {
       setGameState((current) => (current?.sessionId === state.sessionId ? state : current));
+    });
+
+    // Most actions send just what changed (SessionPatch) — merged over our
+    // copy; a full snapshot (session:state) replaces it.
+    socket.on(SocketEvent.SessionPatch, (message: SessionPatch) => {
+      setGameState((current) =>
+        current?.sessionId === message.sessionId ? { ...current, ...message.patch } : current,
+      );
     });
 
     // Chat lines and typed rolls arrive one entry at a time (log.ts).
@@ -380,56 +400,71 @@ export function App() {
       );
     });
 
+  // Warm up the game view while the player is still on the join screen:
+  // its code, and the room model's bytes (roomAssets.ts).
+  const onJoinScreen = !gameState;
+  useEffect(() => {
+    if (!onJoinScreen) return;
+    const timer = window.setTimeout(() => {
+      void loadRoomView();
+      void loadSessionView();
+      void preloadRoom().catch(() => {});
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [onJoinScreen]);
+
   const activeScene = gameState?.scenes.find((scene) => scene.id === gameState.activeSceneId);
 
   if (gameState && socketRef.current && activeScene) {
     return (
       <main className="game-shell">
-        <RoomView
-          socket={socketRef.current}
-          sessionId={gameState.sessionId}
-          playerId={playerId}
-          players={gameState.players}
-          activeScene={activeScene}
-          dice={gameState.dice}
-          lightOn={gameState.lightOn}
-          soundboard={gameState.soundboard}
-          soundboardSlots={gameState.soundboardSlots}
-          interactKey={settings.interactKey}
-          onPlaySound={handlePlaySound}
-          onObjectInteract={handleObjectInteract}
-          onUploadSound={handleUploadSound}
-          onAssignSlot={handleAssignSlot}
-          onNotify={toast}
-          whiteboard={gameState.whiteboard}
-          onWriteWhiteboard={handleWriteWhiteboard}
-          onRollDice={handleRollDice}
-          log={gameState.log}
-          fireSound={settings.fireSound}
-          clip={clip}
-          clipVolume={settings.masterVolume}
-          onClipClose={() => setClip(null)}
-          onClipError={(message) => toast(message, 'error')}
-        />
-        <SessionView
-          state={gameState}
-          playerId={playerId}
-          onLeave={handleLeave}
-          onSetMapBackground={handleSetMapBackground}
-          onSetMapGrid={handleSetMapGrid}
-          onSpawnDie={handleSpawnDie}
-          onRollDice={handleRollDice}
-          onRemoveDie={handleRemoveDie}
-          onPlaySound={handlePlaySound}
-          onUploadSound={handleUploadSound}
-          onMutePlayer={handleMutePlayer}
-          onUnmutePlayer={handleUnmutePlayer}
-          onTransferHost={handleTransferHost}
-          onUpdateProfile={handleUpdateProfile}
-          onAssignSlot={handleAssignSlot}
-          onRemoveSound={handleRemoveSound}
-          onNotify={toast}
-        />
+        <Suspense fallback={<RoomLoading />}>
+          <RoomView
+            socket={socketRef.current}
+            sessionId={gameState.sessionId}
+            playerId={playerId}
+            players={gameState.players}
+            activeScene={activeScene}
+            dice={gameState.dice}
+            lightOn={gameState.lightOn}
+            soundboard={gameState.soundboard}
+            soundboardSlots={gameState.soundboardSlots}
+            interactKey={settings.interactKey}
+            onPlaySound={handlePlaySound}
+            onObjectInteract={handleObjectInteract}
+            onUploadSound={handleUploadSound}
+            onAssignSlot={handleAssignSlot}
+            onNotify={toast}
+            whiteboard={gameState.whiteboard}
+            onWriteWhiteboard={handleWriteWhiteboard}
+            onRollDice={handleRollDice}
+            log={gameState.log}
+            fireSound={settings.fireSound}
+            clip={clip}
+            clipVolume={settings.masterVolume}
+            onClipClose={() => setClip(null)}
+            onClipError={(message) => toast(message, 'error')}
+          />
+          <SessionView
+            state={gameState}
+            playerId={playerId}
+            onLeave={handleLeave}
+            onSetMapBackground={handleSetMapBackground}
+            onSetMapGrid={handleSetMapGrid}
+            onSpawnDie={handleSpawnDie}
+            onRollDice={handleRollDice}
+            onRemoveDie={handleRemoveDie}
+            onPlaySound={handlePlaySound}
+            onUploadSound={handleUploadSound}
+            onMutePlayer={handleMutePlayer}
+            onUnmutePlayer={handleUnmutePlayer}
+            onTransferHost={handleTransferHost}
+            onUpdateProfile={handleUpdateProfile}
+            onAssignSlot={handleAssignSlot}
+            onRemoveSound={handleRemoveSound}
+            onNotify={toast}
+          />
+        </Suspense>
         <ChatPanel log={gameState.log} players={gameState.players} onSend={handleSendChat} />
         {status !== 'connected' && (
           <div className="connection-banner" role="status">

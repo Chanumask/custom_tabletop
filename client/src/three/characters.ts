@@ -20,15 +20,7 @@ export function characterUrl(color: PlayerColorId): string {
   return `/models/characters/${color}.glb`;
 }
 
-/** Who each color plays as — shown next to the color picker. */
-export const CHARACTER_TITLES: Record<PlayerColorId, string> = {
-  red: 'the Regular',
-  blue: 'the Local',
-  green: 'the Ranger',
-  yellow: 'the Explorer',
-  purple: 'the Rebel',
-  orange: 'the Rocker',
-};
+export { CHARACTER_TITLES } from '../characterTitles.js';
 
 /** Emote -> the animation clip that performs it. */
 export const EMOTE_CLIPS: Record<EmoteId, string> = {

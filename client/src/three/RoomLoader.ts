@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { preloadRoom } from '../roomAssets.js';
 import type { Obstacle } from './collision.js';
 import type { Seat } from './avatarMotion.js';
 import { PLACEHOLDER_ROOM_LAYOUT, type RoomLayout, type TableSurface } from './RoomLayout.js';
@@ -142,12 +143,13 @@ export function describeRoom(
   };
 }
 
-/** Loads the Blender-exported room (`public/models/room.glb`). */
-export async function loadRoom(gltfUrl: string): Promise<RoomAsset> {
+/** Loads the Blender-exported room (`public/models/room.glb`) — from the
+ * bytes the join screen already started downloading (roomAssets.ts). */
+export async function loadRoom(): Promise<RoomAsset> {
   // The room is exported with meshopt-compressed geometry and WebP textures
   // (docs/engineering/blender-workflow.md) — about a third of the size.
   const loader = new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
-  const gltf = await loader.loadAsync(gltfUrl);
+  const gltf = await loader.parseAsync(await preloadRoom(), '');
   return describeRoom(gltf.scene);
 }

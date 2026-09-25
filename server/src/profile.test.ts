@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import {
   SocketEvent,
-  type GameState,
   type PlayerColorId,
   type PlayerUpdateResponse,
   type SessionJoinResponse,
   type SessionPeekResponse,
 } from '@custom-tabletop/shared';
 import { createAppServer, type AppServer } from './server.js';
+import { waitForState } from './testSupport.js';
 
 function connect(url: string): Promise<ClientSocket> {
   const client = ioClient(url, { transports: ['websocket'], reconnection: false });
@@ -34,17 +34,7 @@ function join(
   });
 }
 
-function nextState(client: ClientSocket, predicate: (state: GameState) => boolean) {
-  return new Promise<GameState>((resolve) => {
-    const handler = (state: GameState) => {
-      if (predicate(state)) {
-        client.off(SocketEvent.SessionState, handler);
-        resolve(state);
-      }
-    };
-    client.on(SocketEvent.SessionState, handler);
-  });
-}
+const nextState = waitForState;
 
 /** Player colors & profiles: unique colors per session (which caps a
  * session at six players), a pre-join peek for the join screen, and live

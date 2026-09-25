@@ -188,3 +188,16 @@ export interface GameState {
  * `player:move`.
  */
 export const DEFAULT_SPAWN_POSITION: Vector3 = { x: 0, y: 1.7, z: 3 };
+
+/**
+ * session:patch — the top-level parts of a session's GameState that an
+ * action changed (dice, players, the whiteboard, …), sent to the room
+ * instead of the whole state. A full snapshot (`session:state`) carries
+ * every drawing on the map, so resending it for a dice roll would grow
+ * with the drawings; clients merge a patch over their copy. Joins and
+ * scene changes still send full snapshots.
+ */
+export interface SessionPatch {
+  sessionId: string;
+  patch: Partial<Omit<GameState, 'sessionId'>>;
+}

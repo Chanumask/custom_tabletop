@@ -52,6 +52,7 @@ import { FireAmbience } from '../fireAmbience.js';
 import { TV_PLAYER_HEIGHT, TV_PLAYER_WIDTH, TvScreen } from './TvScreen.js';
 import { YouTubeClip, YouTubeEmbed, type ActiveClip } from '../YouTubeClip.js';
 import { createPortal } from 'react-dom';
+import { RoomLoading } from '../RoomLoading.js';
 import { canvasToTableLocal, tableLocalToCanvas } from './tableCoordinates.js';
 import type { TableSurface } from './RoomLayout.js';
 import { RESUME_LOOK_EVENT } from '../ChatPanel.js';
@@ -71,7 +72,6 @@ import { formatKeyCode } from '../keyLabel.js';
 import { isInteractKeyPress } from '../keyboard.js';
 import { SoundboardAssignMenu } from '../SoundboardAssignMenu.js';
 
-const ROOM_GLTF_URL = '/models/room.glb';
 // Module-level so each character model downloads once per page, not once
 // per room mount (leaving and rejoining a session reuses it).
 const characterLibrary = new CharacterLibrary();
@@ -297,6 +297,8 @@ export function RoomView({
   const tvRef = useRef<TvScreen | null>(null);
   const [tvElement, setTvElement] = useState<HTMLDivElement | null>(null);
   const [clipOnCard, setClipOnCard] = useState(false);
+  // Until the room model is in the scene: a loading card, or why it failed.
+  const [roomState, setRoomState] = useState<'loading' | 'ready' | 'failed'>('loading');
   const seatedViewRef = useRef<SeatedView | null>(null);
   // The newest log entry already shown — lines from before this view
   // mounted are history, not something anyone is saying right now.
@@ -667,566 +669,578 @@ export function RoomView({
     let updateFireAudio: ((dt: number) => void) | null = null;
     let handleResumeLook: (() => void) | null = null;
 
-    void loadRoom(ROOM_GLTF_URL).then((room) => {
-      if (disposed) {
-        return;
-      }
-      scene.add(room.object3D);
-      chandelier = room.chandelier;
-      tuneRoomMaterials(room.object3D);
-      const lights = addRoomLighting(scene, room.layout);
-      setRoomLightsOn(lights, lightOnRef.current);
-      roomLightsRef.current = lights;
-
-      const lamp = createLamp(scene, 0);
-      setLampOn(lamp, lightOnRef.current);
-      lampRef.current = lamp;
-
-      const ambience = new Ambience(
-        scene,
-        room,
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-      );
-      ambience.setRoomLightsOn(lightOnRef.current);
-      ambience.setViewport(renderer.domElement.clientHeight, camera.fov);
-      ambienceRef.current = ambience;
-
-      // The fire's crackle: needs a user gesture to start (browser audio
-      // policy) — the first click or key press in the room does it.
-      const fireSpot = room.fireSpot;
-      if (fireSpot) {
-        const fireAudio = new FireAmbience();
-        fireAudioRef = fireAudio;
-        startFireAudio = () => fireAudio.start();
-        document.addEventListener('pointerdown', startFireAudio);
-        document.addEventListener('keydown', startFireAudio);
-        updateFireAudio = (dt: number) =>
-          fireAudio.update(dt, camera.position.distanceTo(fireSpot), fireSoundRef.current);
-      }
-
-      if (room.tvScreen) {
-        const tv = new TvScreen(container, scene, room.tvScreen);
-        tvRef.current = tv;
-        setTvElement(tv.element);
-      }
-
-      const soundboardWall = new SoundboardWall(scene, 0);
-      soundboardWall.sync(soundboardRef.current, soundboardSlotsRef.current);
-      soundboardWallRef.current = soundboardWall;
-
-      const whiteboardSurface = room.whiteboardSurface;
-      if (whiteboardSurface) {
-        const board = new WhiteboardCanvas(WHITEBOARD_LINE_COUNT);
-        board.texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-        whiteboardSurface.material = new THREE.MeshStandardMaterial({
-          map: board.texture,
-          // Matte enough that the lamp's highlight never washes out the ink.
-          roughness: 0.7,
-        });
-        board.draw(
-          whiteboardRef.current.map((line) => ({
-            text: line.text,
-            color: inkColorFor(line, playersRef.current),
-          })),
-        );
-        whiteboardCanvasRef.current = board;
-      }
-      const whiteboardRaycaster = new THREE.Raycaster();
-      whiteboardRaycaster.far = WHITEBOARD_RANGE;
-
-      interactablesRef.current = [
-        { id: 'light', position: LAMP_POSITION, range: LAMP_RANGE },
-        {
-          id: 'table',
-          position: { x: room.layout.table.center.x, z: room.layout.table.center.z },
-          range:
-            Math.max(room.layout.table.halfWidth, room.layout.table.halfDepth) +
-            TABLE_APPROACH_MARGIN,
-        },
-      ];
-
-      const avatars = new PlayerAvatars(scene, characterLibrary, room.seats);
-      avatars.sync(playersRef.current, playerId);
-      avatarsRef.current = avatars;
-
-      const diceManager = new DiceManager(scene, (count) => playDiceClatter(count, TUMBLE_SECONDS));
-      diceManager.sync(diceRef.current, playersRef.current);
-      const diceRaycaster = new THREE.Raycaster();
-      diceRaycaster.far = DIE_REACH;
-      diceManagerRef.current = diceManager;
-
-      const controller = new FirstPersonController({
-        camera,
-        domElement: renderer.domElement,
-        room: room.layout.bounds,
-        obstacles: room.layout.obstacles,
-        table: room.layout.table,
-      });
-      controller.connect();
-      controller.controls.addEventListener('lock', () => setLocked(true));
-      controller.controls.addEventListener('unlock', () => setLocked(false));
-      controllerRef.current = controller;
-
-      // Dev-only automation hook: browsers refuse pointer lock to scripted
-      // clicks, so automated/live verification (docs/decisions.md, M8)
-      // drives the camera through this instead. Compiled out of production
-      // builds by Vite's `import.meta.env.DEV` constant.
-      if (import.meta.env.DEV) {
-        (window as unknown as { __tabletop?: unknown }).__tabletop = {
-          camera,
-          controller,
-          scene,
-          renderer,
-          avatars,
-        };
-      }
-
-      // Reconciles a rejoin/reload while GameState already has this player
-      // seated (a lingering flag — a disconnect doesn't clear it, same as
-      // every other per-player status): without this, the fresh controller
-      // would start standing while the server still thinks they're seated,
-      // and the next E-press would incorrectly toggle the server *back* to
-      // standing instead of sitting the rejoined player down.
-      const selfAtStart = playersRef.current.find((candidate) => candidate.id === playerId);
-      if (selfAtStart?.seated) {
-        controller.sit(
-          selfAtStart.seatIndex !== null ? (room.seats[selfAtStart.seatIndex] ?? null) : null,
-        );
-      }
-      applySeatedView();
-
-      // Sitting and standing are explicit (not a toggle) and acknowledged:
-      // if the server refuses a chair (someone took it a moment earlier),
-      // the camera goes back to standing and the player is told why.
-      const sendSeated = (seatedNow: boolean, seatIndex: number | null) => {
-        socket.emit(
-          SocketEvent.ObjectInteract,
-          {
-            sessionId,
-            playerId,
-            objectId: 'table',
-            seated: seatedNow,
-            ...(seatIndex !== null ? { seatIndex } : {}),
-          } satisfies ObjectInteractRequest,
-          (response: ObjectInteractResponse) => {
-            if (!response.ok) {
-              if (seatedNow) {
-                controller.stand();
-                applySeatedView();
-              }
-              onNotifyRef.current(response.error);
-            }
-          },
-        );
-      };
-      const sitDown = () => {
-        const taken = new Set(
-          playersRef.current
-            .filter((other) => other.id !== playerId && other.seated && other.seatIndex !== null)
-            .map((other) => other.seatIndex!),
-        );
-        const seatIndex = pickChair(room.seats, taken, {
-          x: camera.position.x,
-          z: camera.position.z,
-        });
-        controller.sit(seatIndex !== null ? room.seats[seatIndex]! : null);
-        applySeatedView();
-        sendSeated(true, seatIndex);
-      };
-      const standUp = () => {
-        controller.stand();
-        applySeatedView();
-        sendSeated(false, null);
-      };
-      toggleSeatedViewRef.current = () => {
-        if (!controller.isSeated || !controller.hasChair) {
+    void loadRoom().then(
+      (room) => {
+        if (disposed) {
           return;
         }
-        controller.setSeatedView(controller.seatedView === 'chair' ? 'table' : 'chair');
-        applySeatedView();
-      };
+        scene.add(room.object3D);
+        setRoomState('ready');
+        chandelier = room.chandelier;
+        tuneRoomMaterials(room.object3D);
+        const lights = addRoomLighting(scene, room.layout);
+        setRoomLightsOn(lights, lightOnRef.current);
+        roomLightsRef.current = lights;
 
-      const tableTopMesh = room.tableTop;
-      if (tableTopMesh) {
-        remapTableTopUV(tableTopMesh, room.layout.table);
+        const lamp = createLamp(scene, 0);
+        setLampOn(lamp, lightOnRef.current);
+        lampRef.current = lamp;
 
-        const tableCanvas = new TableCanvas();
-        tableCanvas.texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-        // Unlit and outside tone mapping on purpose: the map image shows in
-        // exactly its own colors, instead of being tinted by the warm lamps
-        // and compressed by the filmic tone curve like every lit surface.
-        const tableMaterial = new THREE.MeshBasicMaterial({
-          map: tableCanvas.texture,
-          toneMapped: false,
-        });
-        tableMaterial.color.setScalar(lightOnRef.current ? 1 : TABLE_DIMMED_BRIGHTNESS);
-        tableTopMesh.material = tableMaterial;
-        tableMaterialRef.current = tableMaterial;
-        lastRedrawnSignatureRef.current = `${activeSceneRef.current.id}|${activeSceneRef.current.backgroundImage}|${activeSceneRef.current.gridCells}`;
-        void tableCanvas.redraw(activeSceneRef.current, currentDrawings);
-        tableCanvasRef.current = tableCanvas;
+        const ambience = new Ambience(
+          scene,
+          room,
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        );
+        ambience.setRoomLightsOn(lightOnRef.current);
+        ambience.setViewport(renderer.domElement.clientHeight, camera.fov);
+        ambienceRef.current = ambience;
 
-        let currentDrawingId: string | null = null;
-        tableDrawing = new TableDrawing({
+        // The fire's crackle: needs a user gesture to start (browser audio
+        // policy) — the first click or key press in the room does it.
+        const fireSpot = room.fireSpot;
+        if (fireSpot) {
+          const fireAudio = new FireAmbience();
+          fireAudioRef = fireAudio;
+          startFireAudio = () => fireAudio.start();
+          document.addEventListener('pointerdown', startFireAudio);
+          document.addEventListener('keydown', startFireAudio);
+          updateFireAudio = (dt: number) =>
+            fireAudio.update(dt, camera.position.distanceTo(fireSpot), fireSoundRef.current);
+        }
+
+        if (room.tvScreen) {
+          const tv = new TvScreen(container, scene, room.tvScreen);
+          tvRef.current = tv;
+          setTvElement(tv.element);
+        }
+
+        const soundboardWall = new SoundboardWall(scene, 0);
+        soundboardWall.sync(soundboardRef.current, soundboardSlotsRef.current);
+        soundboardWallRef.current = soundboardWall;
+
+        const whiteboardSurface = room.whiteboardSurface;
+        if (whiteboardSurface) {
+          const board = new WhiteboardCanvas(WHITEBOARD_LINE_COUNT);
+          board.texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          whiteboardSurface.material = new THREE.MeshStandardMaterial({
+            map: board.texture,
+            // Matte enough that the lamp's highlight never washes out the ink.
+            roughness: 0.7,
+          });
+          board.draw(
+            whiteboardRef.current.map((line) => ({
+              text: line.text,
+              color: inkColorFor(line, playersRef.current),
+            })),
+          );
+          whiteboardCanvasRef.current = board;
+        }
+        const whiteboardRaycaster = new THREE.Raycaster();
+        whiteboardRaycaster.far = WHITEBOARD_RANGE;
+
+        interactablesRef.current = [
+          { id: 'light', position: LAMP_POSITION, range: LAMP_RANGE },
+          {
+            id: 'table',
+            position: { x: room.layout.table.center.x, z: room.layout.table.center.z },
+            range:
+              Math.max(room.layout.table.halfWidth, room.layout.table.halfDepth) +
+              TABLE_APPROACH_MARGIN,
+          },
+        ];
+
+        const avatars = new PlayerAvatars(scene, characterLibrary, room.seats);
+        avatars.sync(playersRef.current, playerId);
+        avatarsRef.current = avatars;
+
+        const diceManager = new DiceManager(scene, (count) =>
+          playDiceClatter(count, TUMBLE_SECONDS),
+        );
+        diceManager.sync(diceRef.current, playersRef.current);
+        const diceRaycaster = new THREE.Raycaster();
+        diceRaycaster.far = DIE_REACH;
+        diceManagerRef.current = diceManager;
+
+        const controller = new FirstPersonController({
           camera,
           domElement: renderer.domElement,
-          tableTopMesh,
+          room: room.layout.bounds,
+          obstacles: room.layout.obstacles,
           table: room.layout.table,
-          isDrawingAllowed: () => !controller.controls.isLocked,
-          claimClick: (raycaster) => {
-            const dieId = diceManagerRef.current?.pick(raycaster);
-            if (dieId) {
-              onRollDiceRef.current([dieId]);
-              return true;
-            }
-            return false;
-          },
-          getTool: () => drawToolRef.current,
-          onPing: sendPing,
-          onStrokeStart: (point) => {
-            currentDrawingId = crypto.randomUUID();
-            const color = drawColorRef.current;
-            const width = drawWidthRef.current;
-            tableCanvas.extendStroke(currentDrawingId, point, { color, width });
-            // Same reasoning as handleDrawingStart's remote-side copy of
-            // this: drawing:start has no accompanying session:state, so
-            // this player's own freshly-drawn stroke has to be added to
-            // activeSceneRef.current.drawings by hand, right away — not
-            // just left to arrive from an unrelated later broadcast — or
-            // the eraser can't find it.
-            activeSceneRef.current = {
-              ...activeSceneRef.current,
-              drawings: [
-                ...activeSceneRef.current.drawings,
-                {
-                  id: currentDrawingId,
-                  sceneId: activeSceneRef.current.id,
-                  playerId,
-                  points: [point],
-                  color,
-                  width,
-                },
-              ],
-            };
-            socket.emit(SocketEvent.DrawingStart, {
+        });
+        controller.connect();
+        controller.controls.addEventListener('lock', () => setLocked(true));
+        controller.controls.addEventListener('unlock', () => setLocked(false));
+        controllerRef.current = controller;
+
+        // Dev-only automation hook: browsers refuse pointer lock to scripted
+        // clicks, so automated/live verification (docs/decisions.md, M8)
+        // drives the camera through this instead. Compiled out of production
+        // builds by Vite's `import.meta.env.DEV` constant.
+        if (import.meta.env.DEV) {
+          (window as unknown as { __tabletop?: unknown }).__tabletop = {
+            camera,
+            controller,
+            scene,
+            renderer,
+            avatars,
+          };
+        }
+
+        // Reconciles a rejoin/reload while GameState already has this player
+        // seated (a lingering flag — a disconnect doesn't clear it, same as
+        // every other per-player status): without this, the fresh controller
+        // would start standing while the server still thinks they're seated,
+        // and the next E-press would incorrectly toggle the server *back* to
+        // standing instead of sitting the rejoined player down.
+        const selfAtStart = playersRef.current.find((candidate) => candidate.id === playerId);
+        if (selfAtStart?.seated) {
+          controller.sit(
+            selfAtStart.seatIndex !== null ? (room.seats[selfAtStart.seatIndex] ?? null) : null,
+          );
+        }
+        applySeatedView();
+
+        // Sitting and standing are explicit (not a toggle) and acknowledged:
+        // if the server refuses a chair (someone took it a moment earlier),
+        // the camera goes back to standing and the player is told why.
+        const sendSeated = (seatedNow: boolean, seatIndex: number | null) => {
+          socket.emit(
+            SocketEvent.ObjectInteract,
+            {
               sessionId,
               playerId,
-              sceneId: activeSceneRef.current.id,
-              drawingId: currentDrawingId,
-              point,
-              color,
-              width,
-            } satisfies DrawingStartRequest);
-          },
-          onStrokePoint: (point) => {
-            if (!currentDrawingId) {
-              return;
-            }
-            tableCanvas.extendStroke(currentDrawingId, point);
-            const drawingId = currentDrawingId;
-            activeSceneRef.current = {
-              ...activeSceneRef.current,
-              drawings: activeSceneRef.current.drawings.map((drawing) =>
-                drawing.id === drawingId
-                  ? { ...drawing, points: [...drawing.points, point] }
-                  : drawing,
-              ),
-            };
-            socket.emit(SocketEvent.DrawingUpdate, {
-              sessionId,
-              drawingId: currentDrawingId,
-              point,
-            } satisfies DrawingUpdateRequest);
-          },
-          onStrokeEnd: () => {
-            if (!currentDrawingId) {
-              return;
-            }
-            tableCanvas.endStroke(currentDrawingId);
-            socket.emit(SocketEvent.DrawingEnd, {
-              sessionId,
-              drawingId: currentDrawingId,
-            } satisfies DrawingEndRequest);
-            currentDrawingId = null;
-          },
-          onErase: (point) => {
-            const hitId = findStrokeNear(point, activeSceneRef.current.drawings, ERASE_THRESHOLD);
-            if (!hitId) {
-              return;
-            }
-            tableCanvas.endStroke(hitId);
-            // Local-optimistic removal, same reasoning as handleDrawingDelete
-            // above: no session:state accompanies drawing:delete, so this
-            // client has to update its own copy of the scene itself.
-            const withoutErased = {
-              ...activeSceneRef.current,
-              drawings: activeSceneRef.current.drawings.filter((d) => d.id !== hitId),
-            };
-            activeSceneRef.current = withoutErased;
-            void tableCanvas.redraw(withoutErased, currentDrawings);
-            socket.emit(SocketEvent.DrawingDelete, {
-              sessionId,
-              sceneId: activeSceneRef.current.id,
-              drawingId: hitId,
-            } satisfies DrawingDeleteRequest);
-          },
-        });
-        tableDrawing.connect();
-
-        // Walking (mouse-look): right-click pings whatever spot of the table
-        // the crosshair is on.
-        pingSurface = room.layout.table;
-        const pingRaycaster = new THREE.Raycaster();
-        handleLockedPing = (event: MouseEvent) => {
-          if (!controller.controls.isLocked || event.button !== 2) {
-            return;
-          }
-          pingRaycaster.setFromCamera(SCREEN_CENTER, camera);
-          const [hit] = pingRaycaster.intersectObject(tableTopMesh, false);
-          if (!hit) {
-            return;
-          }
-          const table = room.layout.table;
-          sendPing(
-            tableLocalToCanvas(
-              hit.point.x - table.center.x,
-              hit.point.z - table.center.z,
-              table.halfWidth,
-              table.halfDepth,
-              TABLE_CANVAS_SIZE,
-            ),
+              objectId: 'table',
+              seated: seatedNow,
+              ...(seatIndex !== null ? { seatIndex } : {}),
+            } satisfies ObjectInteractRequest,
+            (response: ObjectInteractResponse) => {
+              if (!response.ok) {
+                if (seatedNow) {
+                  controller.stand();
+                  applySeatedView();
+                }
+                onNotifyRef.current(response.error);
+              }
+            },
           );
         };
-        renderer.domElement.addEventListener('mousedown', handleLockedPing);
-      }
-
-      // Proximity + E (Milestone 8) for the light and the table; aim + E
-      // (Milestone 8 follow-up) for the wall board's individual buttons —
-      // see the raycastFromCamera call in the animate loop below for why the
-      // board needs a different targeting model than a single toggle does.
-      handleInteractKey = (event: KeyboardEvent) => {
-        if (!isInteractKeyPress(event, interactKeyRef.current)) {
-          return;
-        }
-        // The assign-sound overlay is a normal DOM form; while it's open,
-        // the interact key should type into it (or do nothing) like any
-        // other key, not re-trigger room interactions underneath it.
-        if (assignSlotIndexRef.current !== null || whiteboardOpenRef.current) {
-          return;
-        }
-        // The room consumes this keystroke. Without this, a dialog it opens
-        // (the whiteboard editor, the assign-sound menu) mounts and focuses
-        // its input before the browser inserts the key's character — so the
-        // "e" that opened it got typed into it.
-        event.preventDefault();
-        if (controller.isSeated) {
-          standUp();
-          return;
-        }
-        const targetedSlot = boardTargetSlotRef.current;
-        if (targetedSlot !== null) {
-          const soundId = soundboardWallRef.current?.getSlotSoundId(targetedSlot) ?? null;
-          if (soundId && !event.shiftKey) {
-            onPlaySoundRef.current(soundId);
-          } else {
-            // Empty button, or Shift+interact on a filled one: configure it.
-            controller.controls.unlock();
-            setAssignSlotIndex(targetedSlot);
-          }
-          return;
-        }
-        if (targetedDieRef.current) {
-          onRollDiceRef.current([targetedDieRef.current]);
-          return;
-        }
-        if (whiteboardTargetedRef.current) {
-          controller.controls.unlock();
-          setWhiteboardOpen(true);
-          return;
-        }
-        const nearestId = nearestInteractableIdRef.current;
-        if (nearestId === 'light') {
-          onObjectInteractRef.current('light');
-        } else if (nearestId === 'table') {
-          sitDown();
-        }
-      };
-      document.addEventListener('keydown', handleInteractKey);
-
-      // V: switch between looking out from the chair and the table view.
-      handleViewKey = (event: KeyboardEvent) => {
-        if (event.code !== 'KeyV' || event.repeat || isTypingTarget(event.target)) {
-          return;
-        }
-        if (controller.isSeated) {
-          event.preventDefault();
-          toggleSeatedViewRef.current();
-        }
-      };
-      document.addEventListener('keydown', handleViewKey);
-
-      // Chat was opened from a walking view: sending (or Esc) hands the
-      // mouse straight back to looking around (ChatPanel.tsx).
-      handleResumeLook = () => {
-        if (controller.seatedView !== 'table') {
-          controller.controls.lock();
-        }
-      };
-      window.addEventListener(RESUME_LOOK_EVENT, handleResumeLook);
-
-      // Emotes on the number keys: everyone else sees this player's
-      // character perform it (the local player gets a short confirmation,
-      // since they can't see their own avatar from first person).
-      handleEmoteKey = (event: KeyboardEvent) => {
-        if (event.repeat || isTypingTarget(event.target) || controller.isSeated) {
-          return;
-        }
-        const emote = EMOTES.find((candidate) => candidate.key === event.code);
-        if (!emote) {
-          return;
-        }
-        socket.emit(SocketEvent.PlayerEmote, {
-          sessionId,
-          playerId,
-          emote: emote.id,
-        } satisfies PlayerEmoteRequest);
-        onNotifyRef.current(`${emote.label}!`);
-      };
-      document.addEventListener('keydown', handleEmoteKey);
-
-      let lastSentAt = 0;
-      const lastSentPosition = new THREE.Vector3(Infinity, Infinity, Infinity);
-      let lastSentYaw = Infinity;
-
-      const animate = () => {
-        animationFrameId = requestAnimationFrame(animate);
-        // Capped: after the tab was hidden, the first frame's delta can be
-        // seconds long — one huge step could carry the player past thin
-        // furniture (collision checks where a step ends, not the path).
-        const delta = Math.min(clock.getDelta(), MAX_FRAME_SECONDS);
-        controller.update(delta);
-        diceManagerRef.current?.update(delta, camera);
-        tablePings.update(delta);
-        ambienceRef.current?.update(delta, clock.elapsedTime);
-        updateFireAudio?.(delta);
-        avatarsRef.current?.update(delta);
-        renderer.render(scene, camera);
-        tvRef.current?.render(
-          camera,
-          renderer.domElement.clientWidth,
-          renderer.domElement.clientHeight,
-          clock.elapsedTime,
-          seatedViewRef.current !== 'table',
-        );
-
-        const nearest = controller.isSeated
-          ? null
-          : nearestInteractable(
-              { x: camera.position.x, z: camera.position.z },
-              interactablesRef.current,
-            );
-        const nearestId = controller.isSeated ? 'table' : (nearest?.id ?? null);
-        nearestInteractableIdRef.current = nearestId;
-
-        // Aim-based, not proximity-based (see the class doc comment) — only
-        // resolved while actively looking around and not mid-assign-menu, so
-        // a frozen unlocked view (or the menu's own frozen aim) can't keep
-        // re-targeting a button behind the scenes.
-        const targetedSlot =
-          !controller.isSeated &&
-          controller.controls.isLocked &&
-          assignSlotIndexRef.current === null
-            ? (soundboardWallRef.current?.raycastFromCamera(camera) ?? null)
-            : null;
-        boardTargetSlotRef.current = targetedSlot;
-
-        let targetedDie: string | null = null;
-        if (
-          targetedSlot === null &&
-          !controller.isSeated &&
-          controller.controls.isLocked &&
-          assignSlotIndexRef.current === null &&
-          !whiteboardOpenRef.current
-        ) {
-          diceRaycaster.setFromCamera(SCREEN_CENTER, camera);
-          targetedDie = diceManager.pick(diceRaycaster);
-        }
-        targetedDieRef.current = targetedDie;
-        const targetedDieKind =
-          diceRef.current.find((candidate) => candidate.id === targetedDie)?.kind ?? null;
-
-        let whiteboardTargeted = false;
-        if (
-          targetedSlot === null &&
-          targetedDie === null &&
-          whiteboardSurface &&
-          !controller.isSeated &&
-          controller.controls.isLocked &&
-          assignSlotIndexRef.current === null &&
-          !whiteboardOpenRef.current
-        ) {
-          whiteboardRaycaster.setFromCamera(SCREEN_CENTER, camera);
-          whiteboardTargeted =
-            whiteboardRaycaster.intersectObject(whiteboardSurface, false).length > 0;
-        }
-        whiteboardTargetedRef.current = whiteboardTargeted;
-        const boardTarget =
-          targetedSlot !== null
-            ? {
-                slotIndex: targetedSlot,
-                soundName:
-                  soundboardRef.current.find(
-                    (sound) => sound.id === soundboardWallRef.current?.getSlotSoundId(targetedSlot),
-                  )?.name ?? null,
-              }
-            : null;
-
-        const promptKey = `${nearestId}|${controller.seatedView}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}|${targetedDie}`;
-        if (promptKey !== lastPromptKeyRef.current) {
-          lastPromptKeyRef.current = promptKey;
-          setInteractionPrompt(
-            promptFor(
-              nearestId,
-              controller.seatedView,
-              controller.hasChair,
-              interactKeyRef.current,
-              boardTarget,
-              whiteboardTargeted,
-              targetedDieKind,
-            ),
+        const sitDown = () => {
+          const taken = new Set(
+            playersRef.current
+              .filter((other) => other.id !== playerId && other.seated && other.seatIndex !== null)
+              .map((other) => other.seatIndex!),
           );
+          const seatIndex = pickChair(room.seats, taken, {
+            x: camera.position.x,
+            z: camera.position.z,
+          });
+          controller.sit(seatIndex !== null ? room.seats[seatIndex]! : null);
+          applySeatedView();
+          sendSeated(true, seatIndex);
+        };
+        const standUp = () => {
+          controller.stand();
+          applySeatedView();
+          sendSeated(false, null);
+        };
+        toggleSeatedViewRef.current = () => {
+          if (!controller.isSeated || !controller.hasChair) {
+            return;
+          }
+          controller.setSeatedView(controller.seatedView === 'chair' ? 'table' : 'chair');
+          applySeatedView();
+        };
+
+        const tableTopMesh = room.tableTop;
+        if (tableTopMesh) {
+          remapTableTopUV(tableTopMesh, room.layout.table);
+
+          const tableCanvas = new TableCanvas();
+          tableCanvas.texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          // Unlit and outside tone mapping on purpose: the map image shows in
+          // exactly its own colors, instead of being tinted by the warm lamps
+          // and compressed by the filmic tone curve like every lit surface.
+          const tableMaterial = new THREE.MeshBasicMaterial({
+            map: tableCanvas.texture,
+            toneMapped: false,
+          });
+          tableMaterial.color.setScalar(lightOnRef.current ? 1 : TABLE_DIMMED_BRIGHTNESS);
+          tableTopMesh.material = tableMaterial;
+          tableMaterialRef.current = tableMaterial;
+          lastRedrawnSignatureRef.current = `${activeSceneRef.current.id}|${activeSceneRef.current.backgroundImage}|${activeSceneRef.current.gridCells}`;
+          void tableCanvas.redraw(activeSceneRef.current, currentDrawings);
+          tableCanvasRef.current = tableCanvas;
+
+          let currentDrawingId: string | null = null;
+          tableDrawing = new TableDrawing({
+            camera,
+            domElement: renderer.domElement,
+            tableTopMesh,
+            table: room.layout.table,
+            isDrawingAllowed: () => !controller.controls.isLocked,
+            claimClick: (raycaster) => {
+              const dieId = diceManagerRef.current?.pick(raycaster);
+              if (dieId) {
+                onRollDiceRef.current([dieId]);
+                return true;
+              }
+              return false;
+            },
+            getTool: () => drawToolRef.current,
+            onPing: sendPing,
+            onStrokeStart: (point) => {
+              currentDrawingId = crypto.randomUUID();
+              const color = drawColorRef.current;
+              const width = drawWidthRef.current;
+              tableCanvas.extendStroke(currentDrawingId, point, { color, width });
+              // Same reasoning as handleDrawingStart's remote-side copy of
+              // this: drawing:start has no accompanying session:state, so
+              // this player's own freshly-drawn stroke has to be added to
+              // activeSceneRef.current.drawings by hand, right away — not
+              // just left to arrive from an unrelated later broadcast — or
+              // the eraser can't find it.
+              activeSceneRef.current = {
+                ...activeSceneRef.current,
+                drawings: [
+                  ...activeSceneRef.current.drawings,
+                  {
+                    id: currentDrawingId,
+                    sceneId: activeSceneRef.current.id,
+                    playerId,
+                    points: [point],
+                    color,
+                    width,
+                  },
+                ],
+              };
+              socket.emit(SocketEvent.DrawingStart, {
+                sessionId,
+                playerId,
+                sceneId: activeSceneRef.current.id,
+                drawingId: currentDrawingId,
+                point,
+                color,
+                width,
+              } satisfies DrawingStartRequest);
+            },
+            onStrokePoint: (point) => {
+              if (!currentDrawingId) {
+                return;
+              }
+              tableCanvas.extendStroke(currentDrawingId, point);
+              const drawingId = currentDrawingId;
+              activeSceneRef.current = {
+                ...activeSceneRef.current,
+                drawings: activeSceneRef.current.drawings.map((drawing) =>
+                  drawing.id === drawingId
+                    ? { ...drawing, points: [...drawing.points, point] }
+                    : drawing,
+                ),
+              };
+              socket.emit(SocketEvent.DrawingUpdate, {
+                sessionId,
+                drawingId: currentDrawingId,
+                point,
+              } satisfies DrawingUpdateRequest);
+            },
+            onStrokeEnd: () => {
+              if (!currentDrawingId) {
+                return;
+              }
+              tableCanvas.endStroke(currentDrawingId);
+              socket.emit(SocketEvent.DrawingEnd, {
+                sessionId,
+                drawingId: currentDrawingId,
+              } satisfies DrawingEndRequest);
+              currentDrawingId = null;
+            },
+            onErase: (point) => {
+              const hitId = findStrokeNear(point, activeSceneRef.current.drawings, ERASE_THRESHOLD);
+              if (!hitId) {
+                return;
+              }
+              tableCanvas.endStroke(hitId);
+              // Local-optimistic removal, same reasoning as handleDrawingDelete
+              // above: no session:state accompanies drawing:delete, so this
+              // client has to update its own copy of the scene itself.
+              const withoutErased = {
+                ...activeSceneRef.current,
+                drawings: activeSceneRef.current.drawings.filter((d) => d.id !== hitId),
+              };
+              activeSceneRef.current = withoutErased;
+              void tableCanvas.redraw(withoutErased, currentDrawings);
+              socket.emit(SocketEvent.DrawingDelete, {
+                sessionId,
+                sceneId: activeSceneRef.current.id,
+                drawingId: hitId,
+              } satisfies DrawingDeleteRequest);
+            },
+          });
+          tableDrawing.connect();
+
+          // Walking (mouse-look): right-click pings whatever spot of the table
+          // the crosshair is on.
+          pingSurface = room.layout.table;
+          const pingRaycaster = new THREE.Raycaster();
+          handleLockedPing = (event: MouseEvent) => {
+            if (!controller.controls.isLocked || event.button !== 2) {
+              return;
+            }
+            pingRaycaster.setFromCamera(SCREEN_CENTER, camera);
+            const [hit] = pingRaycaster.intersectObject(tableTopMesh, false);
+            if (!hit) {
+              return;
+            }
+            const table = room.layout.table;
+            sendPing(
+              tableLocalToCanvas(
+                hit.point.x - table.center.x,
+                hit.point.z - table.center.z,
+                table.halfWidth,
+                table.halfDepth,
+                TABLE_CANVAS_SIZE,
+              ),
+            );
+          };
+          renderer.domElement.addEventListener('mousedown', handleLockedPing);
         }
 
-        // No position to sync while seated — the camera is locked to a
-        // fixed top-down view above the table, not the player's real
-        // position (FirstPersonController.sit()).
-        if (controller.isSeated) {
-          return;
-        }
+        // Proximity + E (Milestone 8) for the light and the table; aim + E
+        // (Milestone 8 follow-up) for the wall board's individual buttons —
+        // see the raycastFromCamera call in the animate loop below for why the
+        // board needs a different targeting model than a single toggle does.
+        handleInteractKey = (event: KeyboardEvent) => {
+          if (!isInteractKeyPress(event, interactKeyRef.current)) {
+            return;
+          }
+          // The assign-sound overlay is a normal DOM form; while it's open,
+          // the interact key should type into it (or do nothing) like any
+          // other key, not re-trigger room interactions underneath it.
+          if (assignSlotIndexRef.current !== null || whiteboardOpenRef.current) {
+            return;
+          }
+          // The room consumes this keystroke. Without this, a dialog it opens
+          // (the whiteboard editor, the assign-sound menu) mounts and focuses
+          // its input before the browser inserts the key's character — so the
+          // "e" that opened it got typed into it.
+          event.preventDefault();
+          if (controller.isSeated) {
+            standUp();
+            return;
+          }
+          const targetedSlot = boardTargetSlotRef.current;
+          if (targetedSlot !== null) {
+            const soundId = soundboardWallRef.current?.getSlotSoundId(targetedSlot) ?? null;
+            if (soundId && !event.shiftKey) {
+              onPlaySoundRef.current(soundId);
+            } else {
+              // Empty button, or Shift+interact on a filled one: configure it.
+              controller.controls.unlock();
+              setAssignSlotIndex(targetedSlot);
+            }
+            return;
+          }
+          if (targetedDieRef.current) {
+            onRollDiceRef.current([targetedDieRef.current]);
+            return;
+          }
+          if (whiteboardTargetedRef.current) {
+            controller.controls.unlock();
+            setWhiteboardOpen(true);
+            return;
+          }
+          const nearestId = nearestInteractableIdRef.current;
+          if (nearestId === 'light') {
+            onObjectInteractRef.current('light');
+          } else if (nearestId === 'table') {
+            sitDown();
+          }
+        };
+        document.addEventListener('keydown', handleInteractKey);
 
-        const now = performance.now();
-        if (now - lastSentAt < MOVE_SEND_INTERVAL_MS) {
-          return;
+        // V: switch between looking out from the chair and the table view.
+        handleViewKey = (event: KeyboardEvent) => {
+          if (event.code !== 'KeyV' || event.repeat || isTypingTarget(event.target)) {
+            return;
+          }
+          if (controller.isSeated) {
+            event.preventDefault();
+            toggleSeatedViewRef.current();
+          }
+        };
+        document.addEventListener('keydown', handleViewKey);
+
+        // Chat was opened from a walking view: sending (or Esc) hands the
+        // mouse straight back to looking around (ChatPanel.tsx).
+        handleResumeLook = () => {
+          if (controller.seatedView !== 'table') {
+            controller.controls.lock();
+          }
+        };
+        window.addEventListener(RESUME_LOOK_EVENT, handleResumeLook);
+
+        // Emotes on the number keys: everyone else sees this player's
+        // character perform it (the local player gets a short confirmation,
+        // since they can't see their own avatar from first person).
+        handleEmoteKey = (event: KeyboardEvent) => {
+          if (event.repeat || isTypingTarget(event.target) || controller.isSeated) {
+            return;
+          }
+          const emote = EMOTES.find((candidate) => candidate.key === event.code);
+          if (!emote) {
+            return;
+          }
+          socket.emit(SocketEvent.PlayerEmote, {
+            sessionId,
+            playerId,
+            emote: emote.id,
+          } satisfies PlayerEmoteRequest);
+          onNotifyRef.current(`${emote.label}!`);
+        };
+        document.addEventListener('keydown', handleEmoteKey);
+
+        let lastSentAt = 0;
+        const lastSentPosition = new THREE.Vector3(Infinity, Infinity, Infinity);
+        let lastSentYaw = Infinity;
+
+        const animate = () => {
+          animationFrameId = requestAnimationFrame(animate);
+          // Capped: after the tab was hidden, the first frame's delta can be
+          // seconds long — one huge step could carry the player past thin
+          // furniture (collision checks where a step ends, not the path).
+          const delta = Math.min(clock.getDelta(), MAX_FRAME_SECONDS);
+          controller.update(delta);
+          diceManagerRef.current?.update(delta, camera);
+          tablePings.update(delta);
+          ambienceRef.current?.update(delta, clock.elapsedTime);
+          updateFireAudio?.(delta);
+          avatarsRef.current?.update(delta);
+          renderer.render(scene, camera);
+          tvRef.current?.render(
+            camera,
+            renderer.domElement.clientWidth,
+            renderer.domElement.clientHeight,
+            clock.elapsedTime,
+            seatedViewRef.current !== 'table',
+          );
+
+          const nearest = controller.isSeated
+            ? null
+            : nearestInteractable(
+                { x: camera.position.x, z: camera.position.z },
+                interactablesRef.current,
+              );
+          const nearestId = controller.isSeated ? 'table' : (nearest?.id ?? null);
+          nearestInteractableIdRef.current = nearestId;
+
+          // Aim-based, not proximity-based (see the class doc comment) — only
+          // resolved while actively looking around and not mid-assign-menu, so
+          // a frozen unlocked view (or the menu's own frozen aim) can't keep
+          // re-targeting a button behind the scenes.
+          const targetedSlot =
+            !controller.isSeated &&
+            controller.controls.isLocked &&
+            assignSlotIndexRef.current === null
+              ? (soundboardWallRef.current?.raycastFromCamera(camera) ?? null)
+              : null;
+          boardTargetSlotRef.current = targetedSlot;
+
+          let targetedDie: string | null = null;
+          if (
+            targetedSlot === null &&
+            !controller.isSeated &&
+            controller.controls.isLocked &&
+            assignSlotIndexRef.current === null &&
+            !whiteboardOpenRef.current
+          ) {
+            diceRaycaster.setFromCamera(SCREEN_CENTER, camera);
+            targetedDie = diceManager.pick(diceRaycaster);
+          }
+          targetedDieRef.current = targetedDie;
+          const targetedDieKind =
+            diceRef.current.find((candidate) => candidate.id === targetedDie)?.kind ?? null;
+
+          let whiteboardTargeted = false;
+          if (
+            targetedSlot === null &&
+            targetedDie === null &&
+            whiteboardSurface &&
+            !controller.isSeated &&
+            controller.controls.isLocked &&
+            assignSlotIndexRef.current === null &&
+            !whiteboardOpenRef.current
+          ) {
+            whiteboardRaycaster.setFromCamera(SCREEN_CENTER, camera);
+            whiteboardTargeted =
+              whiteboardRaycaster.intersectObject(whiteboardSurface, false).length > 0;
+          }
+          whiteboardTargetedRef.current = whiteboardTargeted;
+          const boardTarget =
+            targetedSlot !== null
+              ? {
+                  slotIndex: targetedSlot,
+                  soundName:
+                    soundboardRef.current.find(
+                      (sound) =>
+                        sound.id === soundboardWallRef.current?.getSlotSoundId(targetedSlot),
+                    )?.name ?? null,
+                }
+              : null;
+
+          const promptKey = `${nearestId}|${controller.seatedView}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}|${targetedDie}`;
+          if (promptKey !== lastPromptKeyRef.current) {
+            lastPromptKeyRef.current = promptKey;
+            setInteractionPrompt(
+              promptFor(
+                nearestId,
+                controller.seatedView,
+                controller.hasChair,
+                interactKeyRef.current,
+                boardTarget,
+                whiteboardTargeted,
+                targetedDieKind,
+              ),
+            );
+          }
+
+          // No position to sync while seated — the camera is locked to a
+          // fixed top-down view above the table, not the player's real
+          // position (FirstPersonController.sit()).
+          if (controller.isSeated) {
+            return;
+          }
+
+          const now = performance.now();
+          if (now - lastSentAt < MOVE_SEND_INTERVAL_MS) {
+            return;
+          }
+          const yaw = controller.getYaw();
+          const moved =
+            camera.position.distanceTo(lastSentPosition) > MOVE_POSITION_EPSILON ||
+            Math.abs(yaw - lastSentYaw) > MOVE_ROTATION_EPSILON;
+          if (!moved) {
+            return;
+          }
+          lastSentAt = now;
+          lastSentPosition.copy(camera.position);
+          lastSentYaw = yaw;
+          socket.emit(SocketEvent.PlayerMove, {
+            sessionId,
+            playerId,
+            position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
+            rotationY: yaw,
+          } satisfies PlayerMoveRequest);
+        };
+        animate();
+      },
+      (error: unknown) => {
+        console.error('Loading the room failed:', error);
+        if (!disposed) {
+          setRoomState('failed');
         }
-        const yaw = controller.getYaw();
-        const moved =
-          camera.position.distanceTo(lastSentPosition) > MOVE_POSITION_EPSILON ||
-          Math.abs(yaw - lastSentYaw) > MOVE_ROTATION_EPSILON;
-        if (!moved) {
-          return;
-        }
-        lastSentAt = now;
-        lastSentPosition.copy(camera.position);
-        lastSentYaw = yaw;
-        socket.emit(SocketEvent.PlayerMove, {
-          sessionId,
-          playerId,
-          position: { x: camera.position.x, y: camera.position.y, z: camera.position.z },
-          rotationY: yaw,
-        } satisfies PlayerMoveRequest);
-      };
-      animate();
-    });
+      },
+    );
 
     return () => {
       disposed = true;
@@ -1293,6 +1307,13 @@ export function RoomView({
   return (
     <div ref={containerRef} className="room-view">
       <div className="room-vignette" aria-hidden="true" />
+      {roomState === 'loading' && <RoomLoading />}
+      {roomState === 'failed' && (
+        <div className="room-loading" role="alert">
+          <p className="room-loading-title">The room didn't load.</p>
+          <p className="room-loading-detail">Check your connection and reload the page.</p>
+        </div>
+      )}
       {clip &&
         tvElement &&
         !clipOnCard &&

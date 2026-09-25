@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 import { PLAYER_COLORS, type PlayerColorId } from '@custom-tabletop/shared';
-import { CHARACTER_TITLES } from './three/characters.js';
+import { CHARACTER_TITLES } from './characterTitles.js';
 
 export interface ColorPickerProps {
   value: PlayerColorId;

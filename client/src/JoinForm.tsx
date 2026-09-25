@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import {
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from 'react';
 import {
   MAX_PLAYER_NAME_LENGTH,
   PLAYER_COLORS,
@@ -10,8 +18,11 @@ import { generateSessionCode, normalizeSessionCodeInput } from './sessionCode.js
 import { ColorPicker } from './ColorPicker.js';
 import { describeJoinStatus, type JoinMode } from './joinStatus.js';
 import { connectionStatusLabel, type ConnectionStatus } from './connectionStatus.js';
-import { CHARACTER_TITLES } from './three/characters.js';
-import { CharacterPreview } from './three/CharacterPreview.js';
+import { CHARACTER_TITLES } from './characterTitles.js';
+// three.js is big: the form paints at once, the 3D preview follows.
+const CharacterPreview = lazy(() =>
+  import('./three/CharacterPreview.js').then((module) => ({ default: module.CharacterPreview })),
+);
 
 export interface JoinFormProps {
   connection: ConnectionStatus;
@@ -111,7 +122,9 @@ export function JoinForm({
   return (
     <div className="join-layout" style={accent}>
       <section className="join-hero">
-        <CharacterPreview color={color} />
+        <Suspense fallback={<div className="character-preview loading" aria-hidden="true" />}>
+          <CharacterPreview color={color} />
+        </Suspense>
         <p className="character-caption">
           <span className="character-name">{trimmedName || 'You'}</span>
           <span className="character-title">{CHARACTER_TITLES[color]}</span>
