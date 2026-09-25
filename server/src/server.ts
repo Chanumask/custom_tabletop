@@ -14,6 +14,8 @@ import {
   type LogEntryBroadcast,
   MAX_PLAYERS_PER_SESSION,
   SESSION_ENDED_ERROR,
+  TABLE_WAITING_FOR_HOST_ERROR,
+  type SessionHostKey,
   SocketEvent,
   type PlayerUpdateResponse,
   type SessionPatch,
@@ -71,10 +73,19 @@ import {
 } from './validation.js';
 import { registerUploadRoutes } from './uploads.js';
 import type { StoragePolicy } from './uploadStorage.js';
+import {
+  SAVE_FORMAT,
+  TableArchive,
+  hashSecret,
+  secretsMatch,
+  type ArchivePolicy,
+} from './tableArchive.js';
 
 export interface AppServer {
   http: HttpServer;
   io: SocketIoServer;
+  /** Saves every table in play right now (shutdown). No-op without `tablesDir`. */
+  flushTables: () => void;
 }
 
 export interface AppServerOptions {
@@ -89,6 +100,13 @@ export interface AppServerOptions {
   uploadPolicy?: StoragePolicy;
   /** Uploads per client IP per window (default: uploads.ts). */
   uploadRateLimit?: { limit: number; windowMs: number };
+  /** Where tables are saved (tableArchive.ts). Unset: tables live only in
+   * memory, as before — the tests' default. */
+  tablesDir?: string;
+  /** Saved-table expiry and caps (default: tableArchive.ts). */
+  archivePolicy?: ArchivePolicy;
+  /** How often tables in play are checked for changes and saved. */
+  saveIntervalMs?: number;
   /** A built client (client/dist) to serve from the same origin — how a
    * deployment runs: one container, one port. Unset in dev (Vite serves). */
   clientDist?: string;
@@ -100,6 +118,10 @@ export interface AppServerOptions {
 }
 
 const DEFAULT_DISCONNECT_GRACE_MS = 45_000;
+/** Tables in play are checked for changes and saved this often. */
+const DEFAULT_SAVE_INTERVAL_MS = 5000;
+/** Expired saved tables are cleared out this often (and at startup). */
+const ARCHIVE_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 /** Minimum spacing between one socket's emotes. */
 const EMOTE_MIN_INTERVAL_MS = 400;
 
@@ -152,11 +174,61 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     res.json({ status: 'ok' });
   });
 
-  const sessions = new SessionStore();
+  // Saved tables (tableArchive.ts): only with a tablesDir.
+  const archive = options.tablesDir
+    ? new TableArchive(options.tablesDir, options.archivePolicy)
+    : null;
+  /** sessionId -> fingerprint of the last save, so unchanged tables aren't rewritten. */
+  const lastSaved = new Map<string, string>();
+  /** sessionId -> the player last sent the host key (see syncHostKey). */
+  const hostKeySentTo = new Map<string, string>();
+
+  const sessions = new SessionStore({
+    // The last player left: keep the table, reopenable by its host.
+    onEmptied: ({ state, hostKey, hostName }) => {
+      lastSaved.delete(state.sessionId);
+      hostKeySentTo.delete(state.sessionId);
+      try {
+        archive?.save({
+          format: SAVE_FORMAT,
+          sessionId: state.sessionId,
+          lastActiveAt: Date.now(),
+          hostKey,
+          hostName,
+          credentialHashes: {},
+          state,
+        });
+      } catch (error) {
+        console.error(`[tables] couldn't save ${state.sessionId}:`, error);
+      }
+    },
+  });
+
+  /** Saves a table in play if it changed since its last save. */
+  const saveTable = (sessionId: string) => {
+    const snapshot = archive ? sessions.snapshot(sessionId) : undefined;
+    if (!archive || !snapshot) return;
+    const fingerprint = hashSecret(
+      JSON.stringify([snapshot.state, snapshot.credentialHashes, snapshot.hostKey]),
+    );
+    if (lastSaved.get(sessionId) === fingerprint) return;
+    try {
+      archive.save({ format: SAVE_FORMAT, lastActiveAt: Date.now(), ...snapshot });
+      lastSaved.set(sessionId, fingerprint);
+    } catch (error) {
+      console.error(`[tables] couldn't save ${sessionId}:`, error);
+    }
+  };
+  const flushTables = () => sessions.liveSessionIds().forEach(saveTable);
+
   const stopUploadSweeps = registerUploadRoutes(app, {
     root: options.uploadsDir,
     policy: options.uploadPolicy,
-    inUse: () => sessions.referencedUploads(),
+    inUse: () => {
+      const names = sessions.referencedUploads();
+      archive?.referencedUploads().forEach((name) => names.add(name));
+      return names;
+    },
     rateLimit: options.uploadRateLimit,
   });
 
@@ -185,6 +257,24 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       (patch as Record<string, unknown>)[key] = state[key];
     }
     io.to(sessionId).emit(SocketEvent.SessionPatch, { sessionId, patch } satisfies SessionPatch);
+    if (keys.includes('hostId')) {
+      syncHostKey(sessionId, state);
+    }
+  };
+
+  /** Whoever is host holds the table's host key (to reopen it later, and
+   * for the host link) — sent privately, never broadcast. A host who isn't
+   * connected right now gets it in their next join ack instead. */
+  const syncHostKey = (sessionId: string, state: GameState) => {
+    if (hostKeySentTo.get(sessionId) === state.hostId) return;
+    const socketId = activeSocketByPlayer.get(playerKey(sessionId, state.hostId));
+    const hostKey = sessions.hostKeyOf(sessionId);
+    if (!socketId || !hostKey) return;
+    io.to(socketId).emit(SocketEvent.SessionHostKey, {
+      sessionId,
+      hostKey,
+    } satisfies SessionHostKey);
+    hostKeySentTo.set(sessionId, state.hostId);
   };
 
   const broadcastPresence = (sessionId: string) => {
@@ -226,21 +316,54 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     if (sessions.setConnected(identity.sessionId, identity.playerId, false)) {
       broadcastPresence(identity.sessionId);
     }
+    scheduleRemoval(identity.sessionId, identity.playerId);
+  };
+
+  /** A player who's away is removed after the grace period unless they
+   * come back (a drop, or a table restored after a restart). */
+  const scheduleRemoval = (sessionId: string, playerId: string) => {
+    const key = playerKey(sessionId, playerId);
     cancelRemoval(key);
     const timer = setTimeout(() => {
       removalTimers.delete(key);
-      const result = sessions.removeIfDisconnected(identity.sessionId, identity.playerId);
+      const result = sessions.removeIfDisconnected(sessionId, playerId);
       if (result.removed) {
-        broadcastPresence(identity.sessionId);
+        broadcastPresence(sessionId);
       }
     }, disconnectGraceMs);
     timer.unref();
     removalTimers.set(key, timer);
   };
 
+  // Tables that were in play when the server last stopped come back, their
+  // players away until they reconnect; then the housekeeping loops start.
+  if (archive) {
+    for (const table of archive.readAll()) {
+      if (table.state.players?.length) {
+        const state = sessions.restore(table);
+        state.players.forEach((player) => scheduleRemoval(table.sessionId, player.id));
+      }
+    }
+    archive.sweep(Date.now(), (sessionId) => sessions.get(sessionId) !== undefined);
+  }
+  const saveLoop = archive
+    ? setInterval(flushTables, options.saveIntervalMs ?? DEFAULT_SAVE_INTERVAL_MS)
+    : null;
+  saveLoop?.unref();
+  const archiveSweep = archive
+    ? setInterval(
+        () => archive.sweep(Date.now(), (sessionId) => sessions.get(sessionId) !== undefined),
+        ARCHIVE_SWEEP_INTERVAL_MS,
+      )
+    : null;
+  archiveSweep?.unref();
+
   http.on('close', () => {
     removalTimers.forEach((timer) => clearTimeout(timer));
     removalTimers.clear();
+    if (saveLoop) clearInterval(saveLoop);
+    if (archiveSweep) clearInterval(archiveSweep);
+    flushTables();
   });
 
   io.on('connection', (socket) => {
@@ -271,6 +394,19 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
             error: 'sessionId, playerId, playerName, and playerToken are required.',
           });
           return;
+        }
+        // A saved table nobody is at: only its host key reopens it.
+        if (!sessions.get(request.sessionId) && archive?.has(request.sessionId)) {
+          const saved = archive.load(request.sessionId);
+          if (!saved || !request.hostKey || !secretsMatch(saved.hostKey, request.hostKey)) {
+            ack?.({ ok: false, error: TABLE_WAITING_FOR_HOST_ERROR });
+            return;
+          }
+          sessions.restore({
+            ...saved,
+            credentialHashes: {},
+            state: { ...saved.state, players: [] },
+          });
         }
         if (request.resume && !sessions.get(request.sessionId)) {
           ack?.({ ok: false, error: SESSION_ENDED_ERROR });
@@ -321,7 +457,12 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         activeSocketByPlayer.set(key, socket.id);
         socket.join(request.sessionId);
 
-        ack?.({ ok: true, state });
+        const isHost = state.hostId === request.playerId;
+        const hostKey = isHost ? sessions.hostKeyOf(request.sessionId) : undefined;
+        if (isHost) {
+          hostKeySentTo.set(request.sessionId, request.playerId);
+        }
+        ack?.({ ok: true, state, ...(hostKey ? { hostKey } : {}) });
         broadcastPatch(request.sessionId, state, PRESENCE_KEYS);
       },
     );
@@ -357,10 +498,22 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       SocketEvent.SessionPeek,
       (payload: unknown, ack?: (response: SessionPeekResponse) => void) => {
         const request = parseSessionPeekRequest(payload);
+        if (!request) {
+          ack?.({ exists: false, playerCount: 0, hostName: null, takenColors: [] });
+          return;
+        }
+        const saved = sessions.get(request.sessionId) ? null : archive?.info(request.sessionId);
         ack?.(
-          request
-            ? sessions.peek(request.sessionId)
-            : { exists: false, playerCount: 0, hostName: null, takenColors: [] },
+          saved
+            ? {
+                exists: true,
+                saved: true,
+                playerCount: 0,
+                hostName: saved.hostName,
+                takenColors: [],
+                lastActiveAt: saved.lastActiveAt,
+              }
+            : sessions.peek(request.sessionId),
         );
       },
     );
@@ -989,7 +1142,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     });
   });
 
-  return { http, io };
+  return { http, io, flushTables };
 }
 
 /**

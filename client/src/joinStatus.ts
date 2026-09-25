@@ -21,10 +21,54 @@ export interface JoinStatus {
  * live `session:peek` result for exactly that code (`null` while the lookup
  * is in flight). Pure, so every branch is unit-tested.
  */
+/** "just now", "5 minutes ago", "yesterday", "3 days ago". */
+export function lastPlayed(at: number, now: number): string {
+  const minutes = Math.floor((now - at) / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? 'yesterday' : `${days} days ago`;
+}
+
+/** A saved table's status line — reopenable only by its host. */
+function savedTableStatus(
+  mode: JoinMode,
+  peek: SessionPeekResponse,
+  ownsSavedTable: boolean,
+  now: number,
+): Pick<JoinStatus, 'message' | 'tone' | 'blocked'> {
+  const when = peek.lastActiveAt ? ` · last played ${lastPlayed(peek.lastActiveAt, now)}` : '';
+  if (ownsSavedTable) {
+    return {
+      message: `Your saved table${when} — it reopens just as you left it.`,
+      tone: 'ok',
+      blocked: false,
+    };
+  }
+  if (mode === 'host') {
+    return {
+      message: 'That code belongs to a saved table — pick another.',
+      tone: 'warn',
+      blocked: true,
+    };
+  }
+  const host = peek.hostName ? ` for ${peek.hostName}` : ' for its host';
+  return {
+    message: `This table is saved${when} — waiting${host} to reopen it.`,
+    tone: 'warn',
+    blocked: true,
+  };
+}
+
 export function describeJoinStatus(
   mode: JoinMode,
   code: string,
   peek: SessionPeekResponse | null,
+  /** This browser holds the host key for that code (hostKeys.ts). */
+  ownsSavedTable = false,
+  now = Date.now(),
 ): JoinStatus {
   const status = (
     message: string | null,
@@ -43,6 +87,10 @@ export function describeJoinStatus(
     if (!peek.exists) {
       return status('No session with that code — check it, or host a new one.', 'warn', true);
     }
+    if (peek.saved) {
+      const saved = savedTableStatus(mode, peek, ownsSavedTable, now);
+      return status(saved.message, saved.tone, saved.blocked);
+    }
     if (peek.playerCount >= MAX_PLAYERS_PER_SESSION) {
       return status(`That table is full (${MAX_PLAYERS_PER_SESSION} players).`, 'warn', true);
     }
@@ -57,6 +105,10 @@ export function describeJoinStatus(
 
   if (!code) {
     return status('Pick a code for your table.', 'muted', true);
+  }
+  if (peek?.saved) {
+    const saved = savedTableStatus(mode, peek, ownsSavedTable, now);
+    return status(saved.message, saved.tone, saved.blocked);
   }
   if (peek?.exists) {
     return status('That code is already in use — pick another.', 'warn', true);

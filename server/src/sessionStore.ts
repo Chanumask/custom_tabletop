@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { uploadNameFromUrl } from './uploadStorage.js';
+import { hashSecret, newHostKey, secretsMatch, type SavedTable } from './tableArchive.js';
 import {
   BUILTIN_SOUND_PRESETS,
   appendLogEntry,
@@ -25,6 +26,20 @@ import {
 } from '@custom-tabletop/shared';
 
 const DEFAULT_SCENE_ID = 'default';
+
+/** A table everyone has just left, as it was — for saving (tableArchive.ts). */
+export interface EmptiedTable {
+  state: GameState;
+  hostKey: string;
+  /** Who hosted it last (the players are gone by now). */
+  hostName: string | null;
+}
+
+export interface SessionStoreOptions {
+  /** Called when the last player leaves, just before the table is dropped
+   * from memory — the moment to save it. */
+  onEmptied?: (table: EmptiedTable) => void;
+}
 
 /** Shared by every mutation that's infrequent/authorized enough to ack with
  * the full new GameState rather than a fire-and-forget delta (scene:* and
@@ -62,8 +77,14 @@ function stamp(): { id: string; at: number } {
  */
 export class SessionStore {
   private sessions = new Map<string, GameState>();
-  /** sessionId -> playerId -> the secret credential that player joined with. */
+  /** sessionId -> playerId -> SHA-256 of the secret credential that player
+   * joined with (only hashes are kept, so a saved table holds no tokens). */
   private credentials = new Map<string, Map<string, string>>();
+  /** sessionId -> the table's host key (reopens it once everyone has left;
+   * never in GameState, so never broadcast). */
+  private hostKeys = new Map<string, string>();
+
+  constructor(private readonly options: SessionStoreOptions = {}) {}
 
   /** Whether `credential` may (re)join `sessionId` as `playerId`: always true
    * for a brand-new player id, and for an existing one only with the same
@@ -72,7 +93,55 @@ export class SessionStore {
    * nothing to check against and is allowed. */
   authorizeJoin(sessionId: string, playerId: string, credential: string): boolean {
     const known = this.credentials.get(sessionId)?.get(playerId);
-    return known === undefined || known === credential;
+    return known === undefined || secretsMatch(known, hashSecret(credential));
+  }
+
+  /** The table's host key — for its host only (the join ack, the host link). */
+  hostKeyOf(sessionId: string): string | undefined {
+    return this.hostKeys.get(sessionId);
+  }
+
+  /** Every table currently in memory (in play, or reopened). */
+  liveSessionIds(): string[] {
+    return [...this.sessions.keys()];
+  }
+
+  /** A table's saveable parts (tableArchive.ts), or undefined if unknown. */
+  snapshot(sessionId: string): Omit<SavedTable, 'format' | 'lastActiveAt'> | undefined {
+    const state = this.sessions.get(sessionId);
+    const hostKey = this.hostKeys.get(sessionId);
+    if (!state || !hostKey) {
+      return undefined;
+    }
+    return {
+      sessionId,
+      hostKey,
+      credentialHashes: Object.fromEntries(this.credentials.get(sessionId) ?? []),
+      state,
+    };
+  }
+
+  /**
+   * Puts a saved table back in play: after a restart (its players are
+   * restored as away, to rejoin as themselves), or reopened by its host (no
+   * players; the next join takes over as host — see `join`). Saves from an
+   * older version get today's defaults for anything they lack.
+   */
+  restore(
+    saved: Pick<SavedTable, 'sessionId' | 'hostKey' | 'credentialHashes' | 'state'>,
+  ): GameState {
+    const state = normalizeRestoredState(saved.sessionId, saved.state);
+    this.sessions.set(saved.sessionId, state);
+    this.hostKeys.set(saved.sessionId, saved.hostKey);
+    this.credentials.set(
+      saved.sessionId,
+      new Map(
+        Object.entries(saved.credentialHashes).filter(([playerId]) =>
+          state.players.some((player) => player.id === playerId),
+        ),
+      ),
+    );
+    return state;
   }
 
   /** Whether `playerId` can be admitted: a returning player always can; a
@@ -110,10 +179,16 @@ export class SessionStore {
   ): GameState {
     let state = this.sessions.get(sessionId);
     const opening = !state;
+    // A saved table its host just reopened (restored with nobody in it).
+    const reopening = !!state && state.players.length === 0;
 
     if (!state) {
       state = createEmptySession(sessionId, playerId);
       this.sessions.set(sessionId, state);
+      this.hostKeys.set(sessionId, newHostKey());
+    }
+    if (reopening) {
+      state.hostId = playerId;
     }
 
     const existing = state.players.find((player) => player.id === playerId);
@@ -127,7 +202,11 @@ export class SessionStore {
       state.players.push(createPlayer(playerId, playerName, color));
       addSystemEntry(
         state,
-        opening ? `${playerName} opened the table` : `${playerName} joined the table`,
+        opening
+          ? `${playerName} opened the table`
+          : reopening
+            ? `${playerName} reopened the table`
+            : `${playerName} joined the table`,
       );
     }
     // Rejoining with the same playerId intentionally doesn't rename the
@@ -140,7 +219,7 @@ export class SessionStore {
         this.credentials.set(sessionId, sessionCredentials);
       }
       if (!sessionCredentials.has(playerId)) {
-        sessionCredentials.set(playerId, credential);
+        sessionCredentials.set(playerId, hashSecret(credential));
       }
     }
 
@@ -155,6 +234,8 @@ export class SessionStore {
     }
 
     const leaving = state.players.find((player) => player.id === playerId);
+    const hostName =
+      state.players.find((player) => player.id === state.hostId)?.name ?? leaving?.name ?? null;
     state.players = state.players.filter((player) => player.id !== playerId);
     this.credentials.get(sessionId)?.delete(playerId);
     if (leaving) {
@@ -162,8 +243,13 @@ export class SessionStore {
     }
 
     if (state.players.length === 0) {
+      const hostKey = this.hostKeys.get(sessionId);
+      if (hostKey) {
+        this.options.onEmptied?.({ state, hostKey, hostName });
+      }
       this.sessions.delete(sessionId);
       this.credentials.delete(sessionId);
+      this.hostKeys.delete(sessionId);
       return undefined;
     }
 
@@ -760,6 +846,28 @@ export class SessionStore {
     state.soundboardSlots = state.soundboardSlots.map((slot) => (slot === soundId ? null : slot));
     return { ok: true, state };
   }
+}
+
+/**
+ * A saved table's state, made safe to play: anything a save from an older
+ * version lacks gets today's default, and every player starts out away
+ * (they reconnect, or are removed after the grace period like any drop).
+ */
+function normalizeRestoredState(sessionId: string, saved: GameState): GameState {
+  const base = createEmptySession(sessionId, saved.hostId ?? '');
+  const state: GameState = { ...base, ...saved, sessionId };
+  const defaultScene = createDefaultScene();
+  state.scenes = (saved.scenes?.length ? saved.scenes : base.scenes).map((scene) => ({
+    ...defaultScene,
+    ...scene,
+  }));
+  if (!state.scenes.some((scene) => scene.id === state.activeSceneId)) {
+    state.activeSceneId = state.scenes[0]!.id;
+  }
+  state.players = (saved.players ?? []).map((player) => ({ ...player, connected: false }));
+  const slots = saved.soundboardSlots ?? base.soundboardSlots;
+  state.soundboardSlots = Array.from({ length: SOUNDBOARD_SLOT_COUNT }, (_, i) => slots[i] ?? null);
+  return state;
 }
 
 function createEmptySession(sessionId: string, hostId: string): GameState {

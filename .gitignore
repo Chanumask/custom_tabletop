@@ -49,3 +49,6 @@ blender/source-assets/*
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Saved tables in dev (server/src/tableArchive.ts)
+server/data/

@@ -1,4 +1,5 @@
 import {
+  MAX_SESSION_ID_LENGTH,
   MAX_CHAT_LENGTH,
   MAX_DICE_PER_ROLL,
   MAX_SEAT_INDEX,
@@ -97,18 +98,17 @@ export function parseSessionJoinRequest(payload: unknown): SessionJoinRequest | 
     return null;
   }
 
-  const { sessionId, playerId, playerName, playerToken, resume, color } = payload as Record<
-    string,
-    unknown
-  >;
+  const { sessionId, playerId, playerName, playerToken, resume, color, hostKey } =
+    payload as Record<string, unknown>;
   if (
-    !isNonEmptyString(sessionId) ||
+    !isSessionCode(sessionId) ||
     !isNonEmptyString(playerId) ||
     !isPlayerName(playerName) ||
     !isNonEmptyString(playerToken) ||
     playerToken.length > MAX_TOKEN_LENGTH ||
     (resume !== undefined && typeof resume !== 'boolean') ||
-    (color !== undefined && !isPlayerColorId(color))
+    (color !== undefined && !isPlayerColorId(color)) ||
+    (hostKey !== undefined && (typeof hostKey !== 'string' || hostKey.length > MAX_TOKEN_LENGTH))
   ) {
     return null;
   }
@@ -120,7 +120,14 @@ export function parseSessionJoinRequest(payload: unknown): SessionJoinRequest | 
     playerToken,
     ...(resume === undefined ? {} : { resume }),
     ...(color === undefined ? {} : { color }),
+    ...(hostKey === undefined || hostKey === '' ? {} : { hostKey }),
   };
+}
+
+/** A session code: non-empty and at most `MAX_SESSION_ID_LENGTH` once
+ * trimmed — it names the table's save file (tableArchive.ts). */
+function isSessionCode(value: unknown): value is string {
+  return isNonEmptyString(value) && value.trim().length <= MAX_SESSION_ID_LENGTH;
 }
 
 function isPlayerName(value: unknown): value is string {
@@ -132,7 +139,7 @@ export function parseSessionPeekRequest(payload: unknown): SessionPeekRequest | 
     return null;
   }
   const { sessionId } = payload as Record<string, unknown>;
-  return isNonEmptyString(sessionId) ? { sessionId: sessionId.trim() } : null;
+  return isSessionCode(sessionId) ? { sessionId: sessionId.trim() } : null;
 }
 
 export function parsePlayerUpdateRequest(payload: unknown): PlayerUpdateRequest | null {

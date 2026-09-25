@@ -21,6 +21,8 @@ services:
       UPLOADS_MAX_AGE_HOURS: '24'
     volumes:
       - ./uploads:/data/uploads
+      # Saved tables (in play, and ones everyone has left — kept 7 days).
+      - ./tables:/data/tables
     networks:
       - murrinet
     # A good neighbour on a shared box: bounded memory, CPU, processes and
