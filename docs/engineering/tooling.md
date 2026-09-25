@@ -35,6 +35,7 @@ Scoped to one workspace: `npm run <script> -w server` (or `-w client`, `-w share
 ## Ports
 
 - **Server:** `3001` (override via `PORT` env var). REST health check at `/health`; Socket.IO on the same HTTP server.
+- **Saved tables in dev:** the dev server saves tables to `server/data/tables` (gitignored), so they survive its restarts. Delete that folder to start clean.
 - **Client:** `5173` (Vite default). Reads the server URL from `VITE_SERVER_URL` (see `client/.env.example`), defaulting to `http://localhost:3001`.
 
 ## How `shared` is consumed

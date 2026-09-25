@@ -29,6 +29,8 @@ Earlier this day:
 
 **Deployed** (same day): one sandboxed Docker container on the owner's VPS, live at `https://tabletop.murri.me`. It's open to anyone with the link, with upload safeguards. See [engineering/deployment.md](engineering/deployment.md).
 
+**Saved tables** (same day): tables survive restarts and deploys, and a table everyone has left waits 7 days for its host to reopen it with the same code or the host link.
+
 Nothing on the roadmap is left. What's next is whatever playtesting turns up, plus the "later" list in [roadmap.md](roadmap.md): map presets, wall drawing, persistence.
 
 ### Earlier on 2026-09-25

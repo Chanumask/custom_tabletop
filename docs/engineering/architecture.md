@@ -120,6 +120,8 @@ Der Server verwaltet den gemeinsamen Zustand der Session und verteilt Änderunge
 
 **As deployed (2026-09-25):** in production the same Node process also serves the built client. Browsers load the page, `/uploads/*` and Socket.IO from one origin (`https://tabletop.murri.me`), through the owner's Nginx Proxy Manager, which terminates TLS. In dev the client is still Vite on 5173, talking to the server on 3001. Details: [deployment.md](deployment.md).
 
+**Persistence (2026-09-25):** server-authoritative state is still held in memory, but every table is also saved as a JSON file (`server/src/tableArchive.ts`). Tables therefore survive restarts, and a table everyone has left is kept 7 days for its host. See [decisions.md](../decisions.md), "Saved tables".
+
 ---
 
 ## Rendering

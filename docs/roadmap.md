@@ -130,11 +130,21 @@ Details: [engineering/deployment.md](engineering/deployment.md).
 
 ---
 
+## Saved tables (2026-09-25) ✅
+
+Discussed and agreed with the owner, then built:
+- Tables survive restarts and deploys; players reconnect into them.
+- A table everyone has left waits 7 days, and hosting the same code reopens it for its host (their browser, or the secret host link).
+- Player tokens are stored only as hashes, the saved tables' uploads are protected, and there's a cap.
+
+Details: [decisions.md](decisions.md) "Saved tables", [engineering/deployment.md](engineering/deployment.md).
+
+---
+
 Later — **in discussion, not decided.** Each of these is an idea on the table, not a plan: talk it through with the user and get an explicit go-ahead (and a shape) before building any of it. Nothing here should be picked up "because it's next" (user, 2026-09-25).
 
 - **Map presets**: a handful of built-in map backgrounds to pick from, mirroring the soundboard's presets. 2026-09-24 user request. (The crop/zoom/pan fit it came with landed on 2026-09-25 as the map crop dialog.)
 - **Wall drawing + a pen tool**: extend drawing (Milestone 5) from the table to the room's walls, with a real tool-selection UI. 2026-09-24 user request.
-- **Saving sessions (persistence)**: sessions live only in server memory, so a server restart or an empty table loses the map, drawings and whiteboard. Would let a campaign carry over between game nights. Open questions: what gets saved, who can load it, where it's stored.
 - **Dev-tooling upgrades**: `npm audit` flags 5 vulnerabilities, all in dev-only tooling (Vite/esbuild/Vitest). The production dependency tree has 0 (`npm audit --omit=dev`), and the deployed app never runs the Vite dev server. Fixing them means major upgrades (`vite@8`, `vitest@5`), so it's a maintenance chore, not a deploy blocker.
 - **Tokens/minis on the table**: small figures players drag around the map (suggested 2026-09-25).
 - **Fog of war**: the host hides parts of the map and reveals them as players explore (suggested 2026-09-25).
