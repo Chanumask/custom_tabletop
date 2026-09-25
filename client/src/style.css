@@ -142,11 +142,21 @@ body {
 }
 
 .held-item-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0.3rem 0.65rem;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.55);
   color: #f3e6d3;
   font-size: 0.8rem;
+}
+
+.held-item-badge kbd {
+  padding: 0 0.3rem;
+  border: 1px solid rgba(243, 230, 211, 0.4);
+  border-radius: 4px;
+  font-size: 0.72rem;
 }
 
 /* The wall-soundboard's assign-sound overlay (Milestone 8 follow-up),

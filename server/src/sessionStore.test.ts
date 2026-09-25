@@ -722,3 +722,50 @@ describe('SessionStore photos (gadgets phase 2)', () => {
     expect(store.referencedUploads().has('photo123.jpg')).toBe(true);
   });
 });
+
+describe('SessionStore flashlight (gadgets phase 3)', () => {
+  it('a fresh player starts with the flashlight off', () => {
+    const store = new SessionStore();
+    const state = store.join('abc', 'p1', 'Alice');
+    expect(state.players[0]?.flashlightOn).toBe(false);
+  });
+
+  it('refuses to toggle without holding the flashlight', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    expect(store.toggleFlashlight('abc', 'p1')).toEqual({
+      ok: false,
+      error: 'You need the flashlight.',
+    });
+  });
+
+  it('toggles on and back off for the holder only', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+    store.takeItem('abc', 'p1', 'flashlight-1');
+
+    const on = store.toggleFlashlight('abc', 'p1');
+    expect(on.ok).toBe(true);
+    if (!on.ok) return;
+    expect(on.state.players.find((p) => p.id === 'p1')?.flashlightOn).toBe(true);
+    expect(on.state.players.find((p) => p.id === 'p2')?.flashlightOn).toBe(false);
+
+    const off = store.toggleFlashlight('abc', 'p1');
+    expect(off.ok).toBe(true);
+    if (!off.ok) return;
+    expect(off.state.players.find((p) => p.id === 'p1')?.flashlightOn).toBe(false);
+  });
+
+  it('putting the flashlight back turns it off', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.takeItem('abc', 'p1', 'flashlight-1');
+    store.toggleFlashlight('abc', 'p1');
+
+    const result = store.dropItem('abc', 'p1', 'flashlight-1');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.players.find((p) => p.id === 'p1')?.flashlightOn).toBe(false);
+  });
+});

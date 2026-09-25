@@ -972,6 +972,36 @@ export class SessionStore {
       return { ok: false, error: "You aren't holding that." };
     }
     item.heldBy = null;
+    // Putting the flashlight back turns it off — it shouldn't stay lit for
+    // a player no longer holding it, and the next person to take it should
+    // find it off, not however the last holder left it.
+    if (item.kind === 'flashlight') {
+      const player = state.players.find((candidate) => candidate.id === playerId);
+      if (player) {
+        player.flashlightOn = false;
+      }
+    }
+    return { ok: true, state };
+  }
+
+  /** Not host-gated — a player can only ever toggle their *own* flashlight
+   * (gadgets phase 3), refused unless they currently hold it. */
+  toggleFlashlight(sessionId: string, playerId: string): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const player = state.players.find((candidate) => candidate.id === playerId);
+    if (!player) {
+      return { ok: false, error: 'Player not found.' };
+    }
+    const holdsFlashlight = state.inventory.some(
+      (item) => item.kind === 'flashlight' && item.heldBy === playerId,
+    );
+    if (!holdsFlashlight) {
+      return { ok: false, error: 'You need the flashlight.' };
+    }
+    player.flashlightOn = !player.flashlightOn;
     return { ok: true, state };
   }
 
@@ -1269,7 +1299,11 @@ function normalizeRestoredState(sessionId: string, saved: GameState): GameState 
   if (!state.scenes.some((scene) => scene.id === state.activeSceneId)) {
     state.activeSceneId = state.scenes[0]!.id;
   }
-  state.players = (saved.players ?? []).map((player) => ({ ...player, connected: false }));
+  state.players = (saved.players ?? []).map((player) => ({
+    ...player,
+    connected: false,
+    flashlightOn: player.flashlightOn ?? false,
+  }));
   // Seat numbers from an older save may point at chairs this table
   // doesn't have (or were numbered differently): settle them.
   settleSeats(state.players, chairCount(state.players.length));
@@ -1364,5 +1398,6 @@ function createPlayer(id: string, name: string, color: PlayerColorId): Player {
     seated: false,
     seatIndex: null,
     connected: true,
+    flashlightOn: false,
   };
 }

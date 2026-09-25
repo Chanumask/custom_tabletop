@@ -6,6 +6,29 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 (gadgets phase 3) — The flashlight
+
+### What landed
+
+- **`shared`**: `Player.flashlightOn`, defaulted `false` for both a fresh join and an older save missing it. New `flashlight.ts` holds `FlashlightToggleRequest`/`Response`. New `flashlight:toggle` event.
+- **`server`**: `SessionStore.toggleFlashlight` — refused unless the requester holds the flashlight, not host-gated (a player can only ever toggle their own). Putting the flashlight back in the chest (`dropItem`) also turns it off, so it can't appear lit for a player no longer holding it, and the next person to take it finds it off.
+- **`client`**: no 3D model for the flashlight itself (HUD-icon-only, same as the camera). A fixed **F** key (not the rebindable interact key — held together with the camera, E is already "take a photo") toggles it while holding it, silently doing nothing otherwise. Two separate beams:
+  - The local player's own: a `THREE.SpotLight` added to the scene directly (not parented to the camera — the camera itself was never added to the scene graph, so a light parented to it wouldn't be traversed for lighting), repositioned/re-aimed from the camera's position and look direction every frame while on.
+  - Every other player's: a `THREE.SpotLight` + target added as children of their avatar's own group in `PlayerAvatars.ts` — since the group is already positioned and rotated to match the player each frame, the light and its target inherit that for free and only need their intensity toggled in `sync()`.
+- `HeldItems.tsx`'s corner badges now show a key hint for whichever gadgets have a "use" action implemented so far (camera: the interact key; flashlight: F) — a kind with no action yet just shows its name.
+
+### Checked
+
+- New tests: `SessionStore` unit tests (starts off, refuses without holding it, toggles on/off for the holder only, dropping it turns it off), a socket-level `flashlight.test.ts` (mirroring the other gadget test files), and a `PlayerAvatars` test confirming the beam lights only for a player whose `flashlightOn` is true.
+- Full `sanity-check` (lint/format/build/test): 643 tests (47 shared, 350 server, 246 client), all clean.
+- **Live browser verification**: took the flashlight from the chest, confirmed the "Flashlight F" hint badge appears alongside the camera's, walked to a dark corner and toggled it on — a clear spotlight cone followed the look direction — then off again.
+
+### Next session
+
+Phases 4-5 (walkie-talkies, calculator) still to build.
+
+---
+
 ## 2026-09-25 (gadgets phase 2) — The Polaroid camera and the wall pinboard
 
 **Asked** (user): "go for phases 2-5" — continuing the gadgets inventory plan from phase 1, unattended (no new design questions; the plan and its `AskUserQuestion` decisions were already settled).

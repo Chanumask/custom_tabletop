@@ -482,6 +482,9 @@ export function App() {
   const handleCapturePhoto = (url: string) =>
     sendAction(SocketEvent.PhotoCapture, { url }, "Couldn't pin that photo");
 
+  const handleToggleFlashlight = () =>
+    sendAction(SocketEvent.FlashlightToggle, {}, "Couldn't toggle the flashlight");
+
   const handleMutePlayer = (targetPlayerId: string) =>
     sendAction(SocketEvent.PlayerMute, { targetPlayerId }, 'Failed to mute player');
 
@@ -653,6 +656,7 @@ export function App() {
             onDropItem={handleDropItem}
             photos={gameState.photos}
             onCapturePhoto={handleCapturePhoto}
+            onToggleFlashlight={handleToggleFlashlight}
             onUploadSound={handleUploadSound}
             onAssignSlot={handleAssignSlot}
             theme={gameState.theme ?? 'classic'}

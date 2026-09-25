@@ -8,6 +8,7 @@ export * from './dice.js';
 export * from './sound.js';
 export * from './inventory.js';
 export * from './photo.js';
+export * from './flashlight.js';
 export * from './interactables.js';
 export * from './youtube.js';
 export * from './emote.js';

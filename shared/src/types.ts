@@ -169,6 +169,13 @@ export interface Player {
    * silently-present ghost; if the grace period runs out they're removed
    * from the session exactly as if they'd left (see docs/decisions.md). */
   connected: boolean;
+
+  /** The flashlight (gadgets phase 3), toggled by `flashlight:toggle` —
+   * only meaningful while holding it (`InventoryItem.kind === 'flashlight'`,
+   * `heldBy === this player`); dropping it resets this to false. Visible to
+   * everyone else, same as `seated`, so the light cone shows on the right
+   * player's avatar. */
+  flashlightOn: boolean;
 }
 
 export interface Scene {

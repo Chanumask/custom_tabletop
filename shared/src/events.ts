@@ -82,6 +82,8 @@ export const SocketEvent = {
   /** The camera (gadgets phase 2) — register an already-uploaded photo,
    * always pinned to the wall board. */
   PhotoCapture: 'photo:capture',
+  /** The flashlight (gadgets phase 3) — toggle it on/off. */
+  FlashlightToggle: 'flashlight:toggle',
 
   /** Save the whiteboard's lines (whiteboard.ts). */
   WhiteboardWrite: 'whiteboard:write',

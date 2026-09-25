@@ -40,6 +40,7 @@ function player(id: string, overrides: Partial<Player> = {}): Player {
     seated: false,
     seatIndex: null,
     connected: true,
+    flashlightOn: false,
     ...overrides,
   };
 }
@@ -87,6 +88,22 @@ describe('PlayerAvatars', () => {
     await flush();
     expect(characters.loads).toEqual(['red', 'purple']);
     expect(`#${shirtOf(avatars, 'a').color.getHexString()}`).toBe('#9160d6');
+  });
+
+  it('lights the flashlight beam only for a player whose flashlight is on', async () => {
+    const avatars = new PlayerAvatars(new THREE.Scene(), fakeCharacters());
+    avatars.sync([player('a', { flashlightOn: true }), player('b')], 'me');
+    await flush();
+
+    const beamOf = (id: string) =>
+      avatars
+        .objectFor(id)!
+        .children.find((child): child is THREE.SpotLight => child instanceof THREE.SpotLight)!;
+    expect(beamOf('a').intensity).toBeGreaterThan(0);
+    expect(beamOf('b').intensity).toBe(0);
+
+    avatars.sync([player('a', { flashlightOn: false }), player('b')], 'me');
+    expect(beamOf('a').intensity).toBe(0);
   });
 
   it('removes the avatar of a player who left', async () => {

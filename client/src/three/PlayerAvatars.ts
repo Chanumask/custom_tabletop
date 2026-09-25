@@ -49,6 +49,13 @@ const SIT_THIGH = -Math.PI / 2;
 const SIT_KNEE = Math.PI / 2;
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 
+/** The flashlight's beam (gadgets phase 3) — roughly chest height, aimed
+ * forward (the models face local +Z, same as the seat-facing math above). */
+const FLASHLIGHT_HEIGHT = 1.3;
+const FLASHLIGHT_TARGET_DISTANCE = 4;
+const FLASHLIGHT_COLOR = 0xfff0d0;
+const FLASHLIGHT_INTENSITY = 6;
+
 interface LegBones {
   upperL: THREE.Object3D | null;
   upperR: THREE.Object3D | null;
@@ -80,6 +87,9 @@ interface Avatar {
   /** What they just said in chat, until `until` (on the avatars' clock). */
   speech: { bubble: SpeechBubble; until: number } | null;
   loadToken: number;
+  /** The flashlight's beam (gadgets phase 3) — a child of `group`, so it
+   * follows position/facing for free; only its intensity toggles. */
+  flashlight: THREE.SpotLight;
 }
 
 /** GLTFLoader strips "." from node names ("UpperLeg.L" -> "UpperLegL"). */
@@ -127,6 +137,7 @@ export class PlayerAvatars {
       }
 
       avatar.target = { x: player.position.x, z: player.position.z, yaw: player.rotationY };
+      avatar.flashlight.intensity = player.flashlightOn ? FLASHLIGHT_INTENSITY : 0;
       avatar.seated = player.seated;
       avatar.seat =
         player.seated && player.seatIndex !== null ? (this.seats[player.seatIndex] ?? null) : null;
@@ -230,6 +241,15 @@ export class PlayerAvatars {
     group.name = `avatar-${player.id}`;
     const nameTag = new NameTag();
     group.add(nameTag.sprite);
+
+    const flashlight = new THREE.SpotLight(FLASHLIGHT_COLOR, 0, 8, Math.PI / 7, 0.45, 1.2);
+    flashlight.position.set(0, FLASHLIGHT_HEIGHT, 0);
+    const flashlightTarget = new THREE.Object3D();
+    flashlightTarget.position.set(0, FLASHLIGHT_HEIGHT * 0.6, FLASHLIGHT_TARGET_DISTANCE);
+    flashlight.target = flashlightTarget;
+    group.add(flashlight);
+    group.add(flashlightTarget);
+
     this.group.add(group);
 
     const start = { x: player.position.x, z: player.position.z, yaw: player.rotationY };
@@ -254,6 +274,7 @@ export class PlayerAvatars {
       nameTag,
       speech: null,
       loadToken: 0,
+      flashlight,
     };
     this.avatars.set(player.id, avatar);
     this.loadModel(avatar);

@@ -44,6 +44,7 @@ import {
   type ItemTakeResponse,
   type ItemDropResponse,
   type PhotoCaptureResponse,
+  type FlashlightToggleResponse,
   type WhiteboardWriteResponse,
   WHITEBOARD_LINE_COUNT,
   WHITEBOARD_MAX_LINE_LENGTH,
@@ -90,6 +91,7 @@ import {
   parseItemTakeRequest,
   parseItemDropRequest,
   parsePhotoCaptureRequest,
+  parseFlashlightToggleRequest,
   parseWhiteboardWriteRequest,
 } from './validation.js';
 import { registerUploadRoutes } from './uploads.js';
@@ -1445,6 +1447,29 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         ack?.(result);
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['photos']);
+        }
+      },
+    );
+
+    // The flashlight (gadgets phase 3) — not host-gated, refused
+    // server-side unless the requester currently holds it.
+    socket.on(
+      SocketEvent.FlashlightToggle,
+      (payload: unknown, ack?: (response: FlashlightToggleResponse) => void) => {
+        const request = parseFlashlightToggleRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId and playerId are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+
+        const result = sessions.toggleFlashlight(request.sessionId, request.playerId);
+        ack?.(result);
+        if (result.ok) {
+          broadcastPatch(request.sessionId, result.state, ['players']);
         }
       },
     );

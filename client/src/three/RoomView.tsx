@@ -117,6 +117,11 @@ const MAX_FRAME_SECONDS = 0.1;
 /** How close (along the view ray) the whiteboard can be aimed at. */
 const WHITEBOARD_RANGE = 3.2;
 const SCREEN_CENTER = new THREE.Vector2(0, 0);
+/** Reused every frame for the local player's flashlight beam direction —
+ * avoids a fresh Vector3 allocation each frame. */
+const FLASHLIGHT_DIRECTION = new THREE.Vector3();
+const FLASHLIGHT_DISTANCE = 5;
+const FLASHLIGHT_INTENSITY = 8;
 /** How far away a die on the table can be aimed at to roll it. */
 const DIE_REACH = 2.6;
 const MOVE_POSITION_EPSILON = 0.01;
@@ -222,6 +227,9 @@ export interface RoomViewProps {
   /** Registers an already-uploaded photo (the upload itself is a plain
    * REST call inside this component, same split as sound/map uploads). */
   onCapturePhoto: (url: string) => void;
+  /** Toggles the local player's flashlight (the gadgets inventory, phase 3)
+   * — refused server-side unless they currently hold it. */
+  onToggleFlashlight: () => void;
   /** Registers a newly-uploaded/linked sound into the shared soundboard —
    * shared with the 2D panel's own upload form (SessionView.tsx), which
    * never passes `slotIndex`. Passing one (from the wall board's assign
@@ -353,6 +361,7 @@ export function RoomView({
   onDropItem,
   photos,
   onCapturePhoto,
+  onToggleFlashlight,
   onUploadSound,
   onAssignSlot,
   canDraw,
@@ -412,6 +421,8 @@ export function RoomView({
   const soundboardSlotsRef = useRef<(string | null)[]>(soundboardSlots);
   const soundboardWallRef = useRef<SoundboardWall | null>(null);
   const pinboardRef = useRef<Pinboard | null>(null);
+  const flashlightRef = useRef<THREE.SpotLight | null>(null);
+  const flashlightTargetRef = useRef<THREE.Object3D | null>(null);
   const photosRef = useRef<Photo[]>(photos);
   const capturingPhotoRef = useRef(false);
   const [cameraFlash, setCameraFlash] = useState(false);
@@ -451,6 +462,7 @@ export function RoomView({
   const onObjectInteractRef = useRef(onObjectInteract);
   const onUploadSoundRef = useRef(onUploadSound);
   const onCapturePhotoRef = useRef(onCapturePhoto);
+  const onToggleFlashlightRef = useRef(onToggleFlashlight);
   const inventoryRef = useRef<InventoryItem[]>(inventory);
   const onNotifyRef = useRef(onNotify);
   const interactKeyRef = useRef(interactKey);
@@ -563,6 +575,10 @@ export function RoomView({
   useEffect(() => {
     onCapturePhotoRef.current = onCapturePhoto;
   }, [onCapturePhoto]);
+
+  useEffect(() => {
+    onToggleFlashlightRef.current = onToggleFlashlight;
+  }, [onToggleFlashlight]);
 
   useEffect(() => {
     inventoryRef.current = inventory;
@@ -860,6 +876,7 @@ export function RoomView({
     let handleInteractKey: ((event: KeyboardEvent) => void) | null = null;
     let handleEmoteKey: ((event: KeyboardEvent) => void) | null = null;
     let handleViewKey: ((event: KeyboardEvent) => void) | null = null;
+    let handleFlashlightKey: ((event: KeyboardEvent) => void) | null = null;
     let fireAudioRef: FireAmbience | null = null;
     let startFireAudio: (() => void) | null = null;
     let startNight: (() => void) | null = null;
@@ -973,6 +990,18 @@ export function RoomView({
         const pinboard = createPinboard(scene);
         syncPinboard(pinboard, photosRef.current);
         pinboardRef.current = pinboard;
+
+        // The local player's own flashlight beam (gadgets phase 3) — other
+        // players' beams live on their avatar (PlayerAvatars.ts), but the
+        // local player has no avatar of their own (first-person), so this
+        // one follows the camera directly instead (updated every frame in
+        // the animate loop below).
+        const flashlight = new THREE.SpotLight(0xfff0d0, 0, 10, Math.PI / 7, 0.45, 1.2);
+        const flashlightTarget = new THREE.Object3D();
+        flashlight.target = flashlightTarget;
+        scene.add(flashlight, flashlightTarget);
+        flashlightRef.current = flashlight;
+        flashlightTargetRef.current = flashlightTarget;
 
         const whiteboardSurface = room.whiteboardSurface;
         if (whiteboardSurface) {
@@ -1448,6 +1477,25 @@ export function RoomView({
         };
         document.addEventListener('keydown', handleViewKey);
 
+        // F: toggle the flashlight (gadgets phase 3) — a fixed key, not the
+        // rebindable interact key, so holding both the camera and the
+        // flashlight never makes E ambiguous between "take a photo" and
+        // "toggle the flashlight". A silent no-op without it (server would
+        // refuse it anyway; this just skips the round trip).
+        handleFlashlightKey = (event: KeyboardEvent) => {
+          if (event.code !== 'KeyF' || event.repeat || isTypingTarget(event.target)) {
+            return;
+          }
+          if (
+            inventoryRef.current.some(
+              (item) => item.kind === 'flashlight' && item.heldBy === playerId,
+            )
+          ) {
+            onToggleFlashlightRef.current();
+          }
+        };
+        document.addEventListener('keydown', handleFlashlightKey);
+
         // Chat was opened from a walking view: sending (or Esc) hands the
         // mouse straight back to looking around (ChatPanel.tsx).
         handleResumeLook = () => {
@@ -1496,6 +1544,17 @@ export function RoomView({
           updateFireAudio?.(delta);
           updateNight?.(delta);
           avatarsRef.current?.update(delta);
+          if (flashlightRef.current && flashlightTargetRef.current) {
+            const on = playersRef.current.find((p) => p.id === playerId)?.flashlightOn ?? false;
+            flashlightRef.current.intensity = on ? FLASHLIGHT_INTENSITY : 0;
+            if (on) {
+              flashlightRef.current.position.copy(camera.position);
+              camera.getWorldDirection(FLASHLIGHT_DIRECTION);
+              flashlightTargetRef.current.position
+                .copy(camera.position)
+                .addScaledVector(FLASHLIGHT_DIRECTION, FLASHLIGHT_DISTANCE);
+            }
+          }
           soundboardWallRef.current?.update(delta);
           decorRef.current?.update(delta, timer.getElapsed());
           outside?.render(renderer, camera, delta, timer.getElapsed());
@@ -1658,6 +1717,9 @@ export function RoomView({
       if (handleViewKey) {
         document.removeEventListener('keydown', handleViewKey);
       }
+      if (handleFlashlightKey) {
+        document.removeEventListener('keydown', handleFlashlightKey);
+      }
       cancelAnimationFrame(animationFrameId);
       timer.dispose();
       controllerRef.current?.dispose();
@@ -1680,6 +1742,12 @@ export function RoomView({
       if (pinboardRef.current) {
         disposePinboard(pinboardRef.current);
         pinboardRef.current = null;
+      }
+      if (flashlightRef.current) {
+        scene.remove(flashlightRef.current);
+        if (flashlightTargetRef.current) scene.remove(flashlightTargetRef.current);
+        flashlightRef.current = null;
+        flashlightTargetRef.current = null;
       }
       brassEnv?.dispose();
       outside?.dispose();
@@ -1762,7 +1830,10 @@ export function RoomView({
         !whiteboardOpen &&
         !inventoryOpen && <div className="crosshair" />}
       {cameraFlash && <div className="camera-flash" />}
-      <HeldItems items={inventory.filter((item) => item.heldBy === playerId)} />
+      <HeldItems
+        items={inventory.filter((item) => item.heldBy === playerId)}
+        interactKey={interactKey}
+      />
       {/* One bottom-center stack, so the prompt always sits above the hint
           instead of the two overlapping when the hint wraps. */}
       <div className="room-bottom-stack">
