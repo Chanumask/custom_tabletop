@@ -18,33 +18,37 @@ export interface ActiveClip {
 
 // YouTube requires an embedded player to be reasonably sized and visible;
 // 16:9 at 200px tall is the smallest honest size.
-const PLAYER_WIDTH = 356;
-const PLAYER_HEIGHT = 200;
+const CARD_WIDTH = 356;
+const CARD_HEIGHT = 200;
 
 /**
- * The soundboard's YouTube "clip" player: when anyone plays a YouTube entry,
- * every client shows this small card with YouTube's own embedded player —
- * visible, with YouTube's branding and controls intact, never audio-only or
- * hidden (YouTube's developer policies; docs/decisions.md). Closes itself
- * when the video ends, on error (with a toast explaining why), or via ×.
+ * YouTube's own embedded player for a clip, at a given size — visible, with
+ * YouTube's branding and controls intact, never audio-only or hidden
+ * (YouTube's developer policies; docs/decisions.md). Used on the room's TV
+ * (TvScreen.ts) and in the corner card below. Calls `onEnded` when the
+ * video finishes, `onError` (with a readable reason) if it can't play.
  */
-export function YouTubeClip({
+export function YouTubeEmbed({
   clip,
   volume,
-  onClose,
+  width,
+  height,
+  onEnded,
   onError,
 }: {
   clip: ActiveClip;
   volume: number;
-  onClose: () => void;
+  width: number;
+  height: number;
+  onEnded: () => void;
   onError: (message: string) => void;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YouTubePlayer | null>(null);
   const volumeRef = useRef(volume);
-  const onCloseRef = useRef(onClose);
+  const onEndedRef = useRef(onEnded);
   const onErrorRef = useRef(onError);
-  onCloseRef.current = onClose;
+  onEndedRef.current = onEnded;
   onErrorRef.current = onError;
 
   useEffect(() => {
@@ -69,8 +73,8 @@ export function YouTubeClip({
           return;
         }
         playerRef.current = new YT.Player(mount, {
-          width: PLAYER_WIDTH,
-          height: PLAYER_HEIGHT,
+          width,
+          height,
           videoId: clip.videoId,
           playerVars: {
             autoplay: 1,
@@ -85,12 +89,12 @@ export function YouTubeClip({
             },
             onStateChange: (event) => {
               if (event.data === YT_ENDED) {
-                onCloseRef.current();
+                onEndedRef.current();
               }
             },
             onError: (event) => {
               onErrorRef.current(describeYouTubeError(event.data));
-              onCloseRef.current();
+              onEndedRef.current();
             },
           },
         });
@@ -98,7 +102,7 @@ export function YouTubeClip({
       () => {
         if (!cancelled) {
           onErrorRef.current('Could not load the YouTube player.');
-          onCloseRef.current();
+          onEndedRef.current();
         }
       },
     );
@@ -109,8 +113,29 @@ export function YouTubeClip({
       playerRef.current = null;
       host.replaceChildren();
     };
-  }, [clip.key, clip.videoId, clip.startSeconds]);
+  }, [clip.key, clip.videoId, clip.startSeconds, width, height]);
 
+  return <div ref={hostRef} className="youtube-embed" style={{ width, height }} />;
+}
+
+/**
+ * The corner card version: YouTube's player with the clip's title, who
+ * played it, and ×. Shown when the room has no TV, or when a player pops
+ * the clip out of the TV (`onShowOnTv` offers the way back).
+ */
+export function YouTubeClip({
+  clip,
+  volume,
+  onClose,
+  onError,
+  onShowOnTv,
+}: {
+  clip: ActiveClip;
+  volume: number;
+  onClose: () => void;
+  onError: (message: string) => void;
+  onShowOnTv?: () => void;
+}) {
   return (
     <div className="youtube-clip" role="region" aria-label="YouTube clip">
       <div className="youtube-clip-header">
@@ -118,11 +143,23 @@ export function YouTubeClip({
           ▶ {clip.title}
         </span>
         <span className="youtube-clip-by">played by {clip.playedBy}</span>
+        {onShowOnTv && (
+          <button type="button" className="youtube-clip-tv" onClick={onShowOnTv}>
+            On the TV
+          </button>
+        )}
         <button type="button" className="youtube-clip-close" aria-label="Close" onClick={onClose}>
           ×
         </button>
       </div>
-      <div ref={hostRef} className="youtube-clip-player" />
+      <YouTubeEmbed
+        clip={clip}
+        volume={volume}
+        width={CARD_WIDTH}
+        height={CARD_HEIGHT}
+        onEnded={onClose}
+        onError={onError}
+      />
     </div>
   );
 }

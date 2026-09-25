@@ -16,7 +16,7 @@ import {
   type LogEntryBroadcast,
 } from '@custom-tabletop/shared';
 import { Toasts } from './Toasts.js';
-import { YouTubeClip, type ActiveClip } from './YouTubeClip.js';
+import type { ActiveClip } from './YouTubeClip.js';
 import { ChatPanel } from './ChatPanel.js';
 import { useToasts } from './useToasts.js';
 import { createSocket } from './socket.js';
@@ -405,6 +405,11 @@ export function App() {
           onWriteWhiteboard={handleWriteWhiteboard}
           onRollDice={handleRollDice}
           log={gameState.log}
+          fireSound={settings.fireSound}
+          clip={clip}
+          clipVolume={settings.masterVolume}
+          onClipClose={() => setClip(null)}
+          onClipError={(message) => toast(message, 'error')}
         />
         <SessionView
           state={gameState}
@@ -425,14 +430,6 @@ export function App() {
           onRemoveSound={handleRemoveSound}
           onNotify={toast}
         />
-        {clip && (
-          <YouTubeClip
-            clip={clip}
-            volume={settings.masterVolume}
-            onClose={() => setClip(null)}
-            onError={(message) => toast(message, 'error')}
-          />
-        )}
         <ChatPanel log={gameState.log} players={gameState.players} onSend={handleSendChat} />
         {status !== 'connected' && (
           <div className="connection-banner" role="status">

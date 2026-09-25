@@ -25,7 +25,7 @@ const TONE_PARAMS: Record<string, ToneParams> = {
 // policy uniformly regardless of when a tone is first triggered.
 let sharedContext: AudioContext | null = null;
 
-function getAudioContext(): AudioContext {
+export function getAudioContext(): AudioContext {
   sharedContext ??= new AudioContext();
   return sharedContext;
 }
@@ -43,6 +43,11 @@ let masterVolume = 1;
  * synthesized tones and uploaded/linked audio. Clamped to [0, 1] — a
  * malformed/out-of-range value from a future settings-import feature
  * shouldn't be able to blow out a player's speakers. */
+/** The volume every sound currently plays at (0..1). */
+export function getMasterVolume(): number {
+  return masterVolume;
+}
+
 export function setMasterVolume(volume: number): void {
   masterVolume = Math.min(1, Math.max(0, volume));
 }

@@ -67,3 +67,44 @@ describe('describeRoom', () => {
     expect(room.seats).toEqual([]);
   });
 });
+
+describe('describeRoom cozy anchors', () => {
+  it('finds the TV screen, window, fire, flames, glow spots and beams', () => {
+    const root = new THREE.Group();
+    root.add(box('TV_Screen', [0.76, 0.57, 0.001], [0, 0.67, 3.5]));
+    root.add(box('Window_View', [1.3, 1.15, 0.001], [2.95, 1.9, -3.99]));
+    root.add(box('Fireplace_Embers', [0.3, 0.01, 0.6], [-4.7, 0.12, 0.35]));
+    const fire = new THREE.Object3D();
+    fire.name = 'Fireplace_Fire';
+    fire.position.set(-4.72, 0.2, 0.35);
+    root.add(fire);
+    const glow = new THREE.Object3D();
+    glow.name = 'Glow_Lantern_01';
+    glow.position.set(0.42, 1.2, 3.72);
+    root.add(glow);
+    root.add(box('Flame_Candle_0', [0.01, 0.03, 0.01], [-4.66, 1.8, 1.0]));
+    root.add(box('Flame_OilLamp', [0.01, 0.03, 0.01], [4.7, 1.2, 2.0]));
+    root.add(box('Beam_0', [10, 0.2, 0.2], [0, 2.9, 2.6]));
+
+    const room = describeRoom(root);
+
+    expect(room.tvScreen?.name).toBe('TV_Screen');
+    expect(room.windowView?.name).toBe('Window_View');
+    expect(room.embers?.name).toBe('Fireplace_Embers');
+    expect(room.fireSpot?.toArray()).toEqual([-4.72, 0.2, 0.35]);
+    expect(room.flames.map((flame) => flame.name).sort()).toEqual([
+      'Flame_Candle_0',
+      'Flame_OilLamp',
+    ]);
+    expect(room.glowSpots).toHaveLength(1);
+    expect(room.beams).toHaveLength(1);
+    expect(room.beams[0]!.min.y).toBeCloseTo(2.8);
+  });
+
+  it('leaves them empty when the model has none', () => {
+    const room = describeRoom(new THREE.Group());
+    expect(room.tvScreen).toBeNull();
+    expect(room.fireSpot).toBeNull();
+    expect(room.flames).toEqual([]);
+  });
+});

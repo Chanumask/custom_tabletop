@@ -32,6 +32,7 @@ import {
   addRoomLighting,
   configureRoomToneMapping,
   setRoomLightsOn,
+  tuneRoomMaterials,
   type RoomLights,
 } from './RoomLighting.js';
 import { PlayerAvatars } from './PlayerAvatars.js';
@@ -46,6 +47,11 @@ import { remapTableTopUV } from './tableTopUV.js';
 import { DiceManager, TUMBLE_SECONDS } from './DiceManager.js';
 import { playDiceClatter, playPingSound } from '../sounds.js';
 import { TablePings } from './TablePings.js';
+import { Ambience } from './Ambience.js';
+import { FireAmbience } from '../fireAmbience.js';
+import { TV_PLAYER_HEIGHT, TV_PLAYER_WIDTH, TvScreen } from './TvScreen.js';
+import { YouTubeClip, YouTubeEmbed, type ActiveClip } from '../YouTubeClip.js';
+import { createPortal } from 'react-dom';
 import { canvasToTableLocal, tableLocalToCanvas } from './tableCoordinates.js';
 import type { TableSurface } from './RoomLayout.js';
 import { RESUME_LOOK_EVENT } from '../ChatPanel.js';
@@ -151,6 +157,13 @@ export interface RoomViewProps {
   onWriteWhiteboard: (lines: (string | null)[]) => void;
   /** Rolls dice on the table (aim + interact, or a click while seated). */
   onRollDice: (diceIds: string[]) => void;
+  /** Whether to play the fireplace's crackle (a client setting). */
+  fireSound: boolean;
+  /** The YouTube clip playing for everyone (on the room's TV), if any. */
+  clip: ActiveClip | null;
+  clipVolume: number;
+  onClipClose: () => void;
+  onClipError: (message: string) => void;
   /** The session log: new chat lines and typed rolls pop up as speech
    * bubbles over whoever said them. */
   log: LogEntry[];
@@ -238,6 +251,11 @@ export function RoomView({
   onWriteWhiteboard,
   onRollDice,
   log,
+  fireSound,
+  clip,
+  clipVolume,
+  onClipClose,
+  onClipError,
 }: RoomViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<FirstPersonController | null>(null);
@@ -270,6 +288,16 @@ export function RoomView({
   const lastPromptKeyRef = useRef<string>('');
   const onPlaySoundRef = useRef(onPlaySound);
   const onRollDiceRef = useRef(onRollDice);
+  // The fire, candles, fairy lights, night sky and dust (Ambience.ts).
+  const ambienceRef = useRef<Ambience | null>(null);
+  const fireSoundRef = useRef(fireSound);
+  fireSoundRef.current = fireSound;
+  // The console TV (TvScreen.ts): where shared YouTube clips play, unless a
+  // player pops the clip out into the corner card.
+  const tvRef = useRef<TvScreen | null>(null);
+  const [tvElement, setTvElement] = useState<HTMLDivElement | null>(null);
+  const [clipOnCard, setClipOnCard] = useState(false);
+  const seatedViewRef = useRef<SeatedView | null>(null);
   // The newest log entry already shown — lines from before this view
   // mounted are history, not something anyone is saying right now.
   const lastLogIdRef = useRef<string | null>(log.at(-1)?.id ?? null);
@@ -332,6 +360,19 @@ export function RoomView({
   useEffect(() => {
     onRollDiceRef.current = onRollDice;
   }, [onRollDice]);
+
+  // A new clip always starts on the TV.
+  useEffect(() => {
+    setClipOnCard(false);
+  }, [clip?.key]);
+
+  useEffect(() => {
+    tvRef.current?.setPlaying(clip !== null && !clipOnCard);
+  }, [clip, clipOnCard, tvElement]);
+
+  useEffect(() => {
+    seatedViewRef.current = seatedView;
+  }, [seatedView]);
 
   useEffect(() => {
     const lastSeen = lastLogIdRef.current;
@@ -425,6 +466,7 @@ export function RoomView({
   // player's eyes adjust to the overall brightness change.
   useEffect(() => {
     lightOnRef.current = lightOn;
+    ambienceRef.current?.setRoomLightsOn(lightOn);
     if (roomLightsRef.current) {
       setRoomLightsOn(roomLightsRef.current, lightOn);
     }
@@ -469,7 +511,10 @@ export function RoomView({
     camera.position.set(start.x, DEFAULT_SPAWN_POSITION.y, start.z);
     camera.rotation.set(0, (self?.rotationY ?? Math.PI) + Math.PI, 0, 'YXZ');
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // alpha: the TV's screen punches a transparent hole so the YouTube
+    // player underneath the canvas shows through (TvScreen.ts).
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setClearColor(0x000000, 1);
     renderer.setSize(container.clientWidth, container.clientHeight);
     // Capped: past 2x the extra pixels cost a lot of GPU for no visible gain.
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -480,6 +525,7 @@ export function RoomView({
 
     const handleResize = () => {
       applyViewportSize(camera, renderer, container, controllerRef.current?.seatedView === 'table');
+      ambienceRef.current?.setViewport(renderer.domElement.clientHeight, camera.fov);
     };
     window.addEventListener('resize', handleResize);
 
@@ -604,6 +650,7 @@ export function RoomView({
       const view = controllerRef.current?.seatedView ?? null;
       const topDown = view === 'table';
       applyViewportSize(camera, renderer, container, topDown);
+      ambienceRef.current?.setViewport(renderer.domElement.clientHeight, camera.fov);
       if (chandelier) {
         chandelier.visible = !topDown;
       }
@@ -615,6 +662,9 @@ export function RoomView({
     let handleInteractKey: ((event: KeyboardEvent) => void) | null = null;
     let handleEmoteKey: ((event: KeyboardEvent) => void) | null = null;
     let handleViewKey: ((event: KeyboardEvent) => void) | null = null;
+    let fireAudioRef: FireAmbience | null = null;
+    let startFireAudio: (() => void) | null = null;
+    let updateFireAudio: ((dt: number) => void) | null = null;
     let handleResumeLook: (() => void) | null = null;
 
     void loadRoom(ROOM_GLTF_URL).then((room) => {
@@ -623,6 +673,7 @@ export function RoomView({
       }
       scene.add(room.object3D);
       chandelier = room.chandelier;
+      tuneRoomMaterials(room.object3D);
       const lights = addRoomLighting(scene, room.layout);
       setRoomLightsOn(lights, lightOnRef.current);
       roomLightsRef.current = lights;
@@ -630,6 +681,34 @@ export function RoomView({
       const lamp = createLamp(scene, 0);
       setLampOn(lamp, lightOnRef.current);
       lampRef.current = lamp;
+
+      const ambience = new Ambience(
+        scene,
+        room,
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+      );
+      ambience.setRoomLightsOn(lightOnRef.current);
+      ambience.setViewport(renderer.domElement.clientHeight, camera.fov);
+      ambienceRef.current = ambience;
+
+      // The fire's crackle: needs a user gesture to start (browser audio
+      // policy) — the first click or key press in the room does it.
+      const fireSpot = room.fireSpot;
+      if (fireSpot) {
+        const fireAudio = new FireAmbience();
+        fireAudioRef = fireAudio;
+        startFireAudio = () => fireAudio.start();
+        document.addEventListener('pointerdown', startFireAudio);
+        document.addEventListener('keydown', startFireAudio);
+        updateFireAudio = (dt: number) =>
+          fireAudio.update(dt, camera.position.distanceTo(fireSpot), fireSoundRef.current);
+      }
+
+      if (room.tvScreen) {
+        const tv = new TvScreen(container, scene, room.tvScreen);
+        tvRef.current = tv;
+        setTvElement(tv.element);
+      }
 
       const soundboardWall = new SoundboardWall(scene, 0);
       soundboardWall.sync(soundboardRef.current, soundboardSlotsRef.current);
@@ -1028,8 +1107,17 @@ export function RoomView({
         controller.update(delta);
         diceManagerRef.current?.update(delta, camera);
         tablePings.update(delta);
+        ambienceRef.current?.update(delta, clock.elapsedTime);
+        updateFireAudio?.(delta);
         avatarsRef.current?.update(delta);
         renderer.render(scene, camera);
+        tvRef.current?.render(
+          camera,
+          renderer.domElement.clientWidth,
+          renderer.domElement.clientHeight,
+          clock.elapsedTime,
+          seatedViewRef.current !== 'table',
+        );
 
         const nearest = controller.isSeated
           ? null
@@ -1185,6 +1273,16 @@ export function RoomView({
       whiteboardCanvasRef.current?.dispose();
       whiteboardCanvasRef.current = null;
       roomLightsRef.current = null;
+      ambienceRef.current?.dispose();
+      ambienceRef.current = null;
+      tvRef.current?.dispose();
+      tvRef.current = null;
+      if (startFireAudio) {
+        document.removeEventListener('pointerdown', startFireAudio);
+        document.removeEventListener('keydown', startFireAudio);
+      }
+      fireAudioRef?.dispose();
+      setTvElement(null);
       renderer.dispose();
       if (renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
@@ -1194,6 +1292,54 @@ export function RoomView({
 
   return (
     <div ref={containerRef} className="room-view">
+      <div className="room-vignette" aria-hidden="true" />
+      {clip &&
+        tvElement &&
+        !clipOnCard &&
+        createPortal(
+          <YouTubeEmbed
+            clip={clip}
+            volume={clipVolume}
+            width={TV_PLAYER_WIDTH}
+            height={TV_PLAYER_HEIGHT}
+            onEnded={onClipClose}
+            onError={onClipError}
+          />,
+          tvElement,
+        )}
+      {clip && tvElement && !clipOnCard && (
+        <div className="tv-now-playing" role="status">
+          <span className="tv-now-icon" aria-hidden="true">
+            📺
+          </span>
+          <span className="tv-now-text">
+            <span className="tv-now-title" title={clip.title}>
+              {clip.title}
+            </span>
+            <span className="tv-now-by">on the TV · played by {clip.playedBy}</span>
+          </span>
+          <button type="button" onClick={() => setClipOnCard(true)}>
+            Pop out
+          </button>
+          <button
+            type="button"
+            className="youtube-clip-close"
+            aria-label="Stop the clip"
+            onClick={onClipClose}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {clip && (!tvElement || clipOnCard) && (
+        <YouTubeClip
+          clip={clip}
+          volume={clipVolume}
+          onClose={onClipClose}
+          onError={onClipError}
+          onShowOnTv={tvElement ? () => setClipOnCard(false) : undefined}
+        />
+      )}
       {locked && seatedView !== 'table' && assignSlotIndex === null && !whiteboardOpen && (
         <div className="crosshair" />
       )}
