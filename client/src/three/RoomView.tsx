@@ -1060,12 +1060,9 @@ export function RoomView({
             // Minis and dice can be picked up and dragged (docs/decisions.md,
             // "Minis"); a die that's pressed but not moved rolls, as before.
             startDrag: (raycaster) => {
+              // Anyone can push any mini or die around, like on a real
+              // table (a secret die only ever shows for its owner anyway).
               const miniOwner = miniManagerRef.current?.pick(raycaster) ?? null;
-              if (miniOwner && miniOwner !== playerId && !isHostRef.current) {
-                // Someone else's mini: not yours to move — and pressing on it
-                // shouldn't start a scribble underneath it either.
-                return { move: () => {}, end: () => {} };
-              }
               if (miniOwner) {
                 const send = throttle(
                   (point: Point2D) => onMoveMiniRef.current(miniOwner, point),
@@ -1087,8 +1084,7 @@ export function RoomView({
               if (!dieId) {
                 return null;
               }
-              const die = diceRef.current.find((candidate) => candidate.id === dieId);
-              const canMove = !!die && (die.ownerId === playerId || isHostRef.current);
+              const canMove = diceRef.current.some((candidate) => candidate.id === dieId);
               const send = throttle(
                 (position: Vector3) => onMoveDieRef.current(dieId, position),
                 DRAG_SEND_MS,
@@ -1116,7 +1112,7 @@ export function RoomView({
             },
             canPickUp: (raycaster) => {
               const miniOwner = miniManagerRef.current?.pick(raycaster) ?? null;
-              if (miniOwner) return miniOwner === playerId || isHostRef.current;
+              if (miniOwner) return true;
               return diceManagerRef.current?.pick(raycaster) !== null;
             },
             getTool: () => drawToolRef.current,

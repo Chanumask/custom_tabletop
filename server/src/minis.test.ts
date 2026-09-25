@@ -109,31 +109,36 @@ describe('minis', () => {
     expect((await seen).point).toEqual({ x: 0, y: TABLE_UNITS });
   });
 
-  it("only the host may move someone else's mini", async () => {
+  it("anyone may push a mini that's on the table; only its owner or the host put it on or off", async () => {
     const alice = await connect(); // host
     const bob = await connect();
     const carol = await connect();
     await join(alice, 'alice');
     await join(bob, 'bob');
     await join(carol, 'carol');
+    const mini = (
+      playerId: string,
+      targetPlayerId: string,
+      point: { x: number; y: number } | null,
+    ) => ({ sessionId: 'ROOM', playerId, targetPlayerId, point });
 
-    const refused = arrives(alice, SocketEvent.MiniMoved);
-    carol.emit(SocketEvent.MiniMove, {
-      sessionId: 'ROOM',
-      playerId: 'carol',
-      targetPlayerId: 'bob',
-      point: { x: 1, y: 1 },
-    });
+    // Alice's mini isn't on the table: Carol can't put it there.
+    const refused = arrives(bob, SocketEvent.MiniMoved);
+    carol.emit(SocketEvent.MiniMove, mini('carol', 'alice', { x: 1, y: 1 }));
     expect(await refused).toBe(false);
 
-    const allowed = next<MiniMoved>(bob, SocketEvent.MiniMoved);
-    alice.emit(SocketEvent.MiniMove, {
-      sessionId: 'ROOM',
-      playerId: 'alice',
-      targetPlayerId: 'bob',
-      point: { x: 512, y: 512 },
-    });
-    expect((await allowed).targetPlayerId).toBe('bob');
+    // Once it is, Carol (not the host) can move the host's mini...
+    const placed = next<MiniMoved>(carol, SocketEvent.MiniMoved);
+    alice.emit(SocketEvent.MiniMove, mini('alice', 'alice', { x: 100, y: 100 }));
+    await placed;
+    const pushed = next<MiniMoved>(alice, SocketEvent.MiniMoved);
+    carol.emit(SocketEvent.MiniMove, mini('carol', 'alice', { x: 512, y: 512 }));
+    expect(await pushed).toMatchObject({ targetPlayerId: 'alice', point: { x: 512, y: 512 } });
+
+    // ...but not take it off.
+    const takenOff = arrives(alice, SocketEvent.MiniMoved);
+    carol.emit(SocketEvent.MiniMove, mini('carol', 'alice', null));
+    expect(await takenOff).toBe(false);
   });
 
   it('taking a mini off the table, or leaving, removes it', () => {
@@ -180,16 +185,16 @@ describe('dragging dice', () => {
     expect((await seen).position).toEqual({ x: 0.4, y: 0.78, z: -0.3 });
   });
 
-  it("others can't move it, the host can; absurd positions are ignored", async () => {
+  it('anyone at the table can move it; absurd positions are ignored', async () => {
     const { alice, bob, carol } = await tableWithBobsDie();
-    const refused = arrives(bob, SocketEvent.DiceMoved);
+    const moved = next<DiceMoved>(bob, SocketEvent.DiceMoved);
     carol.emit(SocketEvent.DiceMove, {
       sessionId: 'ROOM',
       playerId: 'carol',
       diceId: 'd1',
       position: { x: 0.1, y: 0.78, z: 0.1 },
     });
-    expect(await refused).toBe(false);
+    expect((await moved).position).toEqual({ x: 0.1, y: 0.78, z: 0.1 });
 
     const absurd = arrives(carol, SocketEvent.DiceMoved);
     bob.emit(SocketEvent.DiceMove, {
