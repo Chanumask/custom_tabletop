@@ -60,7 +60,7 @@ The original design/technical specification is captured in [docs/engineering/arc
 
 - No native desktop client.
 - No mobile/touch-optimized layout.
-- No persistence beyond the current session (save/load campaigns is a later concern, not in the initial milestones).
+- No campaign management beyond saved tables: a table survives restarts and waits 7 days for its host (decisions.md, "Saved tables"), but there are no named saves or exports.
 - No voice/video — only a mute/unmute signal for a soundboard, per the spec.
 
 [roadmap.md](roadmap.md) has the milestone plan, [changelog.md](changelog.md) the session-by-session history, and [decisions.md](decisions.md) the reasoning behind non-obvious choices.
