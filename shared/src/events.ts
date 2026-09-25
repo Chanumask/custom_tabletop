@@ -30,6 +30,10 @@ export const SocketEvent = {
    * reopening it later; see SessionJoinRequest.hostKey). Never broadcast.
    */
   SessionHostKey: 'session:host-key',
+  /** Server -> client, only to the player the host just removed (host.ts). */
+  SessionRemoved: 'session:removed',
+  /** Host-only: lock the table, remove a player, permissions, clearing (host.ts). */
+  HostAction: 'host:action',
 
   /** The shared YouTube clip (clip.ts): pause/play/seek/stop, and the host lock. */
   ClipControl: 'clip:control',

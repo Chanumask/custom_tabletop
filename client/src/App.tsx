@@ -3,6 +3,10 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import type { Socket } from 'socket.io-client';
 import {
   SESSION_ENDED_ERROR,
+  REMOVED_FROM_TABLE_ERROR,
+  mayUse,
+  type HostAction,
+  type SessionRemoved,
   SocketEvent,
   type ClipAction,
   type DiceMoveRequest,
@@ -252,10 +256,6 @@ export function App() {
       );
     });
 
-    // This tab's player identity was claimed by a newer connection (a
-    // duplicated tab sharing the same sessionStorage, typically) — this tab
-    // no longer speaks for that player, so it drops back to the join screen
-    // instead of silently sending events the server now ignores.
     // Someone else moved a mini or dragged a die (minis.ts).
     socket.on(SocketEvent.MiniMoved, (message: MiniMoved) => {
       setGameState((current) =>
@@ -285,8 +285,19 @@ export function App() {
       }
     });
 
+    // This tab's player identity was claimed by a newer connection (a
+    // duplicated tab sharing the same sessionStorage, typically) — this tab
+    // no longer speaks for that player, so it drops back to the join screen
+    // instead of silently sending events the server now ignores.
     socket.on(SocketEvent.SessionReplaced, () => {
       forgetSession('You joined this session from another tab, so this one was disconnected.');
+    });
+
+    // The host removed this player from the table (host.ts).
+    socket.on(SocketEvent.SessionRemoved, (message: SessionRemoved) => {
+      if (gameStateRef.current?.sessionId === message.sessionId) {
+        forgetSession(REMOVED_FROM_TABLE_ERROR);
+      }
     });
 
     // Every client — including the host who triggered it — plays the sound
@@ -530,6 +541,9 @@ export function App() {
     );
   };
 
+  const handleHostAction = (action: HostAction) =>
+    sendAction(SocketEvent.HostAction, action, 'Host action failed');
+
   const handleClipLock = (locked: boolean) => {
     const socket = socketRef.current;
     const state = gameStateRef.current;
@@ -619,6 +633,8 @@ export function App() {
             onObjectInteract={handleObjectInteract}
             onUploadSound={handleUploadSound}
             onAssignSlot={handleAssignSlot}
+            canDraw={mayUse(gameState, playerId, 'draw')}
+            canUseSounds={mayUse(gameState, playerId, 'sounds')}
             onNotify={toast}
             whiteboard={gameState.whiteboard}
             onWriteWhiteboard={handleWriteWhiteboard}
@@ -647,6 +663,8 @@ export function App() {
             onNotify={toast}
             hostKey={gameState.hostId === playerId ? hostKey : null}
             onMoveMini={handleMoveMini}
+            onHostAction={handleHostAction}
+            onLockClip={handleClipLock}
           />
         </Suspense>
         <ChatPanel log={gameState.log} players={gameState.players} onSend={handleSendChat} />

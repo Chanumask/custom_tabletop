@@ -91,6 +91,13 @@ export function describeJoinStatus(
       const saved = savedTableStatus(mode, peek, ownsSavedTable, now);
       return status(saved.message, saved.tone, saved.blocked);
     }
+    if (peek.locked) {
+      return status(
+        'The host has locked this table — nobody new can join right now.',
+        'warn',
+        true,
+      );
+    }
     if (peek.playerCount >= MAX_PLAYERS_PER_SESSION) {
       return status(`That table is full (${MAX_PLAYERS_PER_SESSION} players).`, 'warn', true);
     }

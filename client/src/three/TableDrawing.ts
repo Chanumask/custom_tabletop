@@ -33,6 +33,9 @@ export interface TableDrawingOptions {
   canPickUp?: (raycaster: THREE.Raycaster) => boolean;
   /** A right-click on the table: "look here!" (TablePings). */
   onPing?: (point: Point2D) => void;
+  /** Whether a press on the bare table may draw or erase — false while the
+   * host has drawing turned off (host.ts). Dragging and rolling still work. */
+  canMark?: () => boolean;
 }
 
 /**
@@ -83,6 +86,9 @@ export class TableDrawing {
     if (drag) {
       this.drag = { handler: drag, x: event.clientX, y: event.clientY, moved: false };
       this.options.domElement.style.cursor = 'grabbing';
+      return;
+    }
+    if (this.options.canMark && !this.options.canMark()) {
       return;
     }
     const point = this.raycastToCanvasPoint(event);

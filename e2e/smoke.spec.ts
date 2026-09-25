@@ -87,7 +87,9 @@ test('two players see each other and can chat', async ({ browser, browserName })
 
   // Each sees the other in the player list.
   await expect(alice.getByText('Bob', { exact: true })).toBeVisible();
-  await expect(bob.getByText('Alice (host)')).toBeVisible();
+  await expect(
+    bob.locator('.player-list li', { hasText: 'Alice' }).getByTitle('The host'),
+  ).toBeVisible();
 
   // Bob chats; Alice sees it in her feed.
   await bob.getByRole('button', { name: /Chat/ }).click();
