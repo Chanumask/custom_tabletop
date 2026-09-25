@@ -42,6 +42,8 @@ export type LogEntry =
       total: number;
       /** How a typed roll was written ("2d6+3"); absent for table dice. */
       notation?: string;
+      /** A secret roll: only this player sees the line (secret dice). */
+      visibleTo?: string;
     } & LogAuthor)
   | { id: string; at: number; kind: 'system'; text: string };
 

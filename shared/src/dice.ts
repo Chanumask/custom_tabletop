@@ -42,7 +42,11 @@ export interface DiceSpawnRequest {
   /** The point on the table surface the die rests on (its bottom). */
   position: Vector3;
   kind: DieKind;
+  /** A secret die — only the host may make one; only they ever see it. */
+  hidden?: boolean;
 }
+
+export const SECRET_DICE_HOST_ONLY_ERROR = 'Only the host can roll in secret.';
 
 export type DiceSpawnResponse = { ok: true; state: GameState } | { ok: false; error: string };
 

@@ -46,6 +46,7 @@ interface Tumble {
 interface DieEntry {
   kind: DieKind;
   body: string;
+  hidden: boolean;
   root: THREE.Group;
   mesh: THREE.Mesh;
   label: THREE.Sprite;
@@ -203,9 +204,10 @@ export class DiceManager {
       let entry = this.dice.get(die.id);
       if (!entry) {
         entry = this.createDie(die, body);
-      } else if (entry.body !== body) {
+      } else if (entry.body !== body || entry.hidden !== Boolean(die.hidden)) {
         entry.body = body;
-        entry.mesh.material = this.materialFor(die.kind, body);
+        entry.hidden = Boolean(die.hidden);
+        entry.mesh.material = this.materialFor(die.kind, body, entry.hidden);
         if (entry.result !== null) {
           this.setLabel(entry, entry.result);
         }
@@ -324,7 +326,10 @@ export class DiceManager {
   private createDie(die: Dice, body: string): DieEntry {
     const shape = dieShape(die.kind);
     const root = new THREE.Group();
-    const mesh = new THREE.Mesh(this.geometryFor(die.kind), this.materialFor(die.kind, body));
+    const mesh = new THREE.Mesh(
+      this.geometryFor(die.kind),
+      this.materialFor(die.kind, body, Boolean(die.hidden)),
+    );
     const label = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true }));
     label.position.y = shape.restHeight + LABEL_GAP + LABEL_SIZE / 2;
     label.scale.set(LABEL_SIZE, LABEL_SIZE, 1);
@@ -335,6 +340,7 @@ export class DiceManager {
     const entry: DieEntry = {
       kind: die.kind,
       body,
+      hidden: Boolean(die.hidden),
       root,
       mesh,
       label,
@@ -402,8 +408,8 @@ export class DiceManager {
 
   /** One material (and atlas texture) per kind and color, shared by every
    * die that looks like that. */
-  private materialFor(kind: DieKind, body: string): THREE.MeshPhysicalMaterial {
-    const key = `${kind}|${body}`;
+  private materialFor(kind: DieKind, body: string, hidden = false): THREE.MeshPhysicalMaterial {
+    const key = `${kind}|${body}|${hidden}`;
     let material = this.materials.get(key);
     if (!material) {
       const texture = new THREE.CanvasTexture(paintAtlas(dieShape(kind), body));
@@ -420,6 +426,14 @@ export class DiceManager {
         // that light, where a normal sheen mirrors it as a white face.
         specularIntensity: 0.12,
       });
+      if (hidden) {
+        // A secret die (only its owner sees it): ghostly glass with a faint
+        // spectral glow, so it never passes for an ordinary one.
+        material.transparent = true;
+        material.opacity = 0.55;
+        material.emissive = new THREE.Color(0x7a5cff);
+        material.emissiveIntensity = 0.35;
+      }
       this.materials.set(key, material);
     }
     return material;

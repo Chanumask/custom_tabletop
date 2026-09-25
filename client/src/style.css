@@ -2408,3 +2408,45 @@ button.primary {
   font-size: 0.78rem;
   text-align: center;
 }
+
+/* The host's secret dice (Dice tab switch, list tag, chat line tag). */
+.secret-row .secret-hint {
+  display: block;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+}
+
+.die-picker button.secret {
+  border-color: rgba(150, 120, 255, 0.45);
+  background: rgba(122, 92, 255, 0.14);
+}
+
+.secret-tag {
+  margin: 0 0.35rem;
+  padding: 0.02rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(122, 92, 255, 0.28);
+  color: #d9ccff;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.secret-lock {
+  display: inline-grid;
+  place-items: center;
+  margin-left: 0.3rem;
+  color: #b9a6ff;
+  vertical-align: -0.1rem;
+}
+
+.secret-lock svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

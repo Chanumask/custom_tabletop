@@ -81,6 +81,7 @@ import {
 } from './validation.js';
 import { registerUploadRoutes } from './uploads.js';
 import type { StoragePolicy } from './uploadStorage.js';
+import { hasPrivate, viewFor } from './privacy.js';
 import {
   SAVE_FORMAT,
   TableArchive,
@@ -259,14 +260,45 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
 
   /** Sends the room only the parts of the state an action changed
    * (`SessionPatch`) rather than the full snapshot with every drawing. */
-  const broadcastPatch = (sessionId: string, state: GameState, keys: PatchKey[]) => {
-    const patch: SessionPatch['patch'] = {};
-    for (const key of keys) {
-      (patch as Record<string, unknown>)[key] = state[key];
+  /** Sends each socket at the table its own view (privacy.ts). */
+  const forEachViewer = (
+    sessionId: string,
+    send: (target: Socket, playerId: string | null) => void,
+  ) => {
+    for (const socketId of io.sockets.adapter.rooms.get(sessionId) ?? []) {
+      const target = io.sockets.sockets.get(socketId);
+      if (target) send(target, identities.get(socketId)?.playerId ?? null);
     }
-    io.to(sessionId).emit(SocketEvent.SessionPatch, { sessionId, patch } satisfies SessionPatch);
+  };
+
+  const broadcastPatch = (sessionId: string, state: GameState, keys: PatchKey[]) => {
+    const patchFrom = (view: GameState) => {
+      const patch: SessionPatch['patch'] = {};
+      for (const key of keys) {
+        (patch as Record<string, unknown>)[key] = view[key];
+      }
+      return { sessionId, patch } satisfies SessionPatch;
+    };
+    if ((keys.includes('dice') || keys.includes('log')) && hasPrivate(state)) {
+      forEachViewer(sessionId, (target, viewer) =>
+        target.emit(SocketEvent.SessionPatch, patchFrom(viewFor(state, viewer))),
+      );
+    } else {
+      io.to(sessionId).emit(SocketEvent.SessionPatch, patchFrom(state));
+    }
     if (keys.includes('hostId')) {
       syncHostKey(sessionId, state);
+    }
+  };
+
+  /** A full snapshot to everyone at the table, each their own view. */
+  const broadcastState = (sessionId: string, state: GameState) => {
+    if (hasPrivate(state)) {
+      forEachViewer(sessionId, (target, viewer) =>
+        target.emit(SocketEvent.SessionState, viewFor(state, viewer)),
+      );
+    } else {
+      io.to(sessionId).emit(SocketEvent.SessionState, state);
     }
   };
 
@@ -377,6 +409,15 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
   io.on('connection', (socket) => {
     console.log(`[socket] connected: ${socket.id}`);
 
+    /** A result for this socket's own player: their view of any state in it. */
+    const own = <T extends { ok: boolean }>(result: T): T =>
+      result.ok && 'state' in result
+        ? {
+            ...result,
+            state: viewFor(result.state as GameState, identities.get(socket.id)?.playerId ?? null),
+          }
+        : result;
+
     /** Whether this socket joined `sessionId` as `playerId`. */
     const actsAs = (sessionId: string, playerId: string): boolean => {
       const identity = identities.get(socket.id);
@@ -470,7 +511,12 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         if (isHost) {
           hostKeySentTo.set(request.sessionId, request.playerId);
         }
-        ack?.({ ok: true, state, serverNow: Date.now(), ...(hostKey ? { hostKey } : {}) });
+        ack?.({
+          ok: true,
+          state: viewFor(state, request.playerId),
+          serverNow: Date.now(),
+          ...(hostKey ? { hostKey } : {}),
+        });
         broadcastPatch(request.sessionId, state, PRESENCE_KEYS);
       },
     );
@@ -546,7 +592,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           name: request.name,
           color: request.color,
         });
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['players', 'log']);
         }
@@ -571,7 +617,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           request.playerId,
           request.targetPlayerId,
         );
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['hostId', 'log']);
         }
@@ -674,7 +720,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           result = sessions.rollNotation(request.sessionId, request.playerId, notation);
         }
         if (!result.ok) {
-          ack?.(result);
+          ack?.(own(result));
           return;
         }
         ack?.({ ok: true });
@@ -708,9 +754,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           request.name,
           request.backgroundImage,
         );
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastState(request.sessionId, result.state);
         }
       },
     );
@@ -729,9 +775,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
 
         const result = sessions.changeScene(request.sessionId, request.playerId, request.sceneId);
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastState(request.sessionId, result.state);
         }
       },
     );
@@ -757,9 +803,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           backgroundImage: request.backgroundImage,
           gridCells: request.gridCells,
         });
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
-          io.to(request.sessionId).emit(SocketEvent.SessionState, result.state);
+          broadcastState(request.sessionId, result.state);
         }
       },
     );
@@ -849,8 +895,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           request.diceId,
           request.position,
           request.kind,
+          request.hidden,
         );
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['dice', 'log']);
         }
@@ -874,7 +921,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
 
         const result = sessions.rollDice(request.sessionId, request.diceIds, request.playerId);
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['dice', 'log']);
         }
@@ -895,7 +942,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
 
         const result = sessions.removeDice(request.sessionId, request.diceId);
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['dice', 'log']);
         }
@@ -968,6 +1015,8 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         request.position,
       );
       if (!result.ok) return;
+      const moved = result.state.dice.find((die) => die.id === request.diceId);
+      if (moved?.hidden) return; // a secret die: nobody else may know it moved
       socket.to(request.sessionId).emit(SocketEvent.DiceMoved, {
         sessionId: request.sessionId,
         diceId: request.diceId,
@@ -997,7 +1046,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           request.position,
         );
         if (!result.ok) {
-          ack?.(result);
+          ack?.(own(result));
           return;
         }
         ack?.({ ok: true });
@@ -1019,7 +1068,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
         const result = sessions.setClipLocked(request.sessionId, request.playerId, request.locked);
         if (!result.ok) {
-          ack?.(result);
+          ack?.(own(result));
           return;
         }
         ack?.({ ok: true });
@@ -1055,7 +1104,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           request.slotIndex,
           request.playerId,
         );
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['soundboard', 'soundboardSlots']);
         }
@@ -1082,7 +1131,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           request.slotIndex,
           request.soundId,
         );
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['soundboard', 'soundboardSlots']);
         }
@@ -1105,7 +1154,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
 
         const result = sessions.removeSound(request.sessionId, request.playerId, request.soundId);
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['soundboard', 'soundboardSlots']);
         }
@@ -1134,7 +1183,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           request.targetPlayerId,
           true,
         );
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['players']);
         }
@@ -1160,7 +1209,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           request.targetPlayerId,
           false,
         );
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['players']);
         }
@@ -1205,7 +1254,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
             result = { ok: false, error: 'Unknown interactable.' };
         }
 
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['lightOn', 'players']);
         }
@@ -1230,7 +1279,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
 
         const result = sessions.writeWhiteboard(request.sessionId, request.playerId, request.lines);
-        ack?.(result);
+        ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['whiteboard']);
         }

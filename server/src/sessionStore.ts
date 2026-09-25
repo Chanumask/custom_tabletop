@@ -15,6 +15,7 @@ import {
   parseYouTubeUrl,
   clampToTable,
   CLIP_LOCKED_ERROR,
+  SECRET_DICE_HOST_ONLY_ERROR,
   type ClipAction,
   type Dice,
   type GameState,
@@ -242,6 +243,8 @@ export class SessionStore {
       state.players.find((player) => player.id === state.hostId)?.name ?? leaving?.name ?? null;
     state.players = state.players.filter((player) => player.id !== playerId);
     delete state.minis[playerId];
+    // Their secret dice would otherwise linger, seen by no one.
+    state.dice = state.dice.filter((die) => !(die.hidden && die.ownerId === playerId));
     this.credentials.get(sessionId)?.delete(playerId);
     if (leaving) {
       addSystemEntry(state, `${leaving.name} left the table`);
@@ -530,10 +533,14 @@ export class SessionStore {
     diceId: string,
     position: Vector3,
     kind: DieKind = 'd6',
+    hidden = false,
   ): GameStateMutationResult {
     const state = this.sessions.get(sessionId);
     if (!state) {
       return { ok: false, error: 'Session not found.' };
+    }
+    if (hidden && state.hostId !== playerId) {
+      return { ok: false, error: SECRET_DICE_HOST_ONLY_ERROR };
     }
     if (state.dice.some((die) => die.id === diceId)) {
       return { ok: false, error: 'A die with that id already exists.' };
@@ -553,6 +560,7 @@ export class SessionStore {
       result: null,
       rollCount: 0,
       rolledBy: null,
+      ...(hidden ? { hidden: true } : {}),
     };
     state.dice.push(die);
     return { ok: true, state };
@@ -576,7 +584,11 @@ export class SessionStore {
     const dice = [...new Set(diceIds)].map((id) =>
       state.dice.find((candidate) => candidate.id === id),
     );
-    if (dice.length === 0 || dice.some((die) => !die)) {
+    // Someone else's secret die doesn't exist, as far as anyone else knows.
+    if (
+      dice.length === 0 ||
+      dice.some((die) => !die || (die.hidden && die.ownerId !== rolledBy && rolledBy !== null))
+    ) {
       return { ok: false, error: 'Die not found.' };
     }
 
@@ -587,18 +599,26 @@ export class SessionStore {
     }
     const roller = state.players.find((player) => player.id === rolledBy);
     if (roller) {
-      const logged = (dice as Dice[]).map((die) => ({
-        sides: DIE_FACES[die.kind],
-        result: die.result!,
-      }));
-      state.log = appendLogEntry(state.log, {
-        ...stamp(),
-        kind: 'roll',
-        ...authorOf(roller),
-        dice: logged,
-        modifier: 0,
-        total: logged.reduce((sum, die) => sum + die.result, 0),
-      });
+      // Open dice make a line everyone reads; secret ones a line only the
+      // roller does (privacy.ts keeps it from everyone else).
+      const open = (dice as Dice[]).filter((die) => !die.hidden);
+      const secret = (dice as Dice[]).filter((die) => die.hidden);
+      for (const [group, visibleTo] of [
+        [open, undefined],
+        [secret, roller.id],
+      ] as const) {
+        if (group.length === 0) continue;
+        const logged = group.map((die) => ({ sides: DIE_FACES[die.kind], result: die.result! }));
+        state.log = appendLogEntry(state.log, {
+          ...stamp(),
+          kind: 'roll',
+          ...authorOf(roller),
+          dice: logged,
+          modifier: 0,
+          total: logged.reduce((sum, die) => sum + die.result, 0),
+          ...(visibleTo ? { visibleTo } : {}),
+        });
+      }
     }
     return { ok: true, state };
   }

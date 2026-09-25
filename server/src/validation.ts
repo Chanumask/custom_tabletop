@@ -387,13 +387,17 @@ export function parseDiceSpawnRequest(payload: unknown): DiceSpawnRequest | null
     return null;
   }
 
-  const { sessionId, playerId, diceId, position, kind } = payload as Record<string, unknown>;
+  const { sessionId, playerId, diceId, position, kind, hidden } = payload as Record<
+    string,
+    unknown
+  >;
   if (
     !isNonEmptyString(sessionId) ||
     !isNonEmptyString(playerId) ||
     !isNonEmptyString(diceId) ||
     !isVector3(position) ||
-    (kind !== undefined && !isDieKind(kind))
+    (kind !== undefined && !isDieKind(kind)) ||
+    (hidden !== undefined && typeof hidden !== 'boolean')
   ) {
     return null;
   }
@@ -404,6 +408,7 @@ export function parseDiceSpawnRequest(payload: unknown): DiceSpawnRequest | null
     diceId: diceId.trim(),
     position,
     kind: kind ?? 'd6',
+    ...(hidden ? { hidden: true } : {}),
   };
 }
 

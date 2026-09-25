@@ -407,12 +407,13 @@ export function App() {
       'Failed to change the grid',
     );
 
-  const handleSpawnDie = (kind: DieKind) =>
+  const handleSpawnDie = (kind: DieKind, hidden = false) =>
     sendAction(
       SocketEvent.DiceSpawn,
       {
         diceId: crypto.randomUUID(),
         kind,
+        ...(hidden ? { hidden: true } : {}),
         position: randomDiceSpawnPosition(
           PLACEHOLDER_ROOM_LAYOUT.table,
           gameState?.dice.map((die) => die.position),

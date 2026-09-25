@@ -31,7 +31,7 @@ export interface SessionViewProps {
   onLeave: () => void;
   onSetMapBackground: (url: string) => void;
   onSetMapGrid: (gridCells: number) => void;
-  onSpawnDie: (kind: DieKind) => void;
+  onSpawnDie: (kind: DieKind, hidden?: boolean) => void;
   onRollDice: (diceIds: string[]) => void;
   onRemoveDie: (diceId: string) => void;
   onPlaySound: (soundId: string) => void;
@@ -185,6 +185,7 @@ export function SessionView({
                 state={state}
                 playerId={playerId}
                 onSpawnDie={onSpawnDie}
+                isHost={isHost}
                 onRollDice={onRollDice}
                 onRemoveDie={onRemoveDie}
               />
@@ -536,15 +537,20 @@ function DiceTab({
   state,
   playerId,
   onSpawnDie,
+  isHost,
   onRollDice,
   onRemoveDie,
 }: {
   state: GameState;
   playerId: string;
-  onSpawnDie: (kind: DieKind) => void;
+  onSpawnDie: (kind: DieKind, hidden?: boolean) => void;
+  isHost: boolean;
   onRollDice: (diceIds: string[]) => void;
   onRemoveDie: (diceId: string) => void;
 }) {
+  // The host's secret dice (docs/decisions.md, "Secret dice").
+  const [secret, setSecret] = useState(false);
+  const makeSecret = isHost && secret;
   const mine = state.dice.filter((die) => die.ownerId === playerId);
   const rolledMine = mine.filter((die) => die.result !== null);
   const total = rolledMine.reduce((sum, die) => sum + (die.result ?? 0), 0);
@@ -552,15 +558,37 @@ function DiceTab({
 
   return (
     <div className="dice-tab">
-      <p className="dice-section-title">Add a die to the table</p>
+      <p className="dice-section-title">
+        {makeSecret ? 'Add a secret die — only you see it' : 'Add a die to the table'}
+      </p>
       <div className="die-picker">
         {DIE_KINDS.map((kind) => (
-          <button key={kind} type="button" onClick={() => onSpawnDie(kind)} title={`Add a ${kind}`}>
+          <button
+            key={kind}
+            type="button"
+            className={makeSecret ? 'secret' : undefined}
+            onClick={() => onSpawnDie(kind, makeSecret)}
+            title={makeSecret ? `Add a secret ${kind}` : `Add a ${kind}`}
+          >
             <DieGlyph kind={kind} />
             <span>{kind}</span>
           </button>
         ))}
       </div>
+      {isHost && (
+        <label className="settings-row secret-row">
+          <span>
+            Secret dice <span className="secret-hint">only you see them and their rolls</span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            className="switch"
+            checked={secret}
+            onChange={(event) => setSecret(event.target.checked)}
+          />
+        </label>
+      )}
 
       <div className="dice-actions">
         <button
@@ -600,7 +628,17 @@ function DiceTab({
                   <DieGlyph kind={die.kind} />
                   {die.kind}
                 </span>
-                <span className="dice-owner">{dieOwner?.name ?? 'Nobody'}</span>
+                <span className="dice-owner">
+                  {dieOwner?.name ?? 'Nobody'}
+                  {die.hidden && (
+                    <span className="secret-lock" title="Secret — only you see it">
+                      <svg viewBox="0 0 24 24" aria-label="secret">
+                        <rect x="5" y="11" width="14" height="9" rx="2" />
+                        <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+                      </svg>
+                    </span>
+                  )}
+                </span>
                 <span
                   className={`dice-result${critical ? ' critical' : ''}${fumble ? ' fumble' : ''}`}
                   title={die.rollCount > 0 ? `Rolled ${die.rollCount}×` : 'Not rolled yet'}
