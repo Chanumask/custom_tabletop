@@ -89,7 +89,7 @@ describe('describeRoom cozy anchors', () => {
     const room = describeRoom(root);
 
     expect(room.tvScreen?.name).toBe('TV_Screen');
-    expect(room.windowView?.name).toBe('Window_View');
+    expect(room.windowViews.map((pane) => pane.name)).toEqual(['Window_View']);
     expect(room.embers?.name).toBe('Fireplace_Embers');
     expect(room.fireSpot?.toArray()).toEqual([-4.72, 0.2, 0.35]);
     expect(room.flames.map((flame) => flame.name).sort()).toEqual([

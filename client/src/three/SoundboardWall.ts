@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import type { SoundState } from '@custom-tabletop/shared';
 import { SOUNDBOARD_SLOT_COUNT, parseYouTubeUrl } from '@custom-tabletop/shared';
 import { SOUNDBOARD_JEWELS, soundboardSlotOffset } from './soundboardLayout.js';

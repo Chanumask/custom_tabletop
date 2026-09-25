@@ -20,8 +20,9 @@ export interface RoomAsset {
   /** The console TV's screen rectangle (`TV_Screen`) — where shared
    * YouTube clips play. */
   tvScreen: THREE.Mesh | null;
-  /** The window pane (`Window_View`) — gets a painted night sky. */
-  windowView: THREE.Mesh | null;
+  /** Every window pane (`Window_View*`) — each looks out on the world
+   * outside (outside/OutsideWorld.ts). */
+  windowViews: THREE.Mesh[];
   /** Center of the fireplace's fire (`Fireplace_Fire`), and its ember bed. */
   fireSpot: THREE.Vector3 | null;
   embers: THREE.Mesh | null;
@@ -125,7 +126,10 @@ export function describeRoom(
   const fire = root.getObjectByName('Fireplace_Fire');
   const embers = root.getObjectByName('Fireplace_Embers');
   const tvScreen = root.getObjectByName('TV_Screen');
-  const windowView = root.getObjectByName('Window_View');
+  const windowViews: THREE.Mesh[] = [];
+  root.traverse((node) => {
+    if (node instanceof THREE.Mesh && node.name.startsWith('Window_View')) windowViews.push(node);
+  });
 
   const whiteboard = root.getObjectByName('Whiteboard_Surface');
   return {
@@ -143,7 +147,7 @@ export function describeRoom(
     chandelier: root.getObjectByName('Chandelier') ?? null,
     seats,
     tvScreen: tvScreen instanceof THREE.Mesh ? tvScreen : null,
-    windowView: windowView instanceof THREE.Mesh ? windowView : null,
+    windowViews,
     fireSpot: fire ? fire.getWorldPosition(new THREE.Vector3()) : null,
     embers: embers instanceof THREE.Mesh ? embers : null,
     flames,
