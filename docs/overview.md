@@ -42,6 +42,8 @@ Earlier this day:
 - A Halloween toggle for the whole room.
 - A polished HUD.
 
+**Then** (same night): drawing no longer lags (both screens held ~7 fps while someone drew; now 60), the host prepares several maps and puts one on the table at a time, and the night outside can be heard through the windows.
+
 Nothing on the roadmap is left. What's next is whatever playtesting turns up, plus the "later" list in [roadmap.md](roadmap.md): map presets, wall drawing, fog of war, an initiative tracker.
 
 ### Earlier on 2026-09-25

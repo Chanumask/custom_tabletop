@@ -6,6 +6,35 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 (late night) — Drawing lag fixed, maps, night sounds
+
+**Asked** (user, after the recommendations): "we only need 2 and 4" (the multi-map switcher, and night sounds), plus "check for lag when someone is drawing on the table. that was one thing I noticed right away."
+
+### What landed
+
+- **Drawing lag:** measured first. While one player drew, both screens fell from 60 to ~7 fps, because every stroke point re-uploaded the whole 2048² table texture. Now only the changed rectangle is uploaded, once a frame, from a CPU-backed canvas. Drawing holds 60 fps on both screens. Details: [decisions.md](decisions.md), "Drawing lag".
+- **Maps:** the lost multi-scene thread from Milestone 5, finished:
+  - a host map list (show, rename, delete, new);
+  - preparing a map without showing it;
+  - each map keeps its own drawings;
+  - a log line when a map goes on the table;
+  - `scene:delete`, a 12-map cap and 40-character names.
+- **Night sounds:** synthesized wind, crickets and an owl through the windows, with an eerier wind and a far-off wolf on Halloween. Loudest by a window, faint elsewhere, with its own switch in Settings.
+- **Docs:** the overview's non-goals no longer claim there's no persistence.
+
+### Checked
+
+- **Unit tests:** 617 (47 shared, 329 server, 241 client).
+- **Cross-browser:** `npm run test:e2e` passes 9/9 in Chromium, Firefox and WebKit.
+- **Drawing:** frame times measured before and after, on both players' screens. Strokes checked in all three browsers, including erase-then-draw and on the other player's screen.
+- **Maps:** a live two-player run (prepare, rename, grid, show, the other player's table and log, delete).
+- **Night sounds:** the audio graph checked in Chromium and Firefox (chirps, owl, wolf, context running).
+- **A side finding:** black screenshots of WebKit's top-down view turned out to be a headless-screenshot quirk. The view renders (pixels read back from GL).
+
+Not pushed or deployed yet.
+
+---
+
 ## 2026-09-25 (night) — The follow-up batch: synced TV, eight players, minis, host controls, Halloween, a world outside
 
 **Asked** (user, one message of follow-ups):
