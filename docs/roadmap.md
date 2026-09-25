@@ -124,7 +124,7 @@ Done 2026-09-25 (changelog: "The plan: seated look-around, the cozy room and TV,
 - ✅ Production build: the server serves the built client from one origin, the server is bundled with esbuild, and there's a Docker image.
 - ✅ Upload safeguards for an open site: pruning, a 2 GB cap and a per-IP rate limit.
 - ✅ Deployed to the owner's VPS as a sandboxed compose project (`/srv/apps/tabletop`, `murrinet`), with `npm run deploy` for updates.
-- ⏳ The Nginx Proxy Manager proxy host for `tabletop.murri.me` (the owner's step, since it needs their NPM login). Then verify the live site with `E2E_BASE_URL=https://tabletop.murri.me npx playwright test`.
+- ✅ The Nginx Proxy Manager proxy host for `tabletop.murri.me` (created by the owner). The live site passes all 9 cross-browser smoke runs.
 
 Details: [engineering/deployment.md](engineering/deployment.md).
 

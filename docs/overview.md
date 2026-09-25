@@ -27,7 +27,7 @@ Earlier this day:
 - Pings.
 - A four-player convergence test.
 
-**Deployed** (same day): one sandboxed Docker container on the owner's VPS, to be served at `https://tabletop.murri.me` once the owner adds the Nginx Proxy Manager proxy host. It's open to anyone with the link, with upload safeguards. See [engineering/deployment.md](engineering/deployment.md).
+**Deployed** (same day): one sandboxed Docker container on the owner's VPS, live at `https://tabletop.murri.me`. It's open to anyone with the link, with upload safeguards. See [engineering/deployment.md](engineering/deployment.md).
 
 Nothing on the roadmap is left. What's next is whatever playtesting turns up, plus the "later" list in [roadmap.md](roadmap.md): map presets, wall drawing, persistence.
 

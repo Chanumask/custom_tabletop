@@ -42,9 +42,13 @@ Dated log of what happened each session. Newest first.
 - All 9 e2e runs (3 tests × Chromium/Firefox/WebKit) passed against the **local production build** served from one origin, and an upload through it worked.
 - Lint, format and build are clean.
 
+### Update: live
+
+The owner created the NPM proxy host. `https://tabletop.murri.me` is live, and all 9 cross-browser smoke runs pass against it. `main` was pushed at the owner's go-ahead. The handover below is kept for the record; what's left from it is a real game night test.
+
 ### Next session
 
-- **Waiting on the owner:** create the NPM proxy host for `tabletop.murri.me`. Settings are in [engineering/deployment.md](engineering/deployment.md): forward to `tabletop:3001`, websockets on, Let's Encrypt, Force SSL.
+- **(Done — see "Update: live".) Waiting on the owner:** create the NPM proxy host for `tabletop.murri.me`. Settings are in [engineering/deployment.md](engineering/deployment.md): forward to `tabletop:3001`, websockets on, Let's Encrypt, Force SSL.
 - **Then:**
   - Check that `https://tabletop.murri.me/health` answers.
   - Run `E2E_BASE_URL=https://tabletop.murri.me npx playwright test`.

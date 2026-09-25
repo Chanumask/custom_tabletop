@@ -12,7 +12,7 @@ A browser-based virtual tabletop for running tabletop RPG sessions with friends:
 - **Sound and video.** A 4x4 wall soundboard (built-in tones, uploaded files, audio links). YouTube clips play on the TV for everyone.
 - **The rest.** A shared whiteboard. A light switch for a fire-lit room. Invite links. A collapsible session menu with volume, a rebindable interact key and a fire-sound toggle.
 
-**Deployed** as one Docker container to the owner's VPS, to be served at **https://tabletop.murri.me** once its proxy host is set up. It's open to anyone with the link; uploads are capped and cleaned up automatically. How: [docs/engineering/deployment.md](docs/engineering/deployment.md).
+**Deployed** as one Docker container to the owner's VPS, live at **https://tabletop.murri.me**. It's open to anyone with the link; uploads are capped and cleaned up automatically. How: [docs/engineering/deployment.md](docs/engineering/deployment.md).
 
 It runs at 60 fps (1080p, mid-range GPU). The join screen loads ~70 KB gzipped, and the room downloads behind it. Each player uses ~13 KB/s in a busy six-player game. Tested end to end in Chromium, Firefox, WebKit and Edge (`npm run test:e2e`). Full detail: [docs/overview.md](docs/overview.md) and [docs/roadmap.md](docs/roadmap.md).
 

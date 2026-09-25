@@ -4,7 +4,7 @@
 
 The game is served from **https://tabletop.murri.me** on the owner's VPS (`ssh root@murri.me`, Debian 12, Docker Compose). The decision and its reasoning are in [decisions.md](../decisions.md), 2026-09-25 "Deployment".
 
-**Status (2026-09-25):** the container is deployed and healthy (commit `0a0e8b4`), and Nginx Proxy Manager reaches it on `murrinet`. The NPM proxy host (below) is the owner's step and hasn't been created yet, so the URL doesn't answer until it is.
+**Status (2026-09-25): live.** The container runs commit `0a0e8b4`, and the owner has created the NPM proxy host. All 9 cross-browser smoke runs pass against `https://tabletop.murri.me`.
 
 ## How it's put together
 
