@@ -105,13 +105,17 @@ body {
 }
 
 /* What the local player is carrying from the chest (the gadgets inventory,
- * phase 1) — a small, always-on corner HUD, informational only for now. */
+ * phase 1) — a small, always-on corner HUD, informational only for now.
+ * Bottom-right: bottom-left is the chat toggle/panel's own corner
+ * (.chat-panel), top-right is the session menu, bottom-center is the
+ * interaction prompt/hint stack. */
 .held-items {
   position: absolute;
-  left: 1rem;
+  right: 1rem;
   bottom: 1rem;
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 0.35rem;
   pointer-events: none;
 }
