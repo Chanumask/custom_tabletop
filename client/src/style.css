@@ -2450,3 +2450,92 @@ button.primary {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* The host's tab (SessionView.tsx's HostTab) and its confirm buttons. */
+.host-tab {
+  gap: 0.55rem;
+}
+
+.host-section {
+  margin: 0.35rem 0 0;
+  color: var(--gold-bright);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.host-section:first-child {
+  margin-top: 0;
+}
+
+.row-hint {
+  display: block;
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+}
+
+.clear-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+}
+
+.clear-grid button {
+  padding: 0.4rem 0.3rem;
+  font-size: 0.78rem;
+}
+
+.session-overlay button.danger:not(:disabled) {
+  color: var(--danger);
+}
+
+.session-overlay button.confirm-button.armed {
+  border-color: rgba(226, 119, 95, 0.7);
+  background: rgba(226, 119, 95, 0.2);
+  color: #ffd9cf;
+}
+
+.drawing-off {
+  padding: 0 0.4rem;
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+}
+
+/* Player rows: a long name gives way (ellipsis) rather than the buttons
+ * wrapping; the host wears a small crown. */
+.player-list .player-name {
+  min-width: 0;
+}
+
+.player-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-actions {
+  flex: none;
+}
+
+.player-actions button {
+  white-space: nowrap;
+}
+
+.player-actions .icon-button svg {
+  display: block;
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.host-crown {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  color: var(--gold-bright);
+}
+
+.host-crown svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}

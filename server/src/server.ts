@@ -12,7 +12,6 @@ import {
   rollCommand,
   type ChatSendResponse,
   type LogEntryBroadcast,
-  MAX_PLAYERS_PER_SESSION,
   SESSION_ENDED_ERROR,
   TABLE_WAITING_FOR_HOST_ERROR,
   type ClipControlResponse,
@@ -44,6 +43,11 @@ import {
   type WhiteboardWriteResponse,
   WHITEBOARD_LINE_COUNT,
   WHITEBOARD_MAX_LINE_LENGTH,
+  mayUse,
+  SOUNDS_OFF_ERROR,
+  type HostActionResponse,
+  type SessionRemoved,
+  type TablePermission,
 } from '@custom-tabletop/shared';
 import { SessionStore } from './sessionStore.js';
 import {
@@ -52,6 +56,7 @@ import {
   parseDiceMoveRequest,
   parseMiniMoveRequest,
   parseClipLockRequest,
+  parseHostActionRequest,
   parseSessionLeaveRequest,
   parseSessionTransferHostRequest,
   parseSessionPeekRequest,
@@ -423,6 +428,11 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       const identity = identities.get(socket.id);
       return identity?.sessionId === sessionId && identity.playerId === playerId;
     };
+    /** Whether the host lets `playerId` do what `permission` covers. */
+    const allowed = (sessionId: string, playerId: string, permission: TablePermission) => {
+      const state = sessions.get(sessionId);
+      return state !== undefined && mayUse(state, playerId, permission);
+    };
     /** Identity for events whose payload carries no playerId. */
     const playerIn = (sessionId: string): string | null => {
       const identity = identities.get(socket.id);
@@ -465,11 +475,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           ack?.({ ok: false, error: 'That player identity belongs to someone else.' });
           return;
         }
-        if (!sessions.canAdmit(request.sessionId, request.playerId)) {
-          ack?.({
-            ok: false,
-            error: `That session is full (${MAX_PLAYERS_PER_SESSION} players max).`,
-          });
+        const refusal = sessions.admissionError(request.sessionId, request.playerId);
+        if (refusal) {
+          ack?.({ ok: false, error: refusal });
           return;
         }
 
@@ -620,6 +628,64 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         ack?.(own(result));
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['hostId', 'log']);
+        }
+      },
+    );
+
+    // The host's controls (host.ts): lock, permissions, removing a player,
+    // clearing things off the table. Ack + the parts that changed.
+    socket.on(
+      SocketEvent.HostAction,
+      (payload: unknown, ack?: (response: HostActionResponse) => void) => {
+        const request = parseHostActionRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'That host action isn’t valid.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+        const { sessionId, playerId } = request;
+
+        if (request.action === 'remove') {
+          const result = sessions.removePlayer(sessionId, playerId, request.targetPlayerId);
+          ack?.(own(result));
+          if (!result.ok) return;
+          // Their connection stops speaking for them, and is told why.
+          const key = playerKey(sessionId, request.targetPlayerId);
+          cancelRemoval(key);
+          const targetSocketId = activeSocketByPlayer.get(key);
+          activeSocketByPlayer.delete(key);
+          if (targetSocketId) {
+            identities.delete(targetSocketId);
+            const target = io.sockets.sockets.get(targetSocketId);
+            target?.leave(sessionId);
+            target?.emit(SocketEvent.SessionRemoved, { sessionId } satisfies SessionRemoved);
+          }
+          broadcastPatch(sessionId, result.state, [...PRESENCE_KEYS, 'minis']);
+          return;
+        }
+
+        const result =
+          request.action === 'lock'
+            ? sessions.setLocked(sessionId, playerId, request.locked)
+            : request.action === 'permission'
+              ? sessions.setPermission(sessionId, playerId, request.permission, request.allowed)
+              : sessions.clearTable(sessionId, playerId, request.target);
+        ack?.(own(result));
+        if (!result.ok) return;
+        const changed: PatchKey | 'drawings' =
+          request.action === 'lock'
+            ? 'locked'
+            : request.action === 'permission'
+              ? 'permissions'
+              : request.target;
+        if (changed === 'drawings') {
+          // Drawings only travel in full snapshots (SessionPatch).
+          broadcastState(sessionId, result.state);
+        } else {
+          broadcastPatch(sessionId, result.state, [changed, 'log']);
         }
       },
     );
@@ -812,10 +878,14 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
 
     // Fire-and-forget, no ack, no full-state broadcast — same pattern as
     // player:move and for the same reason (docs/engineering/architecture.md,
-    // "Performance"). Not host-gated: any player can draw.
+    // "Performance"). Any player can draw, unless the host turned it off.
     socket.on(SocketEvent.DrawingStart, (payload: unknown) => {
       const request = parseDrawingStartRequest(payload);
-      if (!request || !actsAs(request.sessionId, request.playerId)) {
+      if (
+        !request ||
+        !actsAs(request.sessionId, request.playerId) ||
+        !allowed(request.sessionId, request.playerId, 'draw')
+      ) {
         return;
       }
 
@@ -862,7 +932,8 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
 
     socket.on(SocketEvent.DrawingDelete, (payload: unknown) => {
       const request = parseDrawingDeleteRequest(payload);
-      if (!request || !playerIn(request.sessionId)) {
+      const actorId = request ? playerIn(request.sessionId) : null;
+      if (!request || !actorId || !allowed(request.sessionId, actorId, 'draw')) {
         return;
       }
 
@@ -966,6 +1037,10 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
         if (!actsAs(request.sessionId, request.playerId)) {
           ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+        if (!allowed(request.sessionId, request.playerId, 'sounds')) {
+          ack?.({ ok: false, error: SOUNDS_OFF_ERROR });
           return;
         }
         if (!sessions.hasSound(request.sessionId, request.soundId)) {
@@ -1096,6 +1171,11 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           return;
         }
 
+        if (!allowed(request.sessionId, request.playerId, 'sounds')) {
+          ack?.({ ok: false, error: SOUNDS_OFF_ERROR });
+          return;
+        }
+
         const result = sessions.addSound(
           request.sessionId,
           request.soundId,
@@ -1123,6 +1203,11 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
         if (!actsAs(request.sessionId, request.playerId)) {
           ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+
+        if (!allowed(request.sessionId, request.playerId, 'sounds')) {
+          ack?.({ ok: false, error: SOUNDS_OFF_ERROR });
           return;
         }
 

@@ -75,9 +75,9 @@ describe('SessionStore', () => {
     for (let i = 1; i <= 8; i += 1) {
       store.join('abc', `p${i}`, `Player ${i}`);
     }
-    expect(store.canAdmit('abc', 'p9')).toBe(false);
-    expect(store.canAdmit('abc', 'p3')).toBe(true);
-    expect(store.canAdmit('fresh', 'anyone')).toBe(true);
+    expect(store.admissionError('abc', 'p9')).not.toBeNull();
+    expect(store.admissionError('abc', 'p3')).toBeNull();
+    expect(store.admissionError('fresh', 'anyone')).toBeNull();
     expect(() => store.join('abc', 'p9', 'Too many')).toThrow();
   });
 

@@ -16,6 +16,12 @@ import {
   clampToTable,
   CLIP_LOCKED_ERROR,
   SECRET_DICE_HOST_ONLY_ERROR,
+  DEFAULT_PERMISSIONS,
+  HOST_ONLY_ERROR,
+  REMOVED_FROM_TABLE_ERROR,
+  TABLE_LOCKED_ERROR,
+  type ClearTarget,
+  type TablePermission,
   type ClipAction,
   type Dice,
   type GameState,
@@ -88,6 +94,9 @@ export class SessionStore {
   /** sessionId -> the table's host key (reopens it once everyone has left;
    * never in GameState, so never broadcast). */
   private hostKeys = new Map<string, string>();
+  /** sessionId -> players the host removed: kept out for as long as the
+   * table runs (host.ts). Never in GameState, never saved. */
+  private removedPlayers = new Map<string, Set<string>>();
 
   constructor(private readonly options: SessionStoreOptions = {}) {}
 
@@ -149,14 +158,25 @@ export class SessionStore {
     return state;
   }
 
-  /** Whether `playerId` can be admitted: a returning player always can; a
-   * new one only while the session has a free color (six players max). */
-  canAdmit(sessionId: string, playerId: string): boolean {
+  /** Why `playerId` can't join `sessionId` right now, or null if they can:
+   * a returning player always can; a new one only if the host hasn't
+   * removed them, the table isn't locked and there's a free seat. */
+  admissionError(sessionId: string, playerId: string): string | null {
     const state = this.sessions.get(sessionId);
     if (!state || state.players.some((player) => player.id === playerId)) {
-      return true;
+      return null;
     }
-    return state.players.length < MAX_PLAYERS_PER_SESSION;
+    if (this.removedPlayers.get(sessionId)?.has(playerId)) {
+      return REMOVED_FROM_TABLE_ERROR;
+    }
+    // An empty table is one its host is reopening (their host key checked).
+    if (state.locked && state.players.length > 0) {
+      return TABLE_LOCKED_ERROR;
+    }
+    if (state.players.length >= MAX_PLAYERS_PER_SESSION) {
+      return `That session is full (${MAX_PLAYERS_PER_SESSION} players max).`;
+    }
+    return null;
   }
 
   /** A read-only look at a session for the join screen (`session:peek`). */
@@ -170,10 +190,11 @@ export class SessionStore {
       playerCount: state.players.length,
       hostName: state.players.find((player) => player.id === state.hostId)?.name ?? null,
       takenColors: state.players.map((player) => player.color),
+      ...(state.locked ? { locked: true } : {}),
     };
   }
 
-  /** Callers check `canAdmit` first — joining a full session as a new
+  /** Callers check `admissionError` first — joining a full session as a new
    * player is a caller bug, and throws rather than silently exceeding six. */
   join(
     sessionId: string,
@@ -194,6 +215,8 @@ export class SessionStore {
     }
     if (reopening) {
       state.hostId = playerId;
+      // Last time's lock was about last time's group; the rules stay.
+      state.locked = false;
     }
 
     const existing = state.players.find((player) => player.id === playerId);
@@ -232,7 +255,7 @@ export class SessionStore {
   }
 
   /** Returns the session's new state, or undefined if it no longer exists (deleted because it's now empty, or never existed). */
-  leave(sessionId: string, playerId: string): GameState | undefined {
+  leave(sessionId: string, playerId: string, farewell = 'left the table'): GameState | undefined {
     const state = this.sessions.get(sessionId);
     if (!state) {
       return undefined;
@@ -247,7 +270,7 @@ export class SessionStore {
     state.dice = state.dice.filter((die) => !(die.hidden && die.ownerId === playerId));
     this.credentials.get(sessionId)?.delete(playerId);
     if (leaving) {
-      addSystemEntry(state, `${leaving.name} left the table`);
+      addSystemEntry(state, `${leaving.name} ${farewell}`);
     }
 
     if (state.players.length === 0) {
@@ -258,6 +281,7 @@ export class SessionStore {
       this.sessions.delete(sessionId);
       this.credentials.delete(sessionId);
       this.hostKeys.delete(sessionId);
+      this.removedPlayers.delete(sessionId);
       return undefined;
     }
 
@@ -864,6 +888,114 @@ export class SessionStore {
     return { ok: true, state };
   }
 
+  /** The host's own controls (host.ts): the table as the host may change
+   * it, or why not. */
+  private asHost(
+    sessionId: string,
+    actorId: string,
+  ): { ok: true; state: GameState; host: Player } | { ok: false; error: string } {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const host = state.players.find((player) => player.id === actorId);
+    if (!host || state.hostId !== actorId) {
+      return { ok: false, error: HOST_ONLY_ERROR };
+    }
+    return { ok: true, state, host };
+  }
+
+  /** Host only: lock the table to newcomers, or open it again. */
+  setLocked(sessionId: string, actorId: string, locked: boolean): GameStateMutationResult {
+    const table = this.asHost(sessionId, actorId);
+    if (!table.ok) return table;
+    const { state, host } = table;
+    if (state.locked !== locked) {
+      state.locked = locked;
+      addSystemEntry(state, `${host.name} ${locked ? 'locked' : 'unlocked'} the table`);
+    }
+    return { ok: true, state };
+  }
+
+  /** Host only: what everyone else may do (the host always may). */
+  setPermission(
+    sessionId: string,
+    actorId: string,
+    permission: TablePermission,
+    allowed: boolean,
+  ): GameStateMutationResult {
+    const table = this.asHost(sessionId, actorId);
+    if (!table.ok) return table;
+    const { state, host } = table;
+    if (state.permissions[permission] !== allowed) {
+      state.permissions = { ...state.permissions, [permission]: allowed };
+      const what = permission === 'draw' ? 'draw on the map' : 'use sounds';
+      addSystemEntry(
+        state,
+        allowed ? `${host.name} let everyone ${what} again` : `Only ${host.name} can ${what} now`,
+      );
+    }
+    return { ok: true, state };
+  }
+
+  /** Host only: remove another player from the table. They're kept out
+   * for as long as the table runs. */
+  removePlayer(
+    sessionId: string,
+    actorId: string,
+    targetPlayerId: string,
+  ): GameStateMutationResult {
+    const table = this.asHost(sessionId, actorId);
+    if (!table.ok) return table;
+    if (targetPlayerId === actorId) {
+      return { ok: false, error: 'You can’t remove yourself — leave the table instead.' };
+    }
+    if (!table.state.players.some((player) => player.id === targetPlayerId)) {
+      return { ok: false, error: 'Player not found.' };
+    }
+    let removed = this.removedPlayers.get(sessionId);
+    if (!removed) {
+      removed = new Set();
+      this.removedPlayers.set(sessionId, removed);
+    }
+    removed.add(targetPlayerId);
+    // The host stays, so the table does too.
+    const state = this.leave(sessionId, targetPlayerId, `was removed by ${table.host.name}`)!;
+    return { ok: true, state };
+  }
+
+  /** Host only: sweep something off the table (host.ts, `ClearTarget`). */
+  clearTable(sessionId: string, actorId: string, target: ClearTarget): GameStateMutationResult {
+    const table = this.asHost(sessionId, actorId);
+    if (!table.ok) return table;
+    const { state, host } = table;
+    let what: string | null = null;
+    if (target === 'drawings') {
+      const scene = state.scenes.find((candidate) => candidate.id === state.activeSceneId);
+      if (scene && scene.drawings.length > 0) {
+        scene.drawings = [];
+        what = 'cleared the drawings off the map';
+      }
+    } else if (target === 'whiteboard') {
+      if (state.whiteboard.some((line) => line.text)) {
+        state.whiteboard = emptyWhiteboard();
+        what = 'wiped the whiteboard';
+      }
+    } else if (target === 'dice') {
+      if (state.dice.length > 0) {
+        state.dice = [];
+        what = 'took all the dice off the table';
+      }
+    } else if (Object.keys(state.minis).length > 0) {
+      state.minis = {};
+      what = 'took all the minis off the table';
+    }
+    if (what) {
+      addSystemEntry(state, `${host.name} ${what}`);
+    }
+    return { ok: true, state };
+  }
+
   /** Put a mini on the table, move it, or take it off (`point: null`).
    * Your own; the host may move anyone's (minis.ts). */
   moveMini(
@@ -1005,6 +1137,7 @@ function normalizeRestoredState(sessionId: string, saved: GameState): GameState 
     state.activeSceneId = state.scenes[0]!.id;
   }
   state.players = (saved.players ?? []).map((player) => ({ ...player, connected: false }));
+  state.permissions = { ...base.permissions, ...saved.permissions };
   const slots = saved.soundboardSlots ?? base.soundboardSlots;
   state.soundboardSlots = Array.from({ length: SOUNDBOARD_SLOT_COUNT }, (_, i) => slots[i] ?? null);
   return state;
@@ -1036,6 +1169,8 @@ function createEmptySession(sessionId: string, hostId: string): GameState {
     clip: null,
     clipLocked: false,
     minis: {},
+    locked: false,
+    permissions: { ...DEFAULT_PERMISSIONS },
   };
 }
 

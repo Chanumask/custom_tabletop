@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import {
   EMOTES,
   MAX_PLAYER_NAME_LENGTH,
@@ -6,6 +6,10 @@ import {
   GRID_CELL_OPTIONS,
   SAVED_TABLE_TTL_DAYS,
   TABLE_UNITS,
+  SOUNDS_OFF_ERROR,
+  mayUse,
+  type ClearTarget,
+  type HostAction,
   type Point2D,
   playerColorHex,
   type DieKind,
@@ -23,7 +27,7 @@ import { useSettings } from './useSettings.js';
 import { formatKeyCode } from './keyLabel.js';
 import { hostLink } from './hostKeys.js';
 import { MOVEMENT_KEYS, RUN_KEYS } from './three/FirstPersonController.js';
-import { MapIcon, DiceIcon, SoundIcon, PlayersIcon, SettingsIcon } from './icons.js';
+import { MapIcon, DiceIcon, SoundIcon, PlayersIcon, SettingsIcon, HostIcon } from './icons.js';
 
 export interface SessionViewProps {
   state: GameState;
@@ -47,15 +51,19 @@ export interface SessionViewProps {
   hostKey?: string | null;
   /** Put your mini on the table, or (null) take it off. */
   onMoveMini: (targetPlayerId: string, point: Point2D | null) => void;
+  /** The host's controls (host.ts). */
+  onHostAction: (action: HostAction) => void;
+  onLockClip: (locked: boolean) => void;
 }
 
-type TabId = 'players' | 'map' | 'dice' | 'soundboard' | 'settings';
+type TabId = 'players' | 'map' | 'dice' | 'soundboard' | 'host' | 'settings';
 
-const TABS: { id: TabId; label: string; icon: typeof MapIcon }[] = [
+const TABS: { id: TabId; label: string; icon: typeof MapIcon; hostOnly?: boolean }[] = [
   { id: 'players', label: 'Players', icon: PlayersIcon },
   { id: 'map', label: 'Map', icon: MapIcon },
   { id: 'dice', label: 'Dice', icon: DiceIcon },
   { id: 'soundboard', label: 'Sound', icon: SoundIcon },
+  { id: 'host', label: 'Host', icon: HostIcon, hostOnly: true },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ];
 
@@ -85,9 +93,14 @@ export function SessionView({
   onNotify,
   hostKey,
   onMoveMini,
+  onHostAction,
+  onLockClip,
 }: SessionViewProps) {
   const isHost = playerId === state.hostId;
-  const [activeTab, setActiveTab] = useState<TabId>('players');
+  const [chosenTab, setActiveTab] = useState<TabId>('players');
+  // Handing the host role on closes the Host tab with it.
+  const activeTab = chosenTab === 'host' && !isHost ? 'players' : chosenTab;
+  const tabs = TABS.filter((tab) => isHost || !tab.hostOnly);
   const { settings, updateSettings } = useSettings();
   const collapsed = settings.menuCollapsed;
 
@@ -137,7 +150,7 @@ export function SessionView({
       {!collapsed && (
         <>
           <div className="tab-bar" role="tablist">
-            {TABS.map((tab) => {
+            {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
@@ -165,6 +178,9 @@ export function SessionView({
                 onUnmutePlayer={onUnmutePlayer}
                 onTransferHost={onTransferHost}
                 onUpdateProfile={onUpdateProfile}
+                onRemovePlayer={(targetPlayerId) =>
+                  onHostAction({ action: 'remove', targetPlayerId })
+                }
               />
             )}
             {activeTab === 'players' && isHost && hostKey && (
@@ -200,6 +216,9 @@ export function SessionView({
                 onAssignSlot={onAssignSlot}
                 onRemoveSound={onRemoveSound}
               />
+            )}
+            {activeTab === 'host' && (
+              <HostTab state={state} onHostAction={onHostAction} onLockClip={onLockClip} />
             )}
             {activeTab === 'settings' && <SettingsTab />}
           </div>
@@ -255,6 +274,7 @@ function PlayersTab({
   onUnmutePlayer,
   onTransferHost,
   onUpdateProfile,
+  onRemovePlayer,
 }: {
   state: GameState;
   playerId: string;
@@ -263,6 +283,7 @@ function PlayersTab({
   onUnmutePlayer: (targetPlayerId: string) => void;
   onTransferHost: (targetPlayerId: string) => void;
   onUpdateProfile: (patch: { name?: string; color?: PlayerColorId }) => void;
+  onRemovePlayer: (targetPlayerId: string) => void;
 }) {
   const self = state.players.find((player) => player.id === playerId);
   return (
@@ -281,16 +302,28 @@ function PlayersTab({
                   style={{ background: playerColorHex(player.color) }}
                   aria-hidden="true"
                 />
-                {player.name}
-                {player.id === state.hostId && ' (host)'}
-                {isSelf && ' (you)'}
-                {player.muted && ' (muted)'}
-                {!player.connected && ' (reconnecting…)'}
+                <span className="player-label">
+                  {player.name}
+                  {isSelf && ' (you)'}
+                  {player.muted && ' (muted)'}
+                  {!player.connected && ' (reconnecting…)'}
+                </span>
+                {player.id === state.hostId && (
+                  <span className="host-crown" title="The host" aria-label="(host)">
+                    <HostIcon />
+                  </span>
+                )}
               </span>
               <span className="player-actions">
                 {canPromote && (
-                  <button type="button" onClick={() => onTransferHost(player.id)}>
-                    Make host
+                  <button
+                    type="button"
+                    className="icon-button"
+                    title={`Make ${player.name} the host`}
+                    aria-label={`Make ${player.name} the host`}
+                    onClick={() => onTransferHost(player.id)}
+                  >
+                    <HostIcon />
                   </button>
                 )}
                 {canModerate && (
@@ -302,6 +335,16 @@ function PlayersTab({
                   >
                     {player.muted ? 'Unmute' : 'Mute'}
                   </button>
+                )}
+                {isHost && !isSelf && (
+                  <ConfirmButton
+                    className="icon-button danger"
+                    label="×"
+                    armedLabel="Remove?"
+                    title={`Remove ${player.name} from the table`}
+                    ariaLabel={`Remove ${player.name}`}
+                    onConfirm={() => onRemovePlayer(player.id)}
+                  />
                 )}
               </span>
             </li>
@@ -686,9 +729,11 @@ function SoundboardTab({
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const soundName = (id: string | null) =>
     id ? (state.soundboard.find((sound) => sound.id === id)?.name ?? null) : null;
+  const allowed = mayUse(state, playerId, 'sounds');
 
   return (
     <div>
+      {!allowed && <p className="tab-empty-note">{SOUNDS_OFF_ERROR}</p>}
       <ul className="sound-list">
         {state.soundboard.map((sound) => {
           const kind = soundKind(sound);
@@ -700,7 +745,7 @@ function SoundboardTab({
                 {sound.name}
               </span>
               <span className="player-actions">
-                <button type="button" onClick={() => onPlaySound(sound.id)}>
+                <button type="button" disabled={!allowed} onClick={() => onPlaySound(sound.id)}>
                   Play
                 </button>
                 {canRemove && (
@@ -730,6 +775,7 @@ function SoundboardTab({
               type="button"
               className={`slot-cell${name ? ' filled' : ''}${selectedSlot === index ? ' selected' : ''}`}
               title={name ?? `Button ${index + 1} — empty`}
+              disabled={!allowed}
               onClick={() => setSelectedSlot(selectedSlot === index ? null : index)}
             >
               {name ?? '+'}
@@ -737,7 +783,7 @@ function SoundboardTab({
           );
         })}
       </div>
-      {selectedSlot !== null && (
+      {allowed && selectedSlot !== null && (
         <label className="slot-editor">
           Button {selectedSlot + 1} plays
           <select
@@ -754,8 +800,186 @@ function SoundboardTab({
         </label>
       )}
 
-      <p className="tab-section-label">Add a sound (shared with everyone)</p>
-      <AddSoundForm onAdd={onUploadSound} />
+      {allowed && (
+        <>
+          <p className="tab-section-label">Add a sound (shared with everyone)</p>
+          <AddSoundForm onAdd={onUploadSound} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A button that asks before it acts: the first press arms it (its label
+ * turns into the question), a second one within a few seconds confirms.
+ * For things that can't be undone — removing a player, clearing the table.
+ */
+function ConfirmButton({
+  label,
+  armedLabel,
+  title,
+  ariaLabel,
+  className,
+  disabled,
+  onConfirm,
+}: {
+  label: string;
+  armedLabel: string;
+  title?: string;
+  /** For a symbol-only label (×): what screen readers call the button. */
+  ariaLabel?: string;
+  className?: string;
+  disabled?: boolean;
+  onConfirm: () => void;
+}) {
+  const [armed, setArmed] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  return (
+    <button
+      type="button"
+      className={[className, 'confirm-button', armed ? 'armed' : ''].filter(Boolean).join(' ')}
+      title={title}
+      aria-label={armed ? armedLabel : ariaLabel}
+      disabled={disabled}
+      onClick={() => {
+        window.clearTimeout(timer.current);
+        if (armed) {
+          setArmed(false);
+          onConfirm();
+          return;
+        }
+        setArmed(true);
+        timer.current = window.setTimeout(() => setArmed(false), 3500);
+      }}
+      onBlur={() => setArmed(false)}
+    >
+      {armed ? armedLabel : label}
+    </button>
+  );
+}
+
+/** What the host can clear, and how much of it is on the table now — null
+ * for the drawings: they travel stroke by stroke and only reach this copy of
+ * the state with the next full snapshot, so it can't count them. */
+function clearables(
+  state: GameState,
+): { target: ClearTarget; label: string; count: number | null }[] {
+  return [
+    { target: 'drawings', label: 'Drawings', count: null },
+    {
+      target: 'whiteboard',
+      label: 'Whiteboard',
+      count: state.whiteboard.filter((line) => line.text).length,
+    },
+    { target: 'dice', label: 'Dice', count: state.dice.length },
+    { target: 'minis', label: 'Minis', count: Object.keys(state.minis).length },
+  ];
+}
+
+/**
+ * The host's own tab (docs/decisions.md, "Host controls"): who may come in,
+ * what everyone else may do, and clearing things off the table.
+ */
+function HostTab({
+  state,
+  onHostAction,
+  onLockClip,
+}: {
+  state: GameState;
+  onHostAction: (action: HostAction) => void;
+  onLockClip: (locked: boolean) => void;
+}) {
+  return (
+    <div className="host-tab">
+      <p className="host-section">The table</p>
+      <label className="settings-row">
+        <span>
+          Lock the table
+          <span className="row-hint">nobody new can join; players can still reconnect</span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="switch"
+          checked={state.locked}
+          onChange={(event) => onHostAction({ action: 'lock', locked: event.target.checked })}
+        />
+      </label>
+      <label className="settings-row">
+        <span>
+          Lock the TV
+          <span className="row-hint">only you can pause, skip or stop clips</span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="switch"
+          checked={state.clipLocked}
+          onChange={(event) => onLockClip(event.target.checked)}
+        />
+      </label>
+
+      <p className="host-section">Everyone else may</p>
+      <label className="settings-row">
+        <span>
+          Draw on the map
+          <span className="row-hint">and erase from it</span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="switch"
+          checked={state.permissions.draw}
+          onChange={(event) =>
+            onHostAction({
+              action: 'permission',
+              permission: 'draw',
+              allowed: event.target.checked,
+            })
+          }
+        />
+      </label>
+      <label className="settings-row">
+        <span>
+          Use sounds
+          <span className="row-hint">the soundboard, and clips on the TV</span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="switch"
+          checked={state.permissions.sounds}
+          onChange={(event) =>
+            onHostAction({
+              action: 'permission',
+              permission: 'sounds',
+              allowed: event.target.checked,
+            })
+          }
+        />
+      </label>
+
+      <p className="host-section">Clear the table</p>
+      <div className="clear-grid">
+        {clearables(state).map(({ target, label, count }) => (
+          <ConfirmButton
+            key={target}
+            className="danger"
+            label={count ? `${label} · ${count}` : label}
+            armedLabel="Clear? Press again"
+            title={
+              count === 0
+                ? `No ${label.toLowerCase()} to clear`
+                : `Clear ${label.toLowerCase()} for everyone`
+            }
+            disabled={count === 0}
+            onConfirm={() => onHostAction({ action: 'clear', target })}
+          />
+        ))}
+      </div>
     </div>
   );
 }

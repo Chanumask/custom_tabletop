@@ -38,6 +38,14 @@ describe('describeJoinStatus — joining', () => {
     });
   });
 
+  it('blocks a table its host has locked', () => {
+    expect(describeJoinStatus('join', 'ABCDE', { ...table(3), locked: true })).toMatchObject({
+      message: 'The host has locked this table — nobody new can join right now.',
+      tone: 'warn',
+      blocked: true,
+    });
+  });
+
   it('shows who is there', () => {
     expect(describeJoinStatus('join', 'ABCDE', table(1))).toEqual({
       message: '1 player at the table · hosted by Alice',

@@ -1,4 +1,6 @@
 import {
+  CLEAR_TARGETS,
+  type HostActionRequest,
   type DiceMoveRequest,
   type MiniMoveRequest,
   CLIP_ACTIONS,
@@ -720,6 +722,37 @@ export function parseClipLockRequest(payload: unknown): ClipLockRequest | null {
     return null;
   }
   return { sessionId, playerId, locked };
+}
+
+/** host:action — one of the host's controls (host.ts). */
+export function parseHostActionRequest(payload: unknown): HostActionRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+  const fields = payload as Record<string, unknown>;
+  const { sessionId, playerId, action } = fields;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId)) {
+    return null;
+  }
+  const base = { sessionId, playerId };
+  if (action === 'lock' && typeof fields.locked === 'boolean') {
+    return { ...base, action, locked: fields.locked };
+  }
+  if (
+    action === 'permission' &&
+    (fields.permission === 'draw' || fields.permission === 'sounds') &&
+    typeof fields.allowed === 'boolean'
+  ) {
+    return { ...base, action, permission: fields.permission, allowed: fields.allowed };
+  }
+  if (action === 'remove' && isNonEmptyString(fields.targetPlayerId)) {
+    return { ...base, action, targetPlayerId: fields.targetPlayerId };
+  }
+  const target = CLEAR_TARGETS.find((candidate) => candidate === fields.target);
+  if (action === 'clear' && target) {
+    return { ...base, action, target };
+  }
+  return null;
 }
 
 /** A position sane enough to be somewhere around the table. */

@@ -91,6 +91,8 @@ export interface SessionPeekResponse {
   saved?: boolean;
   /** For a saved table: when it was last played (epoch ms). */
   lastActiveAt?: number;
+  /** The host has locked the table: nobody new can join (host.ts). */
+  locked?: boolean;
 }
 
 /** Host-only: hands the host role to another player in the session. */

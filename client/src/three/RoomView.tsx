@@ -26,6 +26,7 @@ import {
   type WhiteboardLine,
   EMOTES,
   WHITEBOARD_LINE_COUNT,
+  SOUNDS_OFF_ERROR,
 } from '@custom-tabletop/shared';
 import { loadRoom } from './RoomLoader.js';
 import { FirstPersonController, type SeatedView } from './FirstPersonController.js';
@@ -120,6 +121,20 @@ const DEFAULT_DRAW_WIDTH = 5;
 
 type DrawTool = 'pen' | 'eraser';
 
+/** What a full repaint of the table depends on: the scene, its map, its grid. */
+function paintSignature(scene: GameScene): string {
+  return `${scene.id}|${scene.backgroundImage}|${scene.gridCells}`;
+}
+
+/** Whether a stroke the table shows (`shown`, kept current stroke by stroke
+ * via drawing:*) is missing from the scene the server just sent — the host
+ * cleared the map — so it needs a full repaint. */
+function lostStrokes(shown: GameScene, next: GameScene): boolean {
+  if (shown.id !== next.id) return false;
+  const kept = new Set(next.drawings.map((drawing) => drawing.id));
+  return shown.drawings.some((drawing) => !kept.has(drawing.id));
+}
+
 /** Switches between the normal full-viewport camera and a square one
  * (Milestone 8's seated table view — "full screen" for a round table reads
  * best as a square frame, not a letterboxed widescreen one). */
@@ -175,6 +190,9 @@ export interface RoomViewProps {
   onUploadSound: (name: string, url: string, slotIndex?: number) => void;
   /** Put an existing sound on a wall button, or clear it (null). */
   onAssignSlot: (slotIndex: number, soundId: string | null) => void;
+  /** Whether this player may draw on the map / use sounds (host.ts). */
+  canDraw: boolean;
+  canUseSounds: boolean;
   /** Short on-screen feedback (e.g. "You wave"). */
   onNotify: (text: string) => void;
   /** The whiteboard's lines (GameState.whiteboard). */
@@ -273,6 +291,8 @@ export function RoomView({
   onObjectInteract,
   onUploadSound,
   onAssignSlot,
+  canDraw,
+  canUseSounds,
   onNotify,
   whiteboard,
   onWriteWhiteboard,
@@ -289,6 +309,12 @@ export function RoomView({
   const tableCanvasRef = useRef<TableCanvas | null>(null);
   const activeSceneRef = useRef<GameScene>(activeScene);
   const lastRedrawnSignatureRef = useRef<string>('');
+  const canDrawRef = useRef(canDraw);
+  const canUseSoundsRef = useRef(canUseSounds);
+  useEffect(() => {
+    canDrawRef.current = canDraw;
+    canUseSoundsRef.current = canUseSounds;
+  }, [canDraw, canUseSounds]);
   const diceManagerRef = useRef<DiceManager | null>(null);
   const diceRef = useRef<Dice[]>(dice);
   const minisRef = useRef(minis);
@@ -475,11 +501,13 @@ export function RoomView({
   // below skips a redundant redraw (and background-image reload) for those.
   // Point-by-point drawing updates go through the drawing:* socket
   // listeners inside the effect below instead, applied directly to the
-  // canvas without a full redraw.
+  // canvas without a full redraw — and a scene that lost strokes the table
+  // shows (the host cleared the drawings) repaints it.
   useEffect(() => {
+    const cleared = lostStrokes(activeSceneRef.current, activeScene);
     activeSceneRef.current = activeScene;
-    const signature = `${activeScene.id}|${activeScene.backgroundImage}|${activeScene.gridCells}`;
-    if (signature !== lastRedrawnSignatureRef.current) {
+    const signature = paintSignature(activeScene);
+    if (signature !== lastRedrawnSignatureRef.current || cleared) {
       lastRedrawnSignatureRef.current = signature;
       void tableCanvasRef.current?.redraw(activeScene, () => activeSceneRef.current.drawings);
     }
@@ -922,7 +950,7 @@ export function RoomView({
           tableMaterial.color.setScalar(lightOnRef.current ? 1 : TABLE_DIMMED_BRIGHTNESS);
           tableTopMesh.material = tableMaterial;
           tableMaterialRef.current = tableMaterial;
-          lastRedrawnSignatureRef.current = `${activeSceneRef.current.id}|${activeSceneRef.current.backgroundImage}|${activeSceneRef.current.gridCells}`;
+          lastRedrawnSignatureRef.current = paintSignature(activeSceneRef.current);
           void tableCanvas.redraw(activeSceneRef.current, currentDrawings);
           tableCanvasRef.current = tableCanvas;
 
@@ -933,6 +961,7 @@ export function RoomView({
             tableTopMesh,
             table: room.layout.table,
             isDrawingAllowed: () => !controller.controls.isLocked,
+            canMark: () => canDrawRef.current,
             // Minis and dice can be picked up and dragged (docs/decisions.md,
             // "Minis"); a die that's pressed but not moved rolls, as before.
             startDrag: (raycaster) => {
@@ -1138,6 +1167,10 @@ export function RoomView({
             return;
           }
           const targetedSlot = boardTargetSlotRef.current;
+          if (targetedSlot !== null && !canUseSoundsRef.current) {
+            onNotifyRef.current(SOUNDS_OFF_ERROR);
+            return;
+          }
           if (targetedSlot !== null) {
             const soundId = soundboardWallRef.current?.getSlotSoundId(targetedSlot) ?? null;
             if (soundId && !event.shiftKey) {
@@ -1483,7 +1516,8 @@ export function RoomView({
                 : `WASD move · Shift run · ${formatKeyCode(interactKey)} interact · 1–6 emote · Enter chat · Esc release`}
             </span>
             <span className="room-view-keys">
-              Drag on the table to draw · click a die to roll it · right-click to ping
+              {canDraw ? 'Drag on the table to draw · ' : 'Drag minis and dice · '}click a die to
+              roll it · right-click to ping
             </span>
           </button>
         )}
@@ -1528,40 +1562,46 @@ export function RoomView({
               {seatedView === 'chair' ? 'Table view' : 'Chair view'} <kbd>V</kbd>
             </button>
           )}
-          <button
-            type="button"
-            className={drawTool === 'pen' ? 'active' : ''}
-            onClick={() => setDrawTool('pen')}
-          >
-            Pen
-          </button>
-          <button
-            type="button"
-            className={drawTool === 'eraser' ? 'active' : ''}
-            onClick={() => setDrawTool('eraser')}
-          >
-            Eraser
-          </button>
-          <label>
-            Color
-            <input
-              type="color"
-              value={drawColor}
-              onChange={(event) => setDrawColor(event.target.value)}
-              disabled={drawTool === 'eraser'}
-            />
-          </label>
-          <label>
-            Size
-            <input
-              type="range"
-              min={1}
-              max={20}
-              value={drawWidth}
-              onChange={(event) => setDrawWidth(Number(event.target.value))}
-              disabled={drawTool === 'eraser'}
-            />
-          </label>
+          {canDraw ? (
+            <>
+              <button
+                type="button"
+                className={drawTool === 'pen' ? 'active' : ''}
+                onClick={() => setDrawTool('pen')}
+              >
+                Pen
+              </button>
+              <button
+                type="button"
+                className={drawTool === 'eraser' ? 'active' : ''}
+                onClick={() => setDrawTool('eraser')}
+              >
+                Eraser
+              </button>
+              <label>
+                Color
+                <input
+                  type="color"
+                  value={drawColor}
+                  onChange={(event) => setDrawColor(event.target.value)}
+                  disabled={drawTool === 'eraser'}
+                />
+              </label>
+              <label>
+                Size
+                <input
+                  type="range"
+                  min={1}
+                  max={20}
+                  value={drawWidth}
+                  onChange={(event) => setDrawWidth(Number(event.target.value))}
+                  disabled={drawTool === 'eraser'}
+                />
+              </label>
+            </>
+          ) : (
+            <span className="drawing-off">The host has turned drawing off for now.</span>
+          )}
         </div>
       )}
     </div>

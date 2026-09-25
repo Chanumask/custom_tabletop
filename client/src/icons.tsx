@@ -98,3 +98,18 @@ export function SettingsIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function HostIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={SIZE} height={SIZE} className={className} aria-hidden="true">
+      <path
+        d="M4.5 17.5 3.5 8l4.8 3.6L12 5l3.7 6.6L20.5 8l-1 9.5h-15Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path d="M5 20.5h14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
