@@ -35,7 +35,9 @@ Dated log of what happened each session. Newest first.
   - chairs with six browsers: 4 → 5 → 6 → back to 4, and a seated player re-seated.
 - **Room size:** `room.glb` 8.96 → 10.42 MB. Its Poly Haven colour maps were swapped for the official JPGs after a conversion through Blender's view transform darkened them.
 
-Not pushed or deployed yet.
+### Deployed
+
+Pushed (`f202503..0d2ed71`) and deployed at the owner's go-ahead. The container reported healthy on `0d2ed71`, the site serves the new 10.42 MB room and the chair code, and the smoke tests passed 3/3 in Chromium against https://tabletop.murri.me.
 
 ---
 
