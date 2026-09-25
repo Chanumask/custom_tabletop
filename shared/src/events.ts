@@ -48,6 +48,7 @@ export const SocketEvent = {
   SceneCreate: 'scene:create',
   SceneChange: 'scene:change',
   SceneUpdate: 'scene:update',
+  SceneDelete: 'scene:delete',
 
   DrawingStart: 'drawing:start',
   DrawingUpdate: 'drawing:update',

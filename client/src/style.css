@@ -2714,3 +2714,115 @@ button.primary {
   flex: 1 1 0;
   min-width: 0;
 }
+
+/* Map tab: the host's maps (docs/decisions.md, "Maps"). */
+.map-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.map-list-head .tab-section-label {
+  margin: 0;
+}
+
+.map-add {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.76rem;
+}
+
+.map-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.map-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.3rem 0.2rem 0.2rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: rgba(243, 230, 211, 0.04);
+}
+
+.map-row.selected {
+  border-color: rgba(240, 196, 106, 0.45);
+  background: rgba(240, 196, 106, 0.08);
+}
+
+.map-pick {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.1rem;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-row-thumb {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(243, 230, 211, 0.2);
+  border-radius: 5px;
+  background: #e6d4b0 center / cover no-repeat;
+}
+
+/* The name above, the "on the table" badge under it: the name keeps its width. */
+.map-row-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.map-row-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-live {
+  flex: none;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(240, 196, 106, 0.2);
+  color: #f0c46a;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.map-rename {
+  flex: 1;
+  min-width: 0;
+}
+
+.map-rename input {
+  width: 100%;
+}
+
+.map-row .icon-button svg {
+  display: block;
+  width: 0.9rem;
+  height: 0.9rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+}

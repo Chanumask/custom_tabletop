@@ -1,5 +1,7 @@
 import {
   CLEAR_TARGETS,
+  MAX_SCENE_NAME_LENGTH,
+  type SceneDeleteRequest,
   ROOM_THEMES,
   type HostActionRequest,
   type DiceMoveRequest,
@@ -244,6 +246,7 @@ export function parseSceneCreateRequest(payload: unknown): SceneCreateRequest | 
     !isNonEmptyString(playerId) ||
     !isNonEmptyString(sceneId) ||
     !isNonEmptyString(name) ||
+    name.trim().length > MAX_SCENE_NAME_LENGTH ||
     typeof backgroundImage !== 'string'
   ) {
     return null;
@@ -285,6 +288,7 @@ export function parseSceneUpdateRequest(payload: unknown): SceneUpdateRequest | 
     !isNonEmptyString(playerId) ||
     !isNonEmptyString(sceneId) ||
     !isOptionalString(name) ||
+    (name !== undefined && (!name.trim() || name.trim().length > MAX_SCENE_NAME_LENGTH)) ||
     !isOptionalString(backgroundImage) ||
     (gridCells !== undefined && !isGridCells(gridCells))
   ) {
@@ -298,10 +302,22 @@ export function parseSceneUpdateRequest(payload: unknown): SceneUpdateRequest | 
     sessionId: sessionId.trim(),
     playerId: playerId.trim(),
     sceneId: sceneId.trim(),
-    name,
+    name: name?.trim(),
     backgroundImage,
     ...(gridCells !== undefined ? { gridCells } : {}),
   };
+}
+
+/** scene:delete — which map to remove. */
+export function parseSceneDeleteRequest(payload: unknown): SceneDeleteRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+  const { sessionId, playerId, sceneId } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || !isNonEmptyString(sceneId)) {
+    return null;
+  }
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), sceneId: sceneId.trim() };
 }
 
 // Sanity bounds on a client-supplied stroke width — wide enough for the

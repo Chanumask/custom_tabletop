@@ -14,6 +14,9 @@ import {
   SAVED_TABLE_TTL_DAYS,
   TABLE_UNITS,
   SOUNDS_OFF_ERROR,
+  MAX_SCENES_PER_SESSION,
+  MAX_SCENE_NAME_LENGTH,
+  type Scene,
   mayUse,
   type ClearTarget,
   type HostAction,
@@ -41,12 +44,22 @@ const jewelHex = (index: number) =>
   `#${(SOUNDBOARD_JEWELS[index] ?? 0x6a5a48).toString(16).padStart(6, '0')}`;
 import { MapIcon, DiceIcon, SoundIcon, PlayersIcon, SettingsIcon, HostIcon } from './icons.js';
 
+/** What the host can do with the table's maps (App.tsx sends them). */
+export interface MapActions {
+  create: (sceneId: string, name: string) => void;
+  show: (sceneId: string) => void;
+  rename: (sceneId: string, name: string) => void;
+  remove: (sceneId: string) => void;
+  setBackground: (sceneId: string, url: string) => void;
+  setGrid: (sceneId: string, gridCells: number) => void;
+}
+
 export interface SessionViewProps {
   state: GameState;
   playerId: string;
   onLeave: () => void;
-  onSetMapBackground: (url: string) => void;
-  onSetMapGrid: (gridCells: number) => void;
+  /** The host's maps: add, show, rename, delete, and set one up. */
+  maps: MapActions;
   onSpawnDie: (kind: DieKind, hidden?: boolean) => void;
   onRollDice: (diceIds: string[]) => void;
   onRemoveDie: (diceId: string) => void;
@@ -89,8 +102,7 @@ export function SessionView({
   state,
   playerId,
   onLeave,
-  onSetMapBackground,
-  onSetMapGrid,
+  maps,
   onSpawnDie,
   onRollDice,
   onRemoveDie,
@@ -203,8 +215,7 @@ export function SessionView({
                 isHost={isHost}
                 state={state}
                 playerId={playerId}
-                onSetMapBackground={onSetMapBackground}
-                onSetMapGrid={onSetMapGrid}
+                maps={maps}
                 onMoveMini={onMoveMini}
               />
             )}
@@ -467,37 +478,53 @@ function MapTab({
   isHost,
   state,
   playerId,
-  onSetMapBackground,
-  onSetMapGrid,
+  maps,
   onMoveMini,
 }: {
   isHost: boolean;
   state: GameState;
   playerId: string;
-  onSetMapBackground: (url: string) => void;
-  onSetMapGrid: (gridCells: number) => void;
+  maps: MapActions;
   onMoveMini: (targetPlayerId: string, point: Point2D | null) => void;
 }) {
   const activeScene = state.scenes.find((scene) => scene.id === state.activeSceneId);
-  const current = activeScene?.backgroundImage ?? '';
+  // The map the host is setting up — the one on the table unless they pick
+  // another (a map in preparation isn't shown until they say so).
+  const [selectedId, setSelectedId] = useState(state.activeSceneId);
+  const selected = state.scenes.find((scene) => scene.id === selectedId) ?? activeScene;
+  const [renaming, setRenaming] = useState<string | null>(null);
   const [link, setLink] = useState('');
-  const [source, setSource] = useState<MapSource | null>(null);
+  const [source, setSource] = useState<{ map: MapSource; sceneId: string } | null>(null);
   const minis = <MiniSection state={state} playerId={playerId} onMoveMini={onMoveMini} />;
 
-  if (!isHost) {
+  if (!isHost || !selected) {
     return (
       <>
         {minis}
-        <p className="tab-empty-note">Only the host can change the map.</p>
+        {activeScene && (
+          <p className="tab-empty-note">
+            On the table: <strong>{activeScene.name}</strong>. Only the host changes the map.
+          </p>
+        )}
       </>
     );
+  }
+  const target = selected;
+
+  function addMap() {
+    const taken = new Set(state.scenes.map((scene) => scene.name));
+    let n = state.scenes.length + 1;
+    while (taken.has(`Map ${n}`)) n += 1;
+    const sceneId = crypto.randomUUID();
+    maps.create(sceneId, `Map ${n}`);
+    setSelectedId(sceneId);
   }
 
   function handleFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (file) {
-      setSource({ kind: 'file', file });
+      setSource({ map: { kind: 'file', file }, sceneId: target.id });
     }
   }
 
@@ -505,28 +532,73 @@ function MapTab({
     event.preventDefault();
     const trimmed = link.trim();
     if (trimmed) {
-      setSource({ kind: 'url', url: trimmed });
+      setSource({ map: { kind: 'url', url: trimmed }, sceneId: target.id });
     }
   }
 
   async function handleConfirm(image: Blob) {
+    if (!source) return;
     const url = await uploadImage(new File([image], 'map.jpg', { type: 'image/jpeg' }));
-    onSetMapBackground(url);
+    maps.setBackground(source.sceneId, url);
     setSource(null);
     setLink('');
   }
 
+  const onTable = target.id === state.activeSceneId;
   return (
     <div>
       {minis}
-      <p className="tab-section-label">Map</p>
+      <div className="map-list-head">
+        <p className="tab-section-label">Maps</p>
+        <button
+          type="button"
+          className="map-add"
+          disabled={state.scenes.length >= MAX_SCENES_PER_SESSION}
+          title={
+            state.scenes.length >= MAX_SCENES_PER_SESSION
+              ? `At most ${MAX_SCENES_PER_SESSION} maps`
+              : 'Add a map to prepare'
+          }
+          onClick={addMap}
+        >
+          + New map
+        </button>
+      </div>
+      <ul className="map-list">
+        {state.scenes.map((scene) => (
+          <MapRow
+            key={scene.id}
+            scene={scene}
+            selected={scene.id === target.id}
+            live={scene.id === state.activeSceneId}
+            renaming={renaming === scene.id}
+            onSelect={() => setSelectedId(scene.id)}
+            onStartRename={() => setRenaming(scene.id)}
+            onRename={(name) => {
+              setRenaming(null);
+              if (name && name !== scene.name) maps.rename(scene.id, name);
+            }}
+            onShow={() => maps.show(scene.id)}
+            onRemove={() => maps.remove(scene.id)}
+          />
+        ))}
+      </ul>
+
+      <p className="tab-section-label">
+        {onTable ? 'On the table' : 'Preparing'}: {target.name}
+      </p>
       <div className="map-current">
-        {current ? (
-          <img src={current} alt="Current map" className="map-thumb" />
+        {target.backgroundImage ? (
+          <img src={target.backgroundImage} alt={`The map ${target.name}`} className="map-thumb" />
         ) : (
           <div className="map-thumb map-thumb-empty">No map yet — blank parchment</div>
         )}
       </div>
+      {!onTable && (
+        <button type="button" className="primary" onClick={() => maps.show(target.id)}>
+          Show this map to everyone
+        </button>
+      )}
       <label className="file-label">
         Upload a map image
         <input type="file" accept="image/*" onChange={handleFile} />
@@ -544,8 +616,8 @@ function MapTab({
           Preview
         </button>
       </form>
-      {current && (
-        <button type="button" onClick={() => onSetMapBackground('')}>
+      {target.backgroundImage && (
+        <button type="button" onClick={() => maps.setBackground(target.id, '')}>
           Clear map
         </button>
       )}
@@ -556,18 +628,120 @@ function MapTab({
             key={cells}
             type="button"
             role="radio"
-            aria-checked={(activeScene?.gridCells ?? 0) === cells}
-            className={(activeScene?.gridCells ?? 0) === cells ? 'active' : ''}
-            onClick={() => onSetMapGrid(cells)}
+            aria-checked={target.gridCells === cells}
+            className={target.gridCells === cells ? 'active' : ''}
+            onClick={() => maps.setGrid(target.id, cells)}
           >
             {cells === 0 ? 'Off' : cells}
           </button>
         ))}
       </div>
       {source && (
-        <MapCropDialog source={source} onConfirm={handleConfirm} onCancel={() => setSource(null)} />
+        <MapCropDialog
+          source={source.map}
+          onConfirm={handleConfirm}
+          onCancel={() => setSource(null)}
+        />
       )}
     </div>
+  );
+}
+
+/** One map in the host's list: pick it to set it up, show it, rename it,
+ * delete it (never the one on the table). */
+function MapRow({
+  scene,
+  selected,
+  live,
+  renaming,
+  onSelect,
+  onStartRename,
+  onRename,
+  onShow,
+  onRemove,
+}: {
+  scene: Scene;
+  selected: boolean;
+  live: boolean;
+  renaming: boolean;
+  onSelect: () => void;
+  onStartRename: () => void;
+  onRename: (name: string) => void;
+  onShow: () => void;
+  onRemove: () => void;
+}) {
+  const [draft, setDraft] = useState(scene.name);
+  useEffect(() => {
+    if (renaming) setDraft(scene.name);
+  }, [renaming, scene.name]);
+  const thumb = scene.backgroundImage ? { backgroundImage: `url(${scene.backgroundImage})` } : {};
+
+  return (
+    <li className={`map-row${selected ? ' selected' : ''}${live ? ' live' : ''}`}>
+      {renaming ? (
+        <form
+          className="map-rename"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onRename(draft.trim());
+          }}
+        >
+          <input
+            autoFocus
+            value={draft}
+            maxLength={MAX_SCENE_NAME_LENGTH}
+            aria-label={`New name for ${scene.name}`}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => onRename(draft.trim())}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') onRename(scene.name);
+            }}
+          />
+        </form>
+      ) : (
+        <button
+          type="button"
+          className="map-pick"
+          aria-pressed={selected}
+          title={`Set up ${scene.name}`}
+          onClick={onSelect}
+        >
+          <span className="map-row-thumb" style={thumb} aria-hidden="true" />
+          <span className="map-row-text">
+            <span className="map-row-name">{scene.name}</span>
+            {live && <span className="map-live">on the table</span>}
+          </span>
+        </button>
+      )}
+      <span className="player-actions">
+        {!live && (
+          <button type="button" onClick={onShow} title={`Put ${scene.name} on the table`}>
+            Show
+          </button>
+        )}
+        <button
+          type="button"
+          className="icon-button"
+          title={`Rename ${scene.name}`}
+          aria-label={`Rename ${scene.name}`}
+          onClick={onStartRename}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 20h4L19 9l-4-4L4 16v4Z M14 6l4 4" />
+          </svg>
+        </button>
+        {!live && (
+          <ConfirmButton
+            className="icon-button danger"
+            label="×"
+            armedLabel="Delete?"
+            title={`Delete ${scene.name}`}
+            ariaLabel={`Delete ${scene.name}`}
+            onConfirm={onRemove}
+          />
+        )}
+      </span>
+    </li>
   );
 }
 

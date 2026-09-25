@@ -58,6 +58,8 @@ import { PLACEHOLDER_ROOM_LAYOUT } from './three/RoomLayout.js';
 import { randomDiceSpawnPosition } from './diceSpawn.js';
 import { playSound, setMasterVolume } from './sounds.js';
 import { useSettings } from './useSettings.js';
+// Type only: the session menu itself stays in its own lazy chunk.
+import type { MapActions } from './SessionView.js';
 
 // The game view — three.js, the room, the session menu — is its own chunk:
 // the join screen doesn't need it, so it loads (and the room model starts
@@ -404,19 +406,25 @@ export function App() {
     );
   }
 
-  const handleSetMapBackground = (backgroundImage: string) =>
-    sendAction(
-      SocketEvent.SceneUpdate,
-      { sceneId: gameState?.activeSceneId, backgroundImage },
-      'Failed to update the map',
-    );
-
-  const handleSetMapGrid = (gridCells: number) =>
-    sendAction(
-      SocketEvent.SceneUpdate,
-      { sceneId: gameState?.activeSceneId, gridCells },
-      'Failed to change the grid',
-    );
+  // The host's maps (docs/decisions.md, "Maps"): prepared one by one,
+  // shown to everyone when it's time.
+  const maps: MapActions = {
+    create: (sceneId, name) =>
+      sendAction(
+        SocketEvent.SceneCreate,
+        { sceneId, name, backgroundImage: '' },
+        'Failed to add a map',
+      ),
+    show: (sceneId) => sendAction(SocketEvent.SceneChange, { sceneId }, 'Failed to show the map'),
+    rename: (sceneId, name) =>
+      sendAction(SocketEvent.SceneUpdate, { sceneId, name }, 'Failed to rename the map'),
+    remove: (sceneId) =>
+      sendAction(SocketEvent.SceneDelete, { sceneId }, 'Failed to delete the map'),
+    setBackground: (sceneId, backgroundImage) =>
+      sendAction(SocketEvent.SceneUpdate, { sceneId, backgroundImage }, 'Failed to update the map'),
+    setGrid: (sceneId, gridCells) =>
+      sendAction(SocketEvent.SceneUpdate, { sceneId, gridCells }, 'Failed to change the grid'),
+  };
 
   const handleSpawnDie = (kind: DieKind, hidden = false) =>
     sendAction(
@@ -648,8 +656,7 @@ export function App() {
             state={gameState}
             playerId={playerId}
             onLeave={handleLeave}
-            onSetMapBackground={handleSetMapBackground}
-            onSetMapGrid={handleSetMapGrid}
+            maps={maps}
             onSpawnDie={handleSpawnDie}
             onRollDice={handleRollDice}
             onRemoveDie={handleRemoveDie}
