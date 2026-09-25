@@ -1,5 +1,6 @@
 import {
   CLEAR_TARGETS,
+  ROOM_THEMES,
   type HostActionRequest,
   type DiceMoveRequest,
   type MiniMoveRequest,
@@ -747,6 +748,10 @@ export function parseHostActionRequest(payload: unknown): HostActionRequest | nu
   }
   if (action === 'remove' && isNonEmptyString(fields.targetPlayerId)) {
     return { ...base, action, targetPlayerId: fields.targetPlayerId };
+  }
+  const theme = ROOM_THEMES.find((candidate) => candidate === fields.theme);
+  if (action === 'theme' && theme) {
+    return { ...base, action, theme };
   }
   const target = CLEAR_TARGETS.find((candidate) => candidate === fields.target);
   if (action === 'clear' && target) {

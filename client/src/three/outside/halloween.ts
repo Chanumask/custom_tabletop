@@ -58,9 +58,10 @@ export function pumpkinGeometry(radius: number): THREE.BufferGeometry {
   return body;
 }
 
-function jackOLanterns(kit: Kit, glow: THREE.Texture): Piece {
-  const group = new THREE.Group();
-  const face = kit.canvasTexture(512, 256, (ctx) => {
+/** A jack-o'-lantern's carved face, as an emissive map (the front of a
+ * three.js sphere is at u = 0.25). */
+export function carvedFaceTexture(kit: Kit): THREE.Texture {
+  return kit.canvasTexture(512, 256, (ctx) => {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, 512, 256);
     // The front of a three.js sphere is at u = 0.25.
@@ -91,6 +92,11 @@ function jackOLanterns(kit: Kit, glow: THREE.Texture): Piece {
     }
     ctx.fill();
   });
+}
+
+function jackOLanterns(kit: Kit, glow: THREE.Texture): Piece {
+  const group = new THREE.Group();
+  const face = carvedFaceTexture(kit);
   const geometry = kit.keep(pumpkinGeometry(0.34));
   const stem = kit.keep(new THREE.CylinderGeometry(0.035, 0.05, 0.16, 6).translate(0, 0.3, 0));
   const stemMaterial = kit.keep(new THREE.MeshLambertMaterial({ color: '#3a4a1c' }));

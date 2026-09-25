@@ -12,7 +12,7 @@ import type { PlayerColorId } from './player.js';
 import type { WhiteboardLine } from './whiteboard.js';
 import type { DieKind } from './dice.js';
 import type { LogEntry } from './log.js';
-import type { TablePermissions } from './host.js';
+import type { RoomTheme, TablePermissions } from './host.js';
 
 export interface Vector3 {
   x: number;
@@ -187,6 +187,8 @@ export interface GameState {
   locked: boolean;
   /** What the host lets everyone else do (host.ts). */
   permissions: TablePermissions;
+  /** How the room (and the world outside) is dressed — the host's choice. */
+  theme: RoomTheme;
 
   /** Players' minis on the table: playerId -> where it stands, in table
    * units (minis.ts). A player without an entry has theirs off the table. */

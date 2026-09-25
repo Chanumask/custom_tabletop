@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { RoomAsset } from './RoomLoader.js';
+import type { RoomTheme } from '@custom-tabletop/shared';
 
 /**
  * Everything that makes the room feel lived-in and warm, beyond its static
@@ -20,6 +21,7 @@ export class Ambience {
   private readonly lights: { light: THREE.PointLight; base: number }[] = [];
   private roomLightsOn = true;
   private readonly pointMaterials: THREE.ShaderMaterial[] = [];
+  private recolorFairyLights: ((theme: RoomTheme) => void) | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -35,6 +37,11 @@ export class Ambience {
     if (room.chandelier) this.buildChandelierGlow(room.chandelier, glow);
     if (room.beams.length > 0) this.buildFairyLights(room.beams, glow);
     this.buildDust(room);
+  }
+
+  /** Halloween turns the fairy lights orange and violet. */
+  setTheme(theme: RoomTheme): void {
+    this.recolorFairyLights?.(theme);
   }
 
   update(dt: number, time: number): void {
@@ -368,30 +375,59 @@ export class Ambience {
     const bulbGeometry = this.keep(new THREE.SphereGeometry(0.011, 8, 6));
     const bulbMaterial = this.keep(new THREE.MeshBasicMaterial({ toneMapped: false }));
     const bulbs = new THREE.InstancedMesh(bulbGeometry, bulbMaterial, points.length);
-    const colors = [
-      new THREE.Color(1, 0.86, 0.6),
-      new THREE.Color(1, 0.72, 0.42),
-      new THREE.Color(1, 0.93, 0.78),
-    ];
+    const bulbColors: Record<RoomTheme, THREE.Color[]> = {
+      classic: [
+        new THREE.Color(1, 0.86, 0.6),
+        new THREE.Color(1, 0.72, 0.42),
+        new THREE.Color(1, 0.93, 0.78),
+      ],
+      halloween: [
+        new THREE.Color(1, 0.5, 0.12),
+        new THREE.Color(0.72, 0.38, 1),
+        new THREE.Color(1, 0.6, 0.2),
+        new THREE.Color(0.55, 1, 0.35),
+      ],
+    };
+    const glowColors: Record<RoomTheme, THREE.Color[]> = {
+      classic: [new THREE.Color(1, 0.72, 0.4)],
+      halloween: [
+        new THREE.Color(1, 0.42, 0.08),
+        new THREE.Color(0.62, 0.28, 1),
+        new THREE.Color(1, 0.5, 0.12),
+        new THREE.Color(0.4, 1, 0.3),
+      ],
+    };
     const matrix = new THREE.Matrix4();
     points.forEach((at, i) => {
       matrix.makeTranslation(at.x, at.y, at.z);
       bulbs.setMatrixAt(i, matrix);
-      bulbs.setColorAt(i, colors[i % colors.length]!);
     });
     this.group.add(bulbs);
 
     const positions = new Float32Array(points.flatMap((at) => [at.x, at.y, at.z]));
     const alphas = new Float32Array(points.length);
+    const tints = new Float32Array(points.length * 3);
     const phases = points.map(() => Math.random() * Math.PI * 2);
     const speeds = points.map(() => 0.6 + Math.random() * 1.4);
     const geometry = this.keep(new THREE.BufferGeometry());
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
+    geometry.setAttribute('tint', new THREE.BufferAttribute(tints, 3));
     const glows = new THREE.Points(
       geometry,
-      this.points(makePointsMaterial(glow, new THREE.Color(1, 0.72, 0.4), 0.11)),
+      this.points(makePointsMaterial(glow, new THREE.Color(1, 1, 1), 0.11, true)),
     );
+    this.recolorFairyLights = (theme) => {
+      const bulbSet = bulbColors[theme];
+      const glowSet = glowColors[theme];
+      points.forEach((_at, i) => {
+        bulbs.setColorAt(i, bulbSet[i % bulbSet.length]!);
+        glowSet[i % glowSet.length]!.toArray(tints, i * 3);
+      });
+      if (bulbs.instanceColor) bulbs.instanceColor.needsUpdate = true;
+      geometry.attributes.tint!.needsUpdate = true;
+    };
+    this.recolorFairyLights('classic');
     glows.renderOrder = 20;
     this.group.add(glows);
     this.updaters.push((_dt, time) => {
@@ -550,8 +586,11 @@ function makePointsMaterial(
   texture: THREE.Texture,
   color: THREE.Color,
   size: number,
+  /** Each point also has its own `tint` color attribute. */
+  tinted = false,
 ): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
+    defines: tinted ? { TINTED: '' } : {},
     uniforms: {
       map: { value: texture },
       color: { value: color },
@@ -563,8 +602,17 @@ function makePointsMaterial(
       uniform float size;
       uniform float scale;
       varying float vAlpha;
+      varying vec3 vTint;
+      #ifdef TINTED
+      attribute vec3 tint;
+      #endif
       void main() {
         vAlpha = alpha;
+        #ifdef TINTED
+        vTint = tint;
+        #else
+        vTint = vec3(1.0);
+        #endif
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         gl_PointSize = size * scale / -mv.z;
         gl_Position = projectionMatrix * mv;
@@ -574,9 +622,10 @@ function makePointsMaterial(
       uniform sampler2D map;
       uniform vec3 color;
       varying float vAlpha;
+      varying vec3 vTint;
       void main() {
         vec4 t = texture2D(map, gl_PointCoord);
-        gl_FragColor = vec4(color * t.rgb, t.a * vAlpha);
+        gl_FragColor = vec4(color * vTint * t.rgb, t.a * vAlpha);
       }
     `,
     transparent: true,
