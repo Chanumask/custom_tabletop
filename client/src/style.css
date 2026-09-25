@@ -594,6 +594,51 @@ body {
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
 }
 
+/* The calculator (CalculatorDialog.tsx, gadgets phase 5) — same
+ * centered-modal weight as .walkie-dialog/.inventory-dialog. */
+.calculator-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  width: min(18rem, calc(100vw - 2rem));
+  box-sizing: border-box;
+  padding: 1.1rem 1.2rem;
+  border-radius: 12px;
+  background: rgba(24, 17, 12, 0.97);
+  color: #f3e6d3;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+
+.calculator-display {
+  padding: 0.6rem 0.7rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  text-align: right;
+  font-size: 1.4rem;
+  font-variant-numeric: tabular-nums;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.calculator-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+}
+
+.calculator-grid button {
+  padding: 0.6rem 0;
+  font-size: 1rem;
+}
+
+.calculator-operator {
+  color: var(--gold-bright, #f0c46a);
+}
+
+.calculator-equals {
+  grid-column: span 2;
+}
+
 .inventory-item {
   display: flex;
   align-items: center;
@@ -2374,7 +2419,8 @@ button.primary {
 .whiteboard-editor,
 .soundboard-assign-menu,
 .inventory-dialog,
-.walkie-dialog {
+.walkie-dialog,
+.calculator-dialog {
   border: 1px solid var(--edge);
 }
 

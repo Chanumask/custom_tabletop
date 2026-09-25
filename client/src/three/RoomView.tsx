@@ -90,6 +90,7 @@ import { isInteractKeyPress } from '../keyboard.js';
 import { SoundboardAssignMenu } from '../SoundboardAssignMenu.js';
 import { InventoryDialog } from '../InventoryDialog.js';
 import { WalkieDialog } from '../WalkieDialog.js';
+import { CalculatorDialog } from '../CalculatorDialog.js';
 import { HeldItems } from '../HeldItems.js';
 import { createPinboard, syncPinboard, disposePinboard, type Pinboard } from './Pinboard.js';
 import { uploadImage } from '../uploads.js';
@@ -499,6 +500,11 @@ export function RoomView({
   const walkieOpenRef = useRef(false);
   const closeWalkie = useCallback(() => setWalkieOpen(false), []);
   const onTransmitWalkieRef = useRef(onTransmitWalkie);
+  // The calculator (gadgets phase 5) — same open-flag + ref pattern;
+  // purely client-local, no server round trip, so no onXxxRef for it.
+  const [calculatorOpen, setCalculatorOpen] = useState(false);
+  const calculatorOpenRef = useRef(false);
+  const closeCalculator = useCallback(() => setCalculatorOpen(false), []);
   const whiteboardRef = useRef<WhiteboardLine[]>(whiteboard);
   const whiteboardCanvasRef = useRef<WhiteboardCanvas | null>(null);
   const whiteboardTargetedRef = useRef(false);
@@ -630,6 +636,10 @@ export function RoomView({
   useEffect(() => {
     onTransmitWalkieRef.current = onTransmitWalkie;
   }, [onTransmitWalkie]);
+
+  useEffect(() => {
+    calculatorOpenRef.current = calculatorOpen;
+  }, [calculatorOpen]);
 
   // Re-ink when the lines change *or* when an author changes color.
   useEffect(() => {
@@ -898,6 +908,7 @@ export function RoomView({
     let handleViewKey: ((event: KeyboardEvent) => void) | null = null;
     let handleFlashlightKey: ((event: KeyboardEvent) => void) | null = null;
     let handleWalkieKey: ((event: KeyboardEvent) => void) | null = null;
+    let handleCalculatorKey: ((event: KeyboardEvent) => void) | null = null;
     let fireAudioRef: FireAmbience | null = null;
     let startFireAudio: (() => void) | null = null;
     let startNight: (() => void) | null = null;
@@ -1428,11 +1439,16 @@ export function RoomView({
           }
           // The assign-sound overlay is a normal DOM form; while it's open,
           // the interact key should type into it (or do nothing) like any
-          // other key, not re-trigger room interactions underneath it.
+          // other key, not re-trigger room interactions underneath it. Same
+          // for any other open dialog — isInteractKeyPress's isTypingTarget
+          // check only catches a focused text input, not e.g. a dialog's
+          // own buttons, so this still needs checking explicitly.
           if (
             assignSlotIndexRef.current !== null ||
             whiteboardOpenRef.current ||
-            inventoryOpenRef.current
+            inventoryOpenRef.current ||
+            walkieOpenRef.current ||
+            calculatorOpenRef.current
           ) {
             return;
           }
@@ -1503,8 +1519,24 @@ export function RoomView({
         // flashlight never makes E ambiguous between "take a photo" and
         // "toggle the flashlight". A silent no-op without it (server would
         // refuse it anyway; this just skips the round trip).
+        // Any open dialog (the assign-sound overlay, the whiteboard editor,
+        // the chest, the radio, the calculator) already owns input focus,
+        // but its own buttons aren't a "typing target" — isTypingTarget
+        // alone wouldn't stop F/R/C from firing while one of them is open.
+        const aDialogIsOpen = () =>
+          assignSlotIndexRef.current !== null ||
+          whiteboardOpenRef.current ||
+          inventoryOpenRef.current ||
+          walkieOpenRef.current ||
+          calculatorOpenRef.current;
+
         handleFlashlightKey = (event: KeyboardEvent) => {
-          if (event.code !== 'KeyF' || event.repeat || isTypingTarget(event.target)) {
+          if (
+            event.code !== 'KeyF' ||
+            event.repeat ||
+            isTypingTarget(event.target) ||
+            aDialogIsOpen()
+          ) {
             return;
           }
           if (
@@ -1523,14 +1555,11 @@ export function RoomView({
         // key conflict. A silent no-op without a walkie held, or while
         // another dialog already owns typing.
         handleWalkieKey = (event: KeyboardEvent) => {
-          if (event.code !== 'KeyR' || event.repeat || isTypingTarget(event.target)) {
-            return;
-          }
           if (
-            assignSlotIndexRef.current !== null ||
-            whiteboardOpenRef.current ||
-            inventoryOpenRef.current ||
-            walkieOpenRef.current
+            event.code !== 'KeyR' ||
+            event.repeat ||
+            isTypingTarget(event.target) ||
+            aDialogIsOpen()
           ) {
             return;
           }
@@ -1547,6 +1576,29 @@ export function RoomView({
           }
         };
         document.addEventListener('keydown', handleWalkieKey);
+
+        // C: open the calculator (gadgets phase 5) — a fixed key, same
+        // "no conflict while holding several gadgets" reasoning as F/R.
+        handleCalculatorKey = (event: KeyboardEvent) => {
+          if (
+            event.code !== 'KeyC' ||
+            event.repeat ||
+            isTypingTarget(event.target) ||
+            aDialogIsOpen()
+          ) {
+            return;
+          }
+          if (
+            inventoryRef.current.some(
+              (item) => item.kind === 'calculator' && item.heldBy === playerId,
+            )
+          ) {
+            event.preventDefault();
+            controller.controls.unlock();
+            setCalculatorOpen(true);
+          }
+        };
+        document.addEventListener('keydown', handleCalculatorKey);
 
         // Chat was opened from a walking view: sending (or Esc) hands the
         // mouse straight back to looking around (ChatPanel.tsx).
@@ -1775,6 +1827,9 @@ export function RoomView({
       if (handleWalkieKey) {
         document.removeEventListener('keydown', handleWalkieKey);
       }
+      if (handleCalculatorKey) {
+        document.removeEventListener('keydown', handleCalculatorKey);
+      }
       cancelAnimationFrame(animationFrameId);
       timer.dispose();
       controllerRef.current?.dispose();
@@ -1884,7 +1939,8 @@ export function RoomView({
         assignSlotIndex === null &&
         !whiteboardOpen &&
         !inventoryOpen &&
-        !walkieOpen && <div className="crosshair" />}
+        !walkieOpen &&
+        !calculatorOpen && <div className="crosshair" />}
       {cameraFlash && <div className="camera-flash" />}
       <HeldItems
         items={inventory.filter((item) => item.heldBy === playerId)}
@@ -1898,6 +1954,7 @@ export function RoomView({
           !whiteboardOpen &&
           !inventoryOpen &&
           !walkieOpen &&
+          !calculatorOpen &&
           // Seated in the chair view, the card below already says it.
           !(seated && !locked && seatedView !== 'table') && (
             <div className="interaction-prompt">{interactionPrompt}</div>
@@ -1907,7 +1964,8 @@ export function RoomView({
           assignSlotIndex === null &&
           !whiteboardOpen &&
           !inventoryOpen &&
-          !walkieOpen && (
+          !walkieOpen &&
+          !calculatorOpen && (
             <button
               type="button"
               className="room-view-overlay"
@@ -1985,6 +2043,7 @@ export function RoomView({
       {walkieOpen && (
         <WalkieDialog onSend={(text) => onTransmitWalkieRef.current(text)} onClose={closeWalkie} />
       )}
+      {calculatorOpen && <CalculatorDialog onClose={closeCalculator} />}
       {seated && (
         <div className="drawing-toolbar">
           {hasChair && (

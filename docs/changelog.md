@@ -6,6 +6,28 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 (gadgets phase 5) — The calculator, and the plan's last gadget lands
+
+### What landed
+
+- **`client` only — no server or shared changes at all.** Unlike the other three gadgets, using the calculator changes nothing about the shared table, so it's the first gadget with zero round trip: `calculator.ts` is a pure, DOM-free four-function state machine (immediate left-to-right evaluation like a real pocket calculator, no operator precedence — `2 + 3 × 4` = `20`, not `14`), and `CalculatorDialog.tsx` is just a thin UI over it. Opened by a fixed **C** key while holding it, mirroring F (flashlight) and R (walkie-talkie); supports both on-screen buttons and real keyboard digits/operators/Enter/Backspace.
+- **Closed two latent gaps in the existing dialog-guard logic while adding C's own guard**, found by working through what "another dialog is already open" actually needs to check:
+  - The interact key's (E) own guard never checked whether the walkie dialog was open — `isInteractKeyPress`'s built-in `isTypingTarget` check only catches a *focused text input*, not a dialog's own buttons, so pressing E while a button in the (buttonless) radio dialog had focus could still fall through to the room's E-handling underneath it. Same gap would have applied to the new calculator dialog.
+  - The flashlight key (F) had no dialog-open guard at all — pressing F while typing in any dialog would toggle the flashlight as a side effect.
+  - Both fixed by a shared `aDialogIsOpen()` check now used by F, R, and the new C.
+
+### Checked
+
+- New tests: `calculator.test.ts` (10 tests) covering the pure state machine directly — chaining, decimals, backspace edge cases (floors at 0, no-ops right after an operator), divide-by-zero showing `Error` and clearing on the next digit, changing the pending operator before the next number, and equals with nothing pending being a no-op.
+- Full `sanity-check` (lint/format/build/test): 659 tests (47 shared, 356 server, 256 client), all clean.
+- **Live browser verification**: took the calculator, confirmed no stray "c" typed into it (the same class of bug fixed for R in phase 4 — this one was right the first time), did `(4+2)×1=6` via on-screen buttons and `9×9=81` via the real keyboard, both correct, then closed with Escape.
+
+### Next session
+
+**All five gadget phases are done.** The room now has a camera + pinboard, a flashlight, walkie-talkies, and a calculator, on top of everything from the earlier milestones. Nothing from the gadgets plan is left; `main` is not pushed — ask before pushing whenever the owner wants this live.
+
+---
+
 ## 2026-09-25 (gadgets phase 4) — The walkie-talkies
 
 ### What landed

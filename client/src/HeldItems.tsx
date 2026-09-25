@@ -29,6 +29,9 @@ export function HeldItems({ items, interactKey }: { items: InventoryItem[]; inte
     if (kind === 'walkie') {
       return 'R';
     }
+    if (kind === 'calculator') {
+      return 'C';
+    }
     return null;
   };
   return (
