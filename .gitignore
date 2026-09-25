@@ -43,3 +43,9 @@ blender/source-assets/*
 
 # Blender auto-backups
 *.blend1
+
+# Playwright output
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
