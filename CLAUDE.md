@@ -8,7 +8,8 @@ Entry point for Claude Code sessions in this repo. Keep this file short — it o
 
 Status: **All ten milestones done** (M1–M10), plus the owner's follow-up change requests and two rounds of extras. That includes:
 - the cozy room with a working TV, a seated chair view, real dice, chat, pings, the whiteboard and the wall soundboard;
-- from the latest batch: a synced TV, tables of eight, minis, secret dice, host controls, four more windows onto a living 3D night, and a Halloween toggle.
+- from the latest batch: a synced TV, tables of eight, minis, secret dice, host controls, four more windows onto a living 3D night, and a Halloween toggle;
+- gadgets from the chest (camera and pinboard, flashlight, walkies, calculator), one held at a time and used with R.
 
 `npm run test:e2e` covers Chromium/Firefox/WebKit (and Edge on demand), which closed M9's browser-pass gap. **Deployed** as one container to the owner's VPS (`npm run deploy`, [docs/engineering/deployment.md](docs/engineering/deployment.md)). It's live at https://tabletop.murri.me. Tables are saved: they survive restarts, and an empty table waits 7 days for its host (decisions.md, "Saved tables"). Nothing on the roadmap remains. The "later" list is ideas in discussion; build none without the owner's go-ahead. See [docs/roadmap.md](docs/roadmap.md) for milestones and [docs/overview.md](docs/overview.md) for the full picture.
 
@@ -66,4 +67,4 @@ This repo defines project-scoped skills under `.claude/skills/`:
 - **`feature-workflow`** — the standard branch → implement → test → lint → document → commit → merge-back sequence for one feature/fix.
 - **`sanity-check`** — the lint/format + test pass, standalone or as a step inside `feature-workflow`.
 
-This is a solo, small-scope project — there's no parallel-subagent workflow here. If that changes as scope grows, add one modeled on the pattern rather than improvising.
+Two people work on this since 2026-09-25: the owner and a colleague. It's still small in scope, so there's no parallel-subagent workflow here. If that changes as scope grows, add one modeled on the pattern rather than improvising.

@@ -8,7 +8,7 @@
 
 Scope is deliberately narrow at the start: get a host and a few players walking around one room together, sharing a table map, drawing on it, and rolling dice together in real time, before adding anything beyond that.
 
-## Where it stands (2026-09-25, end of day)
+## Where it stands (2026-09-26)
 
 **All ten roadmap milestones are done**, plus the owner's seven follow-up change requests and two rounds of extras. The final round (see [changelog.md](changelog.md)) covered:
 - **Seated play.** Sitting down shows the view from your chair (free look, see the others) or, with V, the top-down table.
@@ -49,6 +49,12 @@ Earlier this day:
 - anyone moves anyone's mini or dice;
 - the table has as many chairs as players (four at least);
 - a quality pass replaced the room's weakest models.
+
+**Gadgets** (a colleague's work, reviewed and fixed the same night): a chest in the room holds a Polaroid camera, a flashlight, two walkie-talkies and a calculator. Each player holds one of them at a time, visible in their avatar's hand, and uses it with R:
+- the camera's photos are pinned to a wall pinboard for everyone;
+- the flashlight lights the room where its holder looks;
+- the walkies carry messages only the two holders hear;
+- the calculator is a pocket four-function one.
 
 Nothing on the roadmap is left. What's next is whatever playtesting turns up, plus the "later" list in [roadmap.md](roadmap.md): map presets, wall drawing, fog of war, an initiative tracker.
 

@@ -71,7 +71,7 @@ The phase 6 handover's branch note is stale: `feat/single-item-slot` is in `main
 
 ### Next session
 
-The single-item-slot redesign is functionally complete and merged-ready (not yet merged into `main` — still on `feat/single-item-slot`). Left for later, not blocking:
+*(Stale: this landed in `main` as 3bb1859; see "gadgets review" above.)* The single-item-slot redesign is functionally complete and merged-ready (not yet merged into `main` — still on `feat/single-item-slot`). Left for later, not blocking:
 
 - **Real Blender-modeled gadget meshes** — currently placeholder procedural shapes. Blocked on the user opening Blender; only `gadgetMeshes.ts`'s `GadgetLibrary.load()` needs to change once GLBs exist under `client/public/models/gadgets/`.
 - The held-item hand offset/rotation (`HELD_ITEM_OFFSET` in `PlayerAvatars.ts`) was tuned by eye against the placeholder shapes — expect to retune once real meshes land.
