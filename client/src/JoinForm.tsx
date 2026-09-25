@@ -34,9 +34,13 @@ export interface JoinFormProps {
   inviteCode: string | null;
   onPeek: (sessionId: string) => Promise<SessionPeekResponse>;
   onJoin: (playerName: string, sessionId: string, color: PlayerColorId) => void;
+  /** Whether this browser holds the host key for a table (hostKeys.ts). */
+  hasHostKey: (sessionId: string) => boolean;
 }
 
 const PEEK_DEBOUNCE_MS = 250;
+/** How often a guest waiting for a saved table's host re-checks it. */
+const WAITING_REPEEK_MS = 3000;
 
 /**
  * The join screen (change request #6): your character on the left, the form
@@ -54,6 +58,7 @@ export function JoinForm({
   inviteCode,
   onPeek,
   onJoin,
+  hasHostKey,
 }: JoinFormProps) {
   const [mode, setMode] = useState<JoinMode>(inviteCode ? 'join' : 'host');
   const [name, setName] = useState(initialName);
@@ -85,7 +90,29 @@ export function JoinForm({
 
   // Only trust a peek for the code currently on screen.
   const current = peek && peek.code === code ? peek.result : null;
-  const status = describeJoinStatus(mode, code, current);
+  const ownsSavedTable = !!current?.saved && hasHostKey(code);
+  const status = describeJoinStatus(mode, code, current, ownsSavedTable);
+
+  // Waiting for a saved table's host: keep checking, so the join button
+  // lights up by itself the moment they reopen it.
+  const waitingForHost = !!current?.saved && !ownsSavedTable;
+  useEffect(() => {
+    if (!waitingForHost || offline) {
+      return;
+    }
+    let cancelled = false;
+    const timer = setInterval(() => {
+      void onPeek(code).then((result) => {
+        if (!cancelled) {
+          setPeek({ code, result });
+        }
+      });
+    }, WAITING_REPEEK_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [waitingForHost, offline, code, onPeek]);
   const taken = useMemo(
     () => new Set<PlayerColorId>(mode === 'join' && current ? current.takenColors : []),
     [mode, current],
@@ -234,7 +261,7 @@ export function JoinForm({
               </span>
             )}
             <span>{status.message}</span>
-            {mode === 'host' && current?.exists && (
+            {mode === 'host' && current?.exists && !current.saved && (
               <button type="button" className="link-button" onClick={joinExisting}>
                 Join it instead
               </button>
@@ -248,7 +275,7 @@ export function JoinForm({
         )}
 
         <button type="submit" className="join-submit" disabled={!canSubmit}>
-          {mode === 'host' ? 'Create session' : 'Join session'}
+          {ownsSavedTable ? 'Reopen table' : mode === 'host' ? 'Create session' : 'Join session'}
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M5 12h14M13 6l6 6-6 6" />
           </svg>

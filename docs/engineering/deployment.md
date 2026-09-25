@@ -18,6 +18,7 @@ The game is served from **https://tabletop.murri.me** on the owner's VPS (`ssh r
     docker-compose.yml   ← copied from deploy/docker-compose.yml on every deploy
     src/                 ← the deployed commit's source (REVISION holds the hash)
     uploads/             ← uploaded maps and sounds (volume, owned by uid 10001)
+    tables/              ← saved tables, one JSON file each (volume, owned by uid 10001)
   ```
 - **Sandboxed for a shared box** (critical services run next to it): its own uid (10001, no account on the VPS; the image's `node` user is uid 1000, which is an existing account there), 512 MB memory, 1 CPU, a PID limit, a read-only root filesystem (writes only to the uploads volume and a tmpfs `/tmp`), all capabilities dropped, no-new-privileges, and logs capped at 3 × 10 MB.
 
@@ -27,6 +28,7 @@ The game is served from **https://tabletop.murri.me** on the owner's VPS (`ssh r
 |---|---|---|
 | `CLIENT_DIST` | Built client to serve (set in the image) | `/app/client/dist` |
 | `UPLOADS_DIR` | Where uploads are stored (set in the image) | `/data/uploads` |
+| `TABLES_DIR` | Where tables are saved (set in the image) | `/data/tables` |
 | `CORS_ORIGIN` | The only browser origin allowed to call the server | `https://tabletop.murri.me` |
 | `TRUST_PROXY` | Express `trust proxy`, so the rate limit sees real client IPs behind NPM | `uniquelocal` |
 | `UPLOADS_MAX_MB` | Upload storage cap | `2048` |
@@ -48,7 +50,7 @@ npm run deploy               # deploys HEAD (committed state only)
 npm run deploy -- <commit>   # a specific commit — also how to roll back
 ```
 
-`scripts/deploy.mjs` works from PowerShell, cmd or Git Bash; it needs only `git` and `ssh` on PATH. It `git archive`s the commit's files over SSH, so **no push is needed** and exactly the tested commit goes out. It then swaps them into `src/`, runs `docker compose -p tabletop build` + `up -d`, and waits for the healthcheck. On the VPS, `scripts/deploy-remote.sh` (sent over stdin) does the swap, build and restart. The first build takes a few minutes; later ones reuse the cached `npm ci` layer unless the lockfile changed. **A deploy always restarts the container, which ends every table in progress, so deploy when nobody's playing.** It deploys your local `HEAD`, whatever branch that is, so deploy from `main`. The script only touches `/srv/apps/tabletop` and the `tabletop` project.
+`scripts/deploy.mjs` works from PowerShell, cmd or Git Bash; it needs only `git` and `ssh` on PATH. It `git archive`s the commit's files over SSH, so **no push is needed** and exactly the tested commit goes out. It then swaps them into `src/`, runs `docker compose -p tabletop build` + `up -d`, and waits for the healthcheck. On the VPS, `scripts/deploy-remote.sh` (sent over stdin) does the swap, build and restart. The first build takes a few minutes; later ones reuse the cached `npm ci` layer unless the lockfile changed. **A deploy restarts the container.** Tables in play are saved first and come back, and players' pages reconnect into them by themselves within a few seconds. So a deploy mid-game is a short blip, not the end of the table. It deploys your local `HEAD`, whatever branch that is, so deploy from `main`. The script only touches `/srv/apps/tabletop` and the `tabletop` project.
 
 Check a deploy against the live site with the cross-browser smoke tests:
 
@@ -70,8 +72,17 @@ Run these on the VPS, in `/srv/apps/tabletop`:
 | Upload usage | `du -sh uploads` |
 
 - **Rolling back:** run `npm run deploy -- <older-commit>` from your machine. It rebuilds that commit, so a known-good one is always one command away.
-- **A VPS reboot or Docker restart** brings the container back (`restart: unless-stopped`). Every table in progress is lost, because sessions live in memory; players just host again. Uploads survive on disk until the pruning rules remove them.
-- **Uploads aren't backed up**, and don't need to be: they're only reachable from live sessions.
+- **A VPS reboot or Docker restart** brings the container back (`restart: unless-stopped`), and with it every saved table (see "Saved tables" below). A table in play loses at most the last 5 seconds on a hard crash; a normal stop saves everything.
+- **Not backed up:** `tables/` and `uploads/` hold the saved campaigns. Nothing backs them up yet. If that ever matters, copying those two folders is the whole backup.
+
+## Saved tables
+
+`server/src/tableArchive.ts`; the full reasoning is in [decisions.md](../decisions.md), "Saved tables".
+- **Every table is saved:** every 5 s while it changes, on shutdown, and when the last player leaves.
+- **After a restart,** tables in play come back and their players reconnect into them.
+- **An empty table is kept for 7 days.** Hosting the same code reopens it for its host: from the browser that hosted it, or anywhere with the host link from the Players tab.
+- **Limits:** 500 saved tables or 512 MB, oldest unused first; tables in play are never removed.
+- On the VPS: `ls tables | wc -l` (how many), `du -sh tables` (how big). Deleting a table's file (with the container stopped) removes it for good.
 
 ## Nginx Proxy Manager proxy host (set up once, by the owner)
 

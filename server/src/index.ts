@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { createAppServer } from './server.js';
 import { DEFAULT_STORAGE_POLICY } from './uploadStorage.js';
 
@@ -11,7 +12,12 @@ function numberFromEnv(name: string, fallback: number): number {
 
 // Everything below is unset in dev; a deployment sets it (see
 // deploy/docker-compose.yml and docs/engineering/deployment.md).
-const { http } = createAppServer({
+// Saved tables: server/data/tables in dev (so a `tsx watch` restart keeps
+// your table too), a volume in a deployment (TABLES_DIR).
+const tablesDir = process.env.TABLES_DIR || path.join(import.meta.dirname, '..', 'data', 'tables');
+
+const { http, flushTables } = createAppServer({
+  tablesDir,
   clientDist: process.env.CLIENT_DIST || undefined,
   uploadsDir: process.env.UPLOADS_DIR || undefined,
   corsOrigin: process.env.CORS_ORIGIN || undefined,
@@ -34,6 +40,8 @@ http.listen(PORT, () => {
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
     console.log(`[server] ${signal}, shutting down`);
+    // Every table in play is saved first, so the restart doesn't end it.
+    flushTables();
     http.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 3000).unref();
   });

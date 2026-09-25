@@ -24,6 +24,12 @@ export const SocketEvent = {
    * player and should drop back to the join screen.
    */
   SessionReplaced: 'session:replaced',
+  /**
+   * Server -> client, privately to one player: `SessionHostKey` — this
+   * player is (now) the table's host, and here is the table's host key (for
+   * reopening it later; see SessionJoinRequest.hostKey). Never broadcast.
+   */
+  SessionHostKey: 'session:host-key',
 
   SceneCreate: 'scene:create',
   SceneChange: 'scene:change',

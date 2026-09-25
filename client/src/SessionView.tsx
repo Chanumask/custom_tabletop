@@ -4,6 +4,7 @@ import {
   MAX_PLAYER_NAME_LENGTH,
   DIE_KINDS,
   GRID_CELL_OPTIONS,
+  SAVED_TABLE_TTL_DAYS,
   playerColorHex,
   type DieKind,
   type GameState,
@@ -18,6 +19,7 @@ import { MapCropDialog, type MapSource } from './MapCropDialog.js';
 import { SOUND_KIND_LABEL, soundKind } from './soundKind.js';
 import { useSettings } from './useSettings.js';
 import { formatKeyCode } from './keyLabel.js';
+import { hostLink } from './hostKeys.js';
 import { MOVEMENT_KEYS, RUN_KEYS } from './three/FirstPersonController.js';
 import { MapIcon, DiceIcon, SoundIcon, PlayersIcon, SettingsIcon } from './icons.js';
 
@@ -39,6 +41,8 @@ export interface SessionViewProps {
   onAssignSlot: (slotIndex: number, soundId: string | null) => void;
   onRemoveSound: (soundId: string) => void;
   onNotify: (text: string, kind?: ToastKind) => void;
+  /** The table's host key — only while this player is the host. */
+  hostKey?: string | null;
 }
 
 type TabId = 'players' | 'map' | 'dice' | 'soundboard' | 'settings';
@@ -75,6 +79,7 @@ export function SessionView({
   onAssignSlot,
   onRemoveSound,
   onNotify,
+  hostKey,
 }: SessionViewProps) {
   const isHost = playerId === state.hostId;
   const [activeTab, setActiveTab] = useState<TabId>('players');
@@ -157,6 +162,9 @@ export function SessionView({
                 onUpdateProfile={onUpdateProfile}
               />
             )}
+            {activeTab === 'players' && isHost && hostKey && (
+              <SavedTableNote sessionId={state.sessionId} hostKey={hostKey} onNotify={onNotify} />
+            )}
             {activeTab === 'map' && (
               <MapTab
                 isHost={isHost}
@@ -193,6 +201,40 @@ export function SessionView({
           </button>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * The host's note that the table saves itself (docs/decisions.md, "Saved
+ * tables"), with the private host link that reopens it from any device.
+ */
+function SavedTableNote({
+  sessionId,
+  hostKey,
+  onNotify,
+}: {
+  sessionId: string;
+  hostKey: string;
+  onNotify: (text: string, kind?: ToastKind) => void;
+}) {
+  function copyHostLink() {
+    navigator.clipboard.writeText(hostLink(window.location.origin, sessionId, hostKey)).then(
+      () => onNotify('Host link copied — keep it private: it reopens this table from any device.'),
+      () => onNotify('Couldn’t copy the host link automatically.', 'error'),
+    );
+  }
+
+  return (
+    <div className="saved-table">
+      <p className="saved-table-title">Saved automatically</p>
+      <p className="saved-table-text">
+        When everyone has left, this table waits {SAVED_TABLE_TTL_DAYS} days for you. Reopen it with
+        code <strong>{sessionId}</strong> in this browser, or anywhere with your host link.
+      </p>
+      <button type="button" onClick={copyHostLink}>
+        Copy host link
+      </button>
     </div>
   );
 }

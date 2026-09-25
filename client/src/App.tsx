@@ -4,6 +4,7 @@ import type { Socket } from 'socket.io-client';
 import {
   SESSION_ENDED_ERROR,
   SocketEvent,
+  type SessionHostKey,
   parseYouTubeUrl,
   type GameState,
   type PlayerColorId,
@@ -24,6 +25,7 @@ import { useToasts } from './useToasts.js';
 import { createSocket } from './socket.js';
 import { connectionStatusLabel, type ConnectionStatus } from './connectionStatus.js';
 import { getOrCreatePlayerId, getOrCreatePlayerToken } from './playerIdentity.js';
+import { loadHostKey, saveHostKey } from './hostKeys.js';
 import {
   clearLastJoin,
   loadLastJoin,
@@ -65,8 +67,30 @@ const NO_SESSION: SessionPeekResponse = {
 /** An invite link is the app URL with `?join=CODE` (copied from the session
  * menu) — it opens the join screen with the code pre-filled. */
 function readInviteCode(): string | null {
+  consumeHostLink();
   const code = new URLSearchParams(window.location.search).get('join');
   return code ? code.trim().toUpperCase() : null;
+}
+
+function hasHostKey(sessionId: string): boolean {
+  return loadHostKey(window.localStorage, sessionId) !== null;
+}
+
+/** A host link (`?join=CODE&host=KEY`, see hostKeys.ts): keep the key for
+ * that table, and take it straight back out of the address bar so it
+ * doesn't linger in the history or a screenshot. */
+function consumeHostLink(): void {
+  const url = new URL(window.location.href);
+  const key = url.searchParams.get('host');
+  if (!key) {
+    return;
+  }
+  const code = url.searchParams.get('join');
+  if (code) {
+    saveHostKey(window.localStorage, code.trim().toUpperCase(), key.trim());
+  }
+  url.searchParams.delete('host');
+  window.history.replaceState(null, '', url);
 }
 
 function clearInviteFromUrl(): void {
@@ -97,6 +121,9 @@ export function App() {
   const [playerId] = useState(() => getOrCreatePlayerId(window.sessionStorage));
   const [playerToken] = useState(() => getOrCreatePlayerToken(window.sessionStorage));
   const [inviteCode] = useState(readInviteCode);
+  // The current table's host key, while this player is its host (and has
+  // been sent it) — for the host link in the session menu.
+  const [hostKey, setHostKey] = useState<string | null>(null);
   const { settings } = useSettings();
   const { toasts, toast, dismiss } = useToasts();
   // The soundboard's visible YouTube player (YouTubeClip.tsx), if a clip is
@@ -134,12 +161,18 @@ export function App() {
       color?: PlayerColorId,
     ) => {
       setJoinError(null);
+      // A saved table everyone has left reopens only for its host key.
+      const knownHostKey = loadHostKey(window.localStorage, sessionId) ?? undefined;
       socket.emit(
         SocketEvent.SessionJoin,
-        { sessionId, playerId, playerName, playerToken, resume, color },
+        { sessionId, playerId, playerName, playerToken, resume, color, hostKey: knownHostKey },
         (response: SessionJoinResponse) => {
           setRejoining(false);
           if (response.ok) {
+            if (response.hostKey) {
+              saveHostKey(window.localStorage, sessionId, response.hostKey);
+            }
+            setHostKey(response.hostKey ?? null);
             const intent = { playerName, sessionId };
             lastJoinRef.current = intent;
             saveLastJoin(window.sessionStorage, intent);
@@ -197,6 +230,14 @@ export function App() {
     // duplicated tab sharing the same sessionStorage, typically) — this tab
     // no longer speaks for that player, so it drops back to the join screen
     // instead of silently sending events the server now ignores.
+    // Became the host (a handover, or the host left): keep the table's key.
+    socket.on(SocketEvent.SessionHostKey, (message: SessionHostKey) => {
+      saveHostKey(window.localStorage, message.sessionId, message.hostKey);
+      if (gameStateRef.current?.sessionId === message.sessionId) {
+        setHostKey(message.hostKey);
+      }
+    });
+
     socket.on(SocketEvent.SessionReplaced, () => {
       forgetSession('You joined this session from another tab, so this one was disconnected.');
     });
@@ -463,6 +504,7 @@ export function App() {
             onAssignSlot={handleAssignSlot}
             onRemoveSound={handleRemoveSound}
             onNotify={toast}
+            hostKey={gameState.hostId === playerId ? hostKey : null}
           />
         </Suspense>
         <ChatPanel log={gameState.log} players={gameState.players} onSend={handleSendChat} />
@@ -504,6 +546,7 @@ export function App() {
           inviteCode={inviteCode}
           onPeek={handlePeek}
           onJoin={handleJoin}
+          hasHostKey={hasHostKey}
         />
       )}
       <Toasts toasts={toasts} onDismiss={dismiss} />

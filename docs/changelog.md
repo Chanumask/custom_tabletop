@@ -6,6 +6,60 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 (late night) — Saved tables
+
+**Asked** (user): "lets talk about saving sessions next". It was discussed first, per the "in discussion" rule. I laid out two goals (surviving restarts vs. campaigns between game nights) and three ways back (the same code, named saves, a save file). The owner chose:
+- **both** goals;
+- **the same code reopens it**;
+- **a secret host link** (over browser-only or anyone-with-the-code);
+- **7 days**.
+
+Then "yes build it". Full design and reasoning: [decisions.md](decisions.md), "Saved tables".
+
+### What landed
+
+- **Server:**
+  - `tableArchive.ts`: a JSON file per table, atomic writes, expiry and caps, the uploads saved tables use, versioned saves.
+  - `SessionStore`:
+    - player tokens are now kept only as SHA-256;
+    - a host key per table;
+    - a hook for when a table empties;
+    - `snapshot`/`restore` (older saves get defaults);
+    - reopening makes the joiner host.
+  - `server.ts`:
+    - a save loop (fingerprint every 5 s), a save on shutdown and when a table empties;
+    - restore at startup, with grace timers for restored players;
+    - reopening by host key;
+    - the private `session:host-key` whenever the host changes;
+    - saved tables in `session:peek`;
+    - upload protection.
+  - Session codes are capped at 32 characters.
+- **Client:**
+  - `hostKeys.ts` keeps host keys in localStorage. Host links (`?join=CODE&host=KEY`) are stored and stripped from the URL.
+  - Joins send the key, and the app receives keys when you become host.
+  - The join screen:
+    - "Your saved table · last played … — it reopens just as you left it" with a **Reopen table** button;
+    - "waiting for Alice to reopen it" for guests, re-checked every 3 s so Join lights up on its own;
+    - a saved table's code can't be taken by a new host.
+  - The host's Players tab shows a "Saved automatically" note with **Copy host link**.
+- **Deployment:** a `tables` volume (`TABLES_DIR=/data/tables`, owned by uid 10001). The docs now say a deploy mid-game is a short blip, not the end of the table.
+
+### Checked
+
+- 562 unit tests (47 shared, 294 server, 221 client). New ones cover the archive (expiry, caps, atomic writes, unreadable and future-format files, upload references), store hooks and restore, and host-key storage and join-screen states. Socket tests cover:
+  - survival across a restart, with an impostor refused by token hash;
+  - removing players who don't return;
+  - kept, refused and reopened tables, plus reopening after a restart and expiry;
+  - the host key reaching only the new host.
+- **Live** (a Playwright script against a local production build that kills and restarts the real server process):
+  - The table came back after a *hard* kill (only the 5-second saves, no graceful flush), and the page reconnected into it by itself.
+  - Leaving kept the table. The host saw Reopen, and a guest was blocked until the host reopened, then got in.
+  - The host link on a fresh "device" reopened the table with its chat intact, and the key was stripped from the URL.
+  - That run also caught one bug, now fixed: a waiting guest's join screen never refreshed.
+- The cross-browser suite passed 9/9. One Firefox run flaked with a browser-protocol error; a rerun of Firefox and a full rerun both passed, and the dev server was confirmed not to restart on save writes. Lint, format and build are clean.
+
+---
+
 ## 2026-09-25 (night) — `npm run deploy` works from PowerShell; a broken VPS SSH key line removed
 
 - **`npm run deploy` failed from PowerShell** (`WSL … execvpe(/bin/bash) failed`). The npm script called `bash`, which from PowerShell/cmd is the WSL launcher, not Git's bash. The local side is now Node (`scripts/deploy.mjs`: `git archive` piped into `ssh`, then the remote script over stdin), needing only `git` and `ssh`. The VPS side moved unchanged into `scripts/deploy-remote.sh`; `scripts/deploy.sh` is gone. For a specific commit: `npm run deploy -- <commit>`. Verified by running `npm run deploy` from PowerShell: built, restarted, healthy, running `3eb95e6`.

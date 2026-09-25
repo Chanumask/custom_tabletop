@@ -10,6 +10,7 @@ A browser-based virtual tabletop for running tabletop RPG sessions with friends:
 - **Dice.** Real d4–d20 that tumble and land on the server's roll, with sound. You can also type `/roll 2d6+3` in chat.
 - **Talking.** Chat with speech bubbles, a session log of every roll, and right-click pings on the table.
 - **Sound and video.** A 4x4 wall soundboard (built-in tones, uploaded files, audio links). YouTube clips play on the TV for everyone.
+- **Saved tables.** Tables survive server restarts, and an empty table waits a week for its host to reopen it just as it was.
 - **The rest.** A shared whiteboard. A light switch for a fire-lit room. Invite links. A collapsible session menu with volume, a rebindable interact key and a fire-sound toggle.
 
 **Deployed** as one Docker container to the owner's VPS, live at **https://tabletop.murri.me**. It's open to anyone with the link; uploads are capped and cleaned up automatically. How: [docs/engineering/deployment.md](docs/engineering/deployment.md).

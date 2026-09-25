@@ -24,6 +24,10 @@ export interface SessionJoinRequest {
    * in-memory state) would silently create a brand-new empty session with
    * this player as host. */
   resume?: boolean;
+  /** The table's host key, if this browser has one (from hosting it before,
+   * or from a host link). Reopening a saved table — one everyone has left —
+   * needs it; for a live table it's ignored. */
+  hostKey?: string;
   /** The color picked on the join screen. Honored if still free in the
    * session; otherwise the first free color is assigned (the join screen
    * greys out taken ones via `session:peek`, so this only matters in a
@@ -31,7 +35,31 @@ export interface SessionJoinRequest {
   color?: PlayerColorId;
 }
 
-export type SessionJoinResponse = { ok: true; state: GameState } | { ok: false; error: string };
+export type SessionJoinResponse =
+  | {
+      ok: true;
+      state: GameState;
+      /** Only when the joiner is the host: the table's host key, to keep
+       * (it reopens the table later, and makes the host link). */
+      hostKey?: string;
+    }
+  | { ok: false; error: string };
+
+/** `session:host-key` payload: sent privately to whoever becomes host. */
+export interface SessionHostKey {
+  sessionId: string;
+  hostKey: string;
+}
+
+/** How long a table everyone has left is kept, reopenable by its host. */
+export const SAVED_TABLE_TTL_DAYS = 7;
+
+/** The `session:join` rejection for a saved table without its host key. */
+export const TABLE_WAITING_FOR_HOST_ERROR =
+  'This table is saved and waiting for its host — join once they’ve reopened it.';
+
+/** Session codes longer than this are refused (the client makes 5, allows 12). */
+export const MAX_SESSION_ID_LENGTH = 32;
 
 /** The `session:join` rejection for a `resume` join whose session no longer
  * exists — a stable string so the client can recognize it. */
@@ -55,6 +83,11 @@ export interface SessionPeekResponse {
   playerCount: number;
   hostName: string | null;
   takenColors: PlayerColorId[];
+  /** A saved table nobody is at right now — only its host can reopen it.
+   * `hostName` is then whoever hosted it last. */
+  saved?: boolean;
+  /** For a saved table: when it was last played (epoch ms). */
+  lastActiveAt?: number;
 }
 
 /** Host-only: hands the host role to another player in the session. */

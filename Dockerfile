@@ -21,7 +21,7 @@ FROM node:24-alpine
 ENV NODE_ENV=production \
     PORT=3001 \
     CLIENT_DIST=/app/client/dist \
-    UPLOADS_DIR=/data/uploads
+    UPLOADS_DIR=/data/uploads \n    TABLES_DIR=/data/tables
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -33,7 +33,7 @@ RUN npm ci --omit=dev --workspace server --no-audit --no-fund --ignore-scripts \
 
 COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/client/dist client/dist
-RUN mkdir -p /data/uploads && chown node:node /data/uploads
+RUN mkdir -p /data/uploads /data/tables && chown node:node /data/uploads /data/tables
 
 USER node
 EXPOSE 3001
