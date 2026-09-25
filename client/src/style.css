@@ -175,6 +175,23 @@ body {
   gap: 0.35rem;
 }
 
+/* Seated: chair view <-> table view. Set apart from the drawing tools. */
+.drawing-toolbar .view-toggle {
+  margin-right: 0.25rem;
+  border-color: rgba(240, 196, 106, 0.55);
+  background: rgba(240, 196, 106, 0.16);
+  font-weight: 600;
+}
+
+.drawing-toolbar kbd {
+  margin-left: 0.2rem;
+  padding: 0 0.3rem;
+  border: 1px solid rgba(243, 230, 211, 0.4);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.72rem;
+}
+
 /* The session menu (Milestone 10 follow-up): a categorized, tabbed panel —
  * only one category's content shows at a time — instead of one long
  * scrolling list. */

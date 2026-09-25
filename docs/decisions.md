@@ -6,6 +6,31 @@ Running log of decisions worth remembering across sessions. Newest first. Each e
 
 ---
 
+## 2026-09-25 — Seated: a real chair view (free look) plus the table view; stable chairs; the interact key no longer types into dialogs
+
+**Decided** (user: "when sitting there should absolutely be the ability to view around and see the other players … you should be able to choose"; and "on entering the whiteboard there is automatically written e").
+
+1. **Two seated views, toggled with V or the toolbar's view button.**
+   - **Chair view (default when there's a chair):** your eyes at your actual chair (1.22 m, a little forward of its center), facing the table. Click to look around freely, since mouse-look works seated, while WASD doesn't. With the cursor free, you draw, roll and ping on the table from that angle; TableDrawing raycasts from any camera pose.
+   - **Table view:** the old square top-down map view. It always releases mouse-look.
+
+   Chat's "resume look" and right-click pings work from the chair too.
+2. **Stable, server-kept chairs: `Player.seatIndex`.** Previously each client assigned chairs with `assignSeats` over the *other* players, excluding itself, and recomputed from scratch. Two clients could show different people on one chair, and chairs could shuffle when someone new sat down. With a first-person chair view, a shuffle would teleport your camera. Now:
+   - the sitting client picks the nearest free chair (`pickChair`) and sends it;
+   - the server refuses a chair someone else holds;
+   - the chair stays until they stand.
+
+   `object:interact` for the table gained an explicit `seated` flag (plus `seatIndex`) instead of a blind toggle, so a client that missed a state update can't flip the server the wrong way. Sit and stand are acknowledged, and a refused chair puts the camera back to standing with a message.
+3. **The interact key is consumed (`preventDefault`).** Pressing E opened the whiteboard editor, and React focused its first line before the browser inserted that keystroke's character, so an "e" appeared. The assign-sound menu (autofocused link field) had the same flaw. Script-dispatched key events never insert text, which is why no test caught it; it was verified live with real key presses.
+
+**Verified:**
+- `seats.test.ts` (9): sit on a chosen chair, never two on one, explicit stand is idempotent, legacy toggle, parser bounds.
+- `FirstPersonController.test.ts` (4): chair pose and facing, table view and back, restoring the exact standing pose, no chair means table only, no walking while seated.
+- `pickChair` tests replace `assignSeats`'.
+- Live: Alice and Bob sat on opposite chairs, and Bob's chair view showed Alice seated across the table. V swapped to the 720×720 top-down view and back. A real E press opened the editor empty, and a real "x" then typed normally.
+
+---
+
 ## 2026-09-25 — Pings on the table (right-click) and a host-set map grid
 
 **Decided** (the "grid overlay + pings" idea).
@@ -445,7 +470,7 @@ Live (Chrome, 3 tabs plus a 4th socket-client player):
 
 ## Table of Contents
 
-**2026-09-25** — Pings (right-click, relayed not stored, 300 ms guard) and a host-set map grid via `scene:update`; Table chat and session log: `log:entry` deltas vs. full-state, typed `/roll` notation rolled server-side, speech bubbles, client-clock feed fading, per-color spawn points, bottom overlay stack; Real RPG dice: d4–d20 polyhedra landing on the server result, `rollCount` nonce fixes same-number re-rolls, pool rolls, in-world rolling, table-calibrated material; Join screen redesign: character preview on a pedestal, pure join-status logic, invite links paste into the code field, rejoin card, no new deps; Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
+**2026-09-25** — Seated chair view with free look + V table view, server-kept `seatIndex` chairs (explicit sit/stand), interact key consumed so it never types into dialogs; Pings (right-click, relayed not stored, 300 ms guard) and a host-set map grid via `scene:update`; Table chat and session log: `log:entry` deltas vs. full-state, typed `/roll` notation rolled server-side, speech bubbles, client-clock feed fading, per-color spawn points, bottom overlay stack; Real RPG dice: d4–d20 polyhedra landing on the server result, `rollCount` nonce fixes same-number re-rolls, pool rolls, in-world rolling, table-calibrated material; Join screen redesign: character preview on a pedestal, pure join-status logic, invite links paste into the code field, rejoin card, no new deps; Whiteboard: six synced lines in writers' colors, per-line (null = untouched) writes so concurrent editors never collide, aim + E into a DOM editor, contrast-safe ink, glTF-UV `flipY` gotcha
 
 **2026-09-24** — Player characters: six Quaternius models built by a glTF-Transform script, interpolation, chair sitting, emotes, name tags, Blender MCP read_homefile crash gotcha, frame-delta cap; map crop/preview dialog, uploads named by validated type; room rework: square table, furnished Blender room, geometry read from the model, true-color table surface; soundboard links validated, YouTube as a visible clip, board management; player colors, pre-join peek, live profile edits, invite links, toasts; identity binding, reconnect grace period, host handover, resume-only rejoin; wall soundboard rework (4x4 aim-and-E grid, `sound:play` opened to everyone); session menu rework (tabs, client-only settings, rebindable interact key, no YouTube downloader); Milestone 9: host authority hardening, an audit pass (not a new feature), the roadmap's stale "host-gated" list corrected, two real socket-level coverage gaps closed (scene:create, scene:change), player:unmute given its first test coverage, cross-browser pass logged as unverified (Chrome-only tooling); Milestone 8: room interactables, one generic object:interact event, proximity+E over raycast/click, table sit-down mode as a pure camera takeover, seated status visible via avatar squash, a soundboard console reusing sound:play, a real prompt-text bug caught live, a square full-screen seated table view, a seated drawing toolbar (per-stroke color/width, an eraser reusing drawing:delete), a latent drawing:delete remote-redraw bug caught and fixed, a React-controlled-input automation-testing gotcha, a real user-reported eraser bug (local drawing state never updated in real time) caught and fixed; File uploads (M5/M7 extension): REST upload + socket-register two-step, soundboard becomes real shared state, cover-fit stopgap for map images, three related asks captured as roadmap entries instead of implemented; Milestone 7: soundboard & mute, synthesized tones, self-mute plus host moderation, sender included in the sound broadcast; Milestone 6: dice, server-authoritative roll result, motion decoupled from result label, `Dice.sceneId` dropped, client-picked spawn position; Milestone 5: tabletop map & drawing, draw-on-the-table interaction, runtime UV remap, single-scene scope cut, `Point2D` spec deviation
 

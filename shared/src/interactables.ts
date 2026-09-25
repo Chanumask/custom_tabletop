@@ -20,6 +20,16 @@ export interface ObjectInteractRequest {
   sessionId: string;
   playerId: string;
   objectId: string;
+  /** Table only: sit down (true) or stand up (false) explicitly, rather
+   * than toggling — so a client that missed a state update can't flip the
+   * server the wrong way. Absent = toggle (older clients). */
+  seated?: boolean;
+  /** Table only, when sitting down: the chair wanted (see
+   * `Player.seatIndex`). Refused if someone else is already on it. */
+  seatIndex?: number;
 }
+
+/** The highest chair index a request may name (the room has far fewer). */
+export const MAX_SEAT_INDEX = 63;
 
 export type ObjectInteractResponse = { ok: true; state: GameState } | { ok: false; error: string };

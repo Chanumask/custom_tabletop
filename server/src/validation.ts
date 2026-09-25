@@ -1,6 +1,7 @@
 import {
   MAX_CHAT_LENGTH,
   MAX_DICE_PER_ROLL,
+  MAX_SEAT_INDEX,
   isGridCells,
   type TablePingRequest,
   MAX_PLAYER_NAME_LENGTH,
@@ -538,12 +539,29 @@ export function parseObjectInteractRequest(payload: unknown): ObjectInteractRequ
     return null;
   }
 
-  const { sessionId, playerId, objectId } = payload as Record<string, unknown>;
-  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || !isNonEmptyString(objectId)) {
+  const { sessionId, playerId, objectId, seated, seatIndex } = payload as Record<string, unknown>;
+  if (
+    !isNonEmptyString(sessionId) ||
+    !isNonEmptyString(playerId) ||
+    !isNonEmptyString(objectId) ||
+    (seated !== undefined && typeof seated !== 'boolean') ||
+    (seatIndex !== undefined &&
+      !(
+        Number.isInteger(seatIndex) &&
+        (seatIndex as number) >= 0 &&
+        (seatIndex as number) <= MAX_SEAT_INDEX
+      ))
+  ) {
     return null;
   }
 
-  return { sessionId: sessionId.trim(), playerId: playerId.trim(), objectId: objectId.trim() };
+  return {
+    sessionId: sessionId.trim(),
+    playerId: playerId.trim(),
+    objectId: objectId.trim(),
+    ...(seated !== undefined ? { seated } : {}),
+    ...(seatIndex !== undefined ? { seatIndex: seatIndex as number } : {}),
+  };
 }
 
 export function parsePlayerUnmuteRequest(payload: unknown): PlayerUnmuteRequest | null {

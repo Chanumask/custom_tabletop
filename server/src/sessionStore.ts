@@ -629,6 +629,20 @@ export class SessionStore {
    * status (`playerId` always comes from the requester, never a target),
    * so there's no way to sit another player down (Milestone 8). */
   toggleSeated(sessionId: string, playerId: string): GameStateMutationResult {
+    const player = this.sessions
+      .get(sessionId)
+      ?.players.find((candidate) => candidate.id === playerId);
+    return this.setSeated(sessionId, playerId, !player?.seated);
+  }
+
+  /** Sits a player down (on `seatIndex`, if given and free) or stands them
+   * up. Only ever changes the requesting player's own record. */
+  setSeated(
+    sessionId: string,
+    playerId: string,
+    seated: boolean,
+    seatIndex?: number,
+  ): GameStateMutationResult {
     const state = this.sessions.get(sessionId);
     if (!state) {
       return { ok: false, error: 'Session not found.' };
@@ -637,7 +651,21 @@ export class SessionStore {
     if (!player) {
       return { ok: false, error: 'Player not found.' };
     }
-    player.seated = !player.seated;
+    if (!seated) {
+      player.seated = false;
+      player.seatIndex = null;
+      return { ok: true, state };
+    }
+    if (
+      seatIndex !== undefined &&
+      state.players.some(
+        (other) => other.id !== playerId && other.seated && other.seatIndex === seatIndex,
+      )
+    ) {
+      return { ok: false, error: 'Someone just took that chair — try again.' };
+    }
+    player.seated = true;
+    player.seatIndex = seatIndex ?? null;
     return { ok: true, state };
   }
 
@@ -787,6 +815,7 @@ function createPlayer(id: string, name: string, color: PlayerColorId): Player {
     rotationY: spawn.rotationY,
     muted: false,
     seated: false,
+    seatIndex: null,
     connected: true,
   };
 }

@@ -57,39 +57,28 @@ export interface Seat {
   yaw: number;
 }
 
-export interface SeatedPlayer {
-  id: string;
-  x: number;
-  z: number;
-}
-
 /**
- * Assigns seated players to chairs: each, in id order, takes the nearest
- * chair nobody has taken yet; anyone left over when chairs run out gets
- * `null` (sits on the spot). Deterministic in its inputs — every client
- * computes it from the same GameState, so everyone sees the same player on
- * the same chair without the server having to track seats.
+ * The chair to sit on: the nearest one (to where the player stands) that
+ * nobody else is on, or null when every chair is taken. The sitting
+ * player's client picks it once and sends it along (`Player.seatIndex`);
+ * the server keeps chairs unique, so the choice is stable for everyone.
  */
-export function assignSeats(players: SeatedPlayer[], seats: Seat[]): Map<string, Seat | null> {
-  const assignment = new Map<string, Seat | null>();
-  const free = new Set(seats.map((_, index) => index));
-  for (const player of [...players].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
-    let best: number | null = null;
-    let bestDistance = Infinity;
-    for (const index of free) {
-      const seat = seats[index]!;
-      const distance = Math.hypot(seat.x - player.x, seat.z - player.z);
-      if (distance < bestDistance) {
-        best = index;
-        bestDistance = distance;
-      }
+export function pickChair(
+  seats: readonly Seat[],
+  taken: ReadonlySet<number>,
+  from: { x: number; z: number },
+): number | null {
+  let best: number | null = null;
+  let bestDistance = Infinity;
+  seats.forEach((seat, index) => {
+    if (taken.has(index)) {
+      return;
     }
-    if (best === null) {
-      assignment.set(player.id, null);
-    } else {
-      free.delete(best);
-      assignment.set(player.id, seats[best]!);
+    const distance = Math.hypot(seat.x - from.x, seat.z - from.z);
+    if (distance < bestDistance) {
+      best = index;
+      bestDistance = distance;
     }
-  }
-  return assignment;
+  });
+  return best;
 }

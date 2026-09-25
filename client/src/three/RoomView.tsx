@@ -14,6 +14,8 @@ import {
   type Dice,
   type DieKind,
   type LogEntry,
+  type ObjectInteractRequest,
+  type ObjectInteractResponse,
   type Point2D,
   type TablePingRequest,
   playerColorHex,
@@ -24,7 +26,8 @@ import {
   WHITEBOARD_LINE_COUNT,
 } from '@custom-tabletop/shared';
 import { loadRoom } from './RoomLoader.js';
-import { FirstPersonController } from './FirstPersonController.js';
+import { FirstPersonController, type SeatedView } from './FirstPersonController.js';
+import { pickChair } from './avatarMotion.js';
 import {
   addRoomLighting,
   configureRoomToneMapping,
@@ -155,15 +158,19 @@ export interface RoomViewProps {
 
 function promptFor(
   nearestId: string | null,
-  seated: boolean,
+  seatedView: SeatedView | null,
+  hasChair: boolean,
   interactKey: string,
   boardTarget: { slotIndex: number; soundName: string | null } | null,
   whiteboardTargeted: boolean,
   targetedDie: DieKind | null = null,
 ): string | null {
   const keyLabel = formatKeyCode(interactKey);
-  if (seated) {
-    return `Press ${keyLabel} to stand up`;
+  if (seatedView) {
+    const other = seatedView === 'chair' ? 'the table view' : 'the view from your chair';
+    return hasChair
+      ? `Press ${keyLabel} to stand up · V for ${other}`
+      : `Press ${keyLabel} to stand up`;
   }
   if (boardTarget) {
     return boardTarget.soundName
@@ -273,6 +280,10 @@ export function RoomView({
   const interactKeyRef = useRef(interactKey);
   const [locked, setLocked] = useState(false);
   const [seated, setSeated] = useState(false);
+  // Seated: looking out from the chair, or down at the table (V toggles).
+  const [seatedView, setSeatedViewState] = useState<SeatedView | null>(null);
+  const [hasChair, setHasChair] = useState(false);
+  const toggleSeatedViewRef = useRef<() => void>(() => {});
   const [interactionPrompt, setInteractionPrompt] = useState<string | null>(null);
   // The wall board's assign-sound overlay (Milestone 8 follow-up) — set to
   // the empty slot's index while open, null otherwise. Mirrored into a ref
@@ -468,7 +479,7 @@ export function RoomView({
     const clock = new THREE.Clock();
 
     const handleResize = () => {
-      applyViewportSize(camera, renderer, container, controllerRef.current?.isSeated ?? false);
+      applyViewportSize(camera, renderer, container, controllerRef.current?.seatedView === 'table');
     };
     window.addEventListener('resize', handleResize);
 
@@ -585,19 +596,25 @@ export function RoomView({
     // TableCanvas.redraw) so strokes drawn while a map image loads survive.
     const currentDrawings = () => activeSceneRef.current.drawings;
 
-    /** Switches between the standing view and the seated, top-down one:
-     * square viewport, and the chandelier hidden (it hangs exactly where the
-     * seated camera looks down from). */
-    const applySeatedView = (seatedNow: boolean) => {
-      applyViewportSize(camera, renderer, container, seatedNow);
+    /** Applies whatever the controller now is — standing, seated in the
+     * chair view, or seated looking down at the table. The top-down view
+     * gets a square viewport and hides the chandelier (it hangs exactly
+     * where that camera looks down from). */
+    const applySeatedView = () => {
+      const view = controllerRef.current?.seatedView ?? null;
+      const topDown = view === 'table';
+      applyViewportSize(camera, renderer, container, topDown);
       if (chandelier) {
-        chandelier.visible = !seatedNow;
+        chandelier.visible = !topDown;
       }
-      setSeated(seatedNow);
-      diceManagerRef.current?.setSeated(seatedNow);
+      setSeated(view !== null);
+      setSeatedViewState(view);
+      setHasChair(controllerRef.current?.hasChair ?? false);
+      diceManagerRef.current?.setSeated(topDown);
     };
     let handleInteractKey: ((event: KeyboardEvent) => void) | null = null;
     let handleEmoteKey: ((event: KeyboardEvent) => void) | null = null;
+    let handleViewKey: ((event: KeyboardEvent) => void) | null = null;
     let handleResumeLook: (() => void) | null = null;
 
     void loadRoom(ROOM_GLTF_URL).then((room) => {
@@ -691,10 +708,64 @@ export function RoomView({
       // would start standing while the server still thinks they're seated,
       // and the next E-press would incorrectly toggle the server *back* to
       // standing instead of sitting the rejoined player down.
-      if (playersRef.current.find((candidate) => candidate.id === playerId)?.seated) {
-        controller.sit();
+      const selfAtStart = playersRef.current.find((candidate) => candidate.id === playerId);
+      if (selfAtStart?.seated) {
+        controller.sit(
+          selfAtStart.seatIndex !== null ? (room.seats[selfAtStart.seatIndex] ?? null) : null,
+        );
       }
-      applySeatedView(controller.isSeated);
+      applySeatedView();
+
+      // Sitting and standing are explicit (not a toggle) and acknowledged:
+      // if the server refuses a chair (someone took it a moment earlier),
+      // the camera goes back to standing and the player is told why.
+      const sendSeated = (seatedNow: boolean, seatIndex: number | null) => {
+        socket.emit(
+          SocketEvent.ObjectInteract,
+          {
+            sessionId,
+            playerId,
+            objectId: 'table',
+            seated: seatedNow,
+            ...(seatIndex !== null ? { seatIndex } : {}),
+          } satisfies ObjectInteractRequest,
+          (response: ObjectInteractResponse) => {
+            if (!response.ok) {
+              if (seatedNow) {
+                controller.stand();
+                applySeatedView();
+              }
+              onNotifyRef.current(response.error);
+            }
+          },
+        );
+      };
+      const sitDown = () => {
+        const taken = new Set(
+          playersRef.current
+            .filter((other) => other.id !== playerId && other.seated && other.seatIndex !== null)
+            .map((other) => other.seatIndex!),
+        );
+        const seatIndex = pickChair(room.seats, taken, {
+          x: camera.position.x,
+          z: camera.position.z,
+        });
+        controller.sit(seatIndex !== null ? room.seats[seatIndex]! : null);
+        applySeatedView();
+        sendSeated(true, seatIndex);
+      };
+      const standUp = () => {
+        controller.stand();
+        applySeatedView();
+        sendSeated(false, null);
+      };
+      toggleSeatedViewRef.current = () => {
+        if (!controller.isSeated || !controller.hasChair) {
+          return;
+        }
+        controller.setSeatedView(controller.seatedView === 'chair' ? 'table' : 'chair');
+        applySeatedView();
+      };
 
       const tableTopMesh = room.tableTop;
       if (tableTopMesh) {
@@ -828,7 +899,7 @@ export function RoomView({
         pingSurface = room.layout.table;
         const pingRaycaster = new THREE.Raycaster();
         handleLockedPing = (event: MouseEvent) => {
-          if (!controller.controls.isLocked || controller.isSeated || event.button !== 2) {
+          if (!controller.controls.isLocked || event.button !== 2) {
             return;
           }
           pingRaycaster.setFromCamera(SCREEN_CENTER, camera);
@@ -864,10 +935,13 @@ export function RoomView({
         if (assignSlotIndexRef.current !== null || whiteboardOpenRef.current) {
           return;
         }
+        // The room consumes this keystroke. Without this, a dialog it opens
+        // (the whiteboard editor, the assign-sound menu) mounts and focuses
+        // its input before the browser inserts the key's character — so the
+        // "e" that opened it got typed into it.
+        event.preventDefault();
         if (controller.isSeated) {
-          controller.stand();
-          applySeatedView(false);
-          onObjectInteractRef.current('table');
+          standUp();
           return;
         }
         const targetedSlot = boardTargetSlotRef.current;
@@ -895,17 +969,27 @@ export function RoomView({
         if (nearestId === 'light') {
           onObjectInteractRef.current('light');
         } else if (nearestId === 'table') {
-          controller.sit();
-          applySeatedView(true);
-          onObjectInteractRef.current('table');
+          sitDown();
         }
       };
       document.addEventListener('keydown', handleInteractKey);
 
+      // V: switch between looking out from the chair and the table view.
+      handleViewKey = (event: KeyboardEvent) => {
+        if (event.code !== 'KeyV' || event.repeat || isTypingTarget(event.target)) {
+          return;
+        }
+        if (controller.isSeated) {
+          event.preventDefault();
+          toggleSeatedViewRef.current();
+        }
+      };
+      document.addEventListener('keydown', handleViewKey);
+
       // Chat was opened from a walking view: sending (or Esc) hands the
       // mouse straight back to looking around (ChatPanel.tsx).
       handleResumeLook = () => {
-        if (!controller.isSeated) {
+        if (controller.seatedView !== 'table') {
           controller.controls.lock();
         }
       };
@@ -1009,13 +1093,14 @@ export function RoomView({
               }
             : null;
 
-        const promptKey = `${nearestId}|${controller.isSeated}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}|${targetedDie}`;
+        const promptKey = `${nearestId}|${controller.seatedView}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}|${targetedDie}`;
         if (promptKey !== lastPromptKeyRef.current) {
           lastPromptKeyRef.current = promptKey;
           setInteractionPrompt(
             promptFor(
               nearestId,
-              controller.isSeated,
+              controller.seatedView,
+              controller.hasChair,
               interactKeyRef.current,
               boardTarget,
               whiteboardTargeted,
@@ -1078,6 +1163,9 @@ export function RoomView({
       if (handleEmoteKey) {
         document.removeEventListener('keydown', handleEmoteKey);
       }
+      if (handleViewKey) {
+        document.removeEventListener('keydown', handleViewKey);
+      }
       cancelAnimationFrame(animationFrameId);
       controllerRef.current?.dispose();
       controllerRef.current = null;
@@ -1106,7 +1194,7 @@ export function RoomView({
 
   return (
     <div ref={containerRef} className="room-view">
-      {locked && !seated && assignSlotIndex === null && !whiteboardOpen && (
+      {locked && seatedView !== 'table' && assignSlotIndex === null && !whiteboardOpen && (
         <div className="crosshair" />
       )}
       {/* One bottom-center stack, so the prompt always sits above the hint
@@ -1115,7 +1203,7 @@ export function RoomView({
         {interactionPrompt && assignSlotIndex === null && !whiteboardOpen && (
           <div className="interaction-prompt">{interactionPrompt}</div>
         )}
-        {!locked && !seated && assignSlotIndex === null && !whiteboardOpen && (
+        {!locked && seatedView !== 'table' && assignSlotIndex === null && !whiteboardOpen && (
           <button
             type="button"
             className="room-view-overlay"
@@ -1123,8 +1211,9 @@ export function RoomView({
           >
             <strong>Click to look around</strong>
             <span className="room-view-keys">
-              WASD move · Shift run · {formatKeyCode(interactKey)} interact · 1–6 emote · Enter chat
-              · Esc release
+              {seated
+                ? `${formatKeyCode(interactKey)} stand up · V table view · Enter chat · Esc release`
+                : `WASD move · Shift run · ${formatKeyCode(interactKey)} interact · 1–6 emote · Enter chat · Esc release`}
             </span>
             <span className="room-view-keys">
               Drag on the table to draw · click a die to roll it · right-click to ping
@@ -1162,6 +1251,16 @@ export function RoomView({
       )}
       {seated && (
         <div className="drawing-toolbar">
+          {hasChair && (
+            <button
+              type="button"
+              className="view-toggle"
+              title="Switch view (V)"
+              onClick={() => toggleSeatedViewRef.current()}
+            >
+              {seatedView === 'chair' ? 'Table view' : 'Chair view'} <kbd>V</kbd>
+            </button>
+          )}
           <button
             type="button"
             className={drawTool === 'pen' ? 'active' : ''}

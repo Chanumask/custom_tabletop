@@ -887,7 +887,15 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
             result = sessions.toggleLight(request.sessionId);
             break;
           case 'table':
-            result = sessions.toggleSeated(request.sessionId, request.playerId);
+            result =
+              request.seated === undefined
+                ? sessions.toggleSeated(request.sessionId, request.playerId)
+                : sessions.setSeated(
+                    request.sessionId,
+                    request.playerId,
+                    request.seated,
+                    request.seatIndex,
+                  );
             break;
           default:
             result = { ok: false, error: 'Unknown interactable.' };

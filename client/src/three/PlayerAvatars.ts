@@ -8,7 +8,6 @@ import {
   type Vector3,
 } from '@custom-tabletop/shared';
 import {
-  assignSeats,
   lerpAngle,
   locomotionFor,
   playbackRate,
@@ -98,7 +97,7 @@ function bone(model: THREE.Object3D, name: string): THREE.Object3D | null {
  * player:move deltas) and is *interpolated* in `update`, so movement looks
  * smooth despite arriving ~10 times a second, and the idle/walk/run clip
  * follows the actual ground speed. A seated player is placed on a chair
- * (`assignSeats` — every client picks the same chair for the same player)
+ * (its `seatIndex` — chosen once when they sit, the same for everyone)
  * in a sitting pose; emotes play once and blend back.
  */
 export class PlayerAvatars {
@@ -117,12 +116,6 @@ export class PlayerAvatars {
 
   sync(players: Player[], selfId: string): void {
     const others = players.filter((player) => player.id !== selfId);
-    const seatFor = assignSeats(
-      others
-        .filter((player) => player.seated)
-        .map((player) => ({ id: player.id, x: player.position.x, z: player.position.z })),
-      this.seats,
-    );
 
     for (const player of others) {
       let avatar = this.avatars.get(player.id);
@@ -135,7 +128,8 @@ export class PlayerAvatars {
 
       avatar.target = { x: player.position.x, z: player.position.z, yaw: player.rotationY };
       avatar.seated = player.seated;
-      avatar.seat = player.seated ? (seatFor.get(player.id) ?? null) : null;
+      avatar.seat =
+        player.seated && player.seatIndex !== null ? (this.seats[player.seatIndex] ?? null) : null;
       if (avatar.connected !== player.connected) {
         avatar.connected = player.connected;
         applyPresence(avatar);
