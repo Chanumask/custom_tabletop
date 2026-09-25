@@ -58,6 +58,7 @@ import { TablePings } from './TablePings.js';
 import { Ambience } from './Ambience.js';
 import { OutsideWorld } from './outside/OutsideWorld.js';
 import { HalloweenDecor } from './HalloweenDecor.js';
+import { hangPaintings } from './paintings.js';
 import { FireAmbience } from '../fireAmbience.js';
 import { TV_PLAYER_HEIGHT, TV_PLAYER_WIDTH, TvScreen } from './TvScreen.js';
 import { ClipControls, YouTubeClip, YouTubeEmbed, type ClipView } from '../YouTubeClip.js';
@@ -125,6 +126,18 @@ const DEFAULT_DRAW_COLOR = '#241a12';
 const DEFAULT_DRAW_WIDTH = 5;
 
 type DrawTool = 'pen' | 'eraser';
+
+/** Keycaps and what they do, for the "click to look around" card. */
+function HintKeys({ keys, label }: { keys: string[]; label: string }) {
+  return (
+    <span className="hint-key-group">
+      {keys.map((key) => (
+        <kbd key={key}>{key}</kbd>
+      ))}
+      <span>{label}</span>
+    </span>
+  );
+}
 
 /** What a full repaint of the table depends on: the scene, its map, its grid. */
 function paintSignature(scene: GameScene): string {
@@ -732,6 +745,7 @@ export function RoomView({
     let tableDrawing: TableDrawing | null = null;
     let brassEnv: THREE.Texture | null = null;
     let outside: OutsideWorld | null = null;
+    let paintings: { dispose(): void }[] = [];
     let chandelier: THREE.Object3D | null = null;
     // Everything a full table redraw should paint, read at paint time (see
     // TableCanvas.redraw) so strokes drawn while a map image loads survive.
@@ -772,6 +786,7 @@ export function RoomView({
         setRoomState('ready');
         chandelier = room.chandelier;
         tuneRoomMaterials(room.object3D);
+        paintings = hangPaintings(room.object3D);
         const lights = addRoomLighting(scene, room.layout);
         setRoomLightsOn(lights, lightOnRef.current);
         roomLightsRef.current = lights;
@@ -1486,6 +1501,7 @@ export function RoomView({
       soundboardWallRef.current = null;
       brassEnv?.dispose();
       outside?.dispose();
+      paintings.forEach((item) => item.dispose());
       outsideRef.current = null;
       decorRef.current?.dispose();
       decorRef.current = null;
@@ -1558,24 +1574,46 @@ export function RoomView({
       {/* One bottom-center stack, so the prompt always sits above the hint
           instead of the two overlapping when the hint wraps. */}
       <div className="room-bottom-stack">
-        {interactionPrompt && assignSlotIndex === null && !whiteboardOpen && (
-          <div className="interaction-prompt">{interactionPrompt}</div>
-        )}
+        {interactionPrompt &&
+          assignSlotIndex === null &&
+          !whiteboardOpen &&
+          // Seated in the chair view, the card below already says it.
+          !(seated && !locked && seatedView !== 'table') && (
+            <div className="interaction-prompt">{interactionPrompt}</div>
+          )}
         {!locked && seatedView !== 'table' && assignSlotIndex === null && !whiteboardOpen && (
           <button
             type="button"
             className="room-view-overlay"
             onClick={() => controllerRef.current?.controls.lock()}
           >
-            <strong>Click to look around</strong>
-            <span className="room-view-keys">
-              {seated
-                ? `${formatKeyCode(interactKey)} stand up · V table view · Enter chat · Esc release`
-                : `WASD move · Shift run · ${formatKeyCode(interactKey)} interact · 1–6 emote · Enter chat · Esc release`}
+            <span className="hint-title">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="6.5" y="3" width="11" height="18" rx="5.5" />
+                <path d="M12 3v6.5" />
+              </svg>
+              Click to look around
             </span>
-            <span className="room-view-keys">
-              {canDraw ? 'Drag on the table to draw · ' : 'Drag minis and dice · '}click a die to
-              roll it · right-click to ping
+            <span className="hint-keys">
+              {seated ? (
+                <>
+                  <HintKeys keys={[formatKeyCode(interactKey)]} label="stand up" />
+                  <HintKeys keys={['V']} label="table view" />
+                </>
+              ) : (
+                <>
+                  <HintKeys keys={['W', 'A', 'S', 'D']} label="move" />
+                  <HintKeys keys={['Shift']} label="run" />
+                  <HintKeys keys={[formatKeyCode(interactKey)]} label="interact" />
+                  <HintKeys keys={['1–6']} label="emote" />
+                </>
+              )}
+              <HintKeys keys={['Enter']} label="chat" />
+              <HintKeys keys={['Esc']} label="free the mouse" />
+            </span>
+            <span className="hint-mouse">
+              {canDraw ? 'Drag on the table to draw' : 'Drag minis and dice'} · click a die to roll
+              it · right-click to ping
             </span>
           </button>
         )}
