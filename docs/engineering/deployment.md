@@ -4,7 +4,7 @@
 
 The game is served from **https://tabletop.murri.me** on the owner's VPS (`ssh root@murri.me`, Debian 12, Docker Compose). The decision and its reasoning are in [decisions.md](../decisions.md), 2026-09-25 "Deployment".
 
-**Status (2026-09-25): live.** The container runs commit `0a0e8b4`, and the owner has created the NPM proxy host. All 9 cross-browser smoke runs pass against `https://tabletop.murri.me`.
+**Status (2026-09-25): live.** The container runs commit `3eb95e6`, and the owner has created the NPM proxy host. All 9 cross-browser smoke runs pass against `https://tabletop.murri.me`.
 
 ## How it's put together
 
@@ -44,11 +44,11 @@ All unset in dev.
 ## Deploying
 
 ```bash
-npm run deploy               # = scripts/deploy.sh: deploys HEAD (committed state only)
-scripts/deploy.sh <commit>   # a specific commit — also how to roll back
+npm run deploy               # deploys HEAD (committed state only)
+npm run deploy -- <commit>   # a specific commit — also how to roll back
 ```
 
-The script `git archive`s the commit's files over SSH, so **no push is needed** and exactly the tested commit goes out. It then swaps them into `src/`, runs `docker compose -p tabletop build` + `up -d`, and waits for the healthcheck. The first build takes a few minutes; later ones reuse the cached `npm ci` layer unless the lockfile changed. The script only touches `/srv/apps/tabletop` and the `tabletop` project.
+`scripts/deploy.mjs` works from PowerShell, cmd or Git Bash; it needs only `git` and `ssh` on PATH. It `git archive`s the commit's files over SSH, so **no push is needed** and exactly the tested commit goes out. It then swaps them into `src/`, runs `docker compose -p tabletop build` + `up -d`, and waits for the healthcheck. On the VPS, `scripts/deploy-remote.sh` (sent over stdin) does the swap, build and restart. The first build takes a few minutes; later ones reuse the cached `npm ci` layer unless the lockfile changed. **A deploy always restarts the container, which ends every table in progress, so deploy when nobody's playing.** It deploys your local `HEAD`, whatever branch that is, so deploy from `main`. The script only touches `/srv/apps/tabletop` and the `tabletop` project.
 
 Check a deploy against the live site with the cross-browser smoke tests:
 
@@ -69,7 +69,7 @@ Run these on the VPS, in `/srv/apps/tabletop`:
 | Start again | `docker compose -p tabletop up -d` |
 | Upload usage | `du -sh uploads` |
 
-- **Rolling back:** run `scripts/deploy.sh <older-commit>` from your machine. It rebuilds that commit, so a known-good one is always one command away.
+- **Rolling back:** run `npm run deploy -- <older-commit>` from your machine. It rebuilds that commit, so a known-good one is always one command away.
 - **A VPS reboot or Docker restart** brings the container back (`restart: unless-stopped`). Every table in progress is lost, because sessions live in memory; players just host again. Uploads survive on disk until the pruning rules remove them.
 - **Uploads aren't backed up**, and don't need to be: they're only reachable from live sessions.
 

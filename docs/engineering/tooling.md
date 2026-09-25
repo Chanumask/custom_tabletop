@@ -26,7 +26,7 @@ Run from the repo root unless noted; each fans out to whichever workspaces defin
 | `npm test` | Vitest, `run` mode, per workspace |
 | `npm run test:e2e` | Playwright cross-browser smoke tests (`e2e/`) in Chromium, Firefox and WebKit against the real app; starts the dev server + client itself, or reuses running ones. First time on a machine: `npx playwright install`. On Windows the Chromium project runs headless on the real GPU (`--use-angle=d3d11`) — SwiftShader is too slow for the room. Edge isn't a fixed project (not every machine has it); to include it, run with a throwaway config that spreads `playwright.config.ts` and adds `{ name: 'edge', use: { channel: 'msedge' } }` |
 | `npm run bundle -w server`, then `npm start -w server` | The production server: an esbuild bundle (`server/dist/index.js`) run with plain Node. Set `CLIENT_DIST=client/dist` (after `npm run build -w client`) to serve the built client from the same port. Env vars: [deployment.md](deployment.md) |
-| `npm run deploy` | Deploys the committed HEAD to the VPS (`scripts/deploy.sh`). See [deployment.md](deployment.md) |
+| `npm run deploy` | Deploys the committed HEAD to the VPS (`scripts/deploy.mjs`; `npm run deploy -- <commit>` for a specific one). Works from PowerShell, cmd and Git Bash. See [deployment.md](deployment.md) |
 | `E2E_BASE_URL=<url> npx playwright test` | Runs the smoke tests against an already-running app (a local production build, or the live site) instead of starting the dev servers |
 | `npm run load-test` | Six simulated players against a running server (`scripts/load-test.ts`): message sizes, per-player traffic, ack latency, server CPU |
 

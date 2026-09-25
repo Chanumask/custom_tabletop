@@ -6,6 +6,18 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 (night) — `npm run deploy` works from PowerShell; a broken VPS SSH key line removed
+
+- **`npm run deploy` failed from PowerShell** (`WSL … execvpe(/bin/bash) failed`). The npm script called `bash`, which from PowerShell/cmd is the WSL launcher, not Git's bash. The local side is now Node (`scripts/deploy.mjs`: `git archive` piped into `ssh`, then the remote script over stdin), needing only `git` and `ssh`. The VPS side moved unchanged into `scripts/deploy-remote.sh`; `scripts/deploy.sh` is gone. For a specific commit: `npm run deploy -- <commit>`. Verified by running `npm run deploy` from PowerShell: built, restarted, healthy, running `3eb95e6`.
+- **VPS SSH keys**, at the owner's request: `/root/.ssh/authorized_keys` had a third line, an RSA entry labelled `mb` whose key data was truncated. It was never a usable key, and I removed it.
+  - A backup is at `authorized_keys.bak-20260925`.
+  - A fresh login was verified afterwards.
+  - Two keys remain: this PC's ed25519 and an unlabelled RSA key the owner may want to identify.
+- **Leftovers check:** none. The VPS holds only `/srv/apps/tabletop`, the one image and the build cache (~355 MB, kept to speed up deploys). Local build output was removed.
+- **Note:** a deploy always restarts the container, so it ends every table in progress.
+
+---
+
 ## 2026-09-25 (evening) — Deployed to the VPS as one sandboxed container; later ideas parked for discussion
 
 **Asked** (user): "lets do the hosting part first and note down the other stuff for later, but none of them should blindly be done later — its still in discussing phase … deploy the game under tabletop.murri.me … make sure to not destroy any existing stuff on my vps since there is critical stuff running". The one question asked (access) was answered "Open + upload limits".
