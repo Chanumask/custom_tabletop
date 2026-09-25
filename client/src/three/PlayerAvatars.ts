@@ -19,6 +19,16 @@ import {
 } from './avatarMotion.js';
 import { EMOTE_CLIPS, type CharacterSource } from './characters.js';
 import { GadgetLibrary, type GadgetSource } from './gadgetMeshes.js';
+import {
+  findArmRig,
+  HOLDS,
+  instantiateHeldItem,
+  placeInHand,
+  poseHold,
+  releaseHold,
+  type ArmRig,
+  type HeldItemParts,
+} from './heldItems.js';
 import { NameTag } from './nameTag.js';
 import { SpeechBubble, speechSeconds } from './speechBubble.js';
 
@@ -52,11 +62,12 @@ const SIT_THIGH = -Math.PI / 2;
 const SIT_KNEE = Math.PI / 2;
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 
-/** Where a held gadget sits relative to the right wrist bone (local space)
- * — a rough "gripped in the hand" offset, tuned by eye against the live
- * rig; the same starting-point approach `RoomLamp`/`SoundboardWall` used
- * for their own hand-eyeballed placement. */
-const HELD_ITEM_OFFSET: [number, number, number] = [0, -0.03, 0.05];
+/** How quickly the arm comes up to hold a gadget (and drops again). */
+const HOLD_HALF_LIFE = 0.08;
+/** The flashlight's glass while it's on, and the camera flash's pop. */
+const LENS_GLOW = 3;
+const FLASH_GLOW = 9;
+const FLASH_SECONDS = 0.35;
 
 interface LegBones {
   upperL: THREE.Object3D | null;
@@ -89,14 +100,26 @@ interface Avatar {
   /** What they just said in chat, until `until` (on the avatars' clock). */
   speech: { bubble: SpeechBubble; until: number } | null;
   loadToken: number;
-  /** The right wrist bone (single held item, one gadget at a time) — held
-   * items are parented here so they follow the arm for free. Found once
-   * the model loads; null until then, or if this model has no such bone. */
-  handR: THREE.Object3D | null;
+  /** The right arm (single held item, one gadget at a time): the gadget
+   * sits in its hand bone, and the arm is posed to hold it (heldItems.ts).
+   * Found once the model loads; null until then, or if the rig lacks it. */
+  arm: ArmRig | null;
+  /** How far the arm is into the holding pose (0 down, 1 holding), and
+   * how closed the hand is around the gadget — eased so taking or putting
+   * back a gadget doesn't snap. An emote has the arm, never the grip. */
+  holdWeight: number;
+  gripWeight: number;
+  /** The gadget the arm is posed for — still set while it eases back down
+   * after the gadget went back in the chest. */
+  holdKind: ItemKind | null;
+  flashlightOn: boolean;
+  /** When the camera flash last popped (on the avatars' clock). */
+  flashAt: number;
   /** Which gadget this player currently holds (from `GameState.inventory`,
    * `sync`'s third argument), and the loaded mesh for it, once it resolves. */
   heldItemKind: ItemKind | null;
   heldItemMesh: THREE.Object3D | null;
+  heldItemParts: HeldItemParts | null;
   /** Cancels a stale gadget-mesh load if the held kind changes again (or
    * the avatar is removed) before the previous one resolves. */
   heldItemLoadToken: number;
@@ -154,6 +177,8 @@ export class PlayerAvatars {
 
       avatar.target = { x: player.position.x, z: player.position.z, yaw: player.rotationY };
       this.setHeldItem(avatar, heldKindOf(player.id));
+      avatar.flashlightOn = player.flashlightOn;
+      lightLens(avatar);
       avatar.seated = player.seated;
       avatar.seat =
         player.seated && player.seatIndex !== null ? (this.seats[player.seatIndex] ?? null) : null;
@@ -240,10 +265,28 @@ export class PlayerAvatars {
     return { avatars: this.avatars.size, loaded };
   }
 
-  /** The world object for a player's avatar (the flashlight beam follows
-   * it; also tests/debugging). */
+  /** The world object for a player's avatar (tests/debugging, and the
+   * flashlight beam until the flashlight's model is in their hand). */
   objectFor(playerId: string): THREE.Group | undefined {
     return this.avatars.get(playerId)?.group;
+  }
+
+  /** The glass of the flashlight in a player's hand (its +Z is the way it
+   * points), once it's there — where their beam starts. */
+  flashlightLensOf(playerId: string): THREE.Object3D | undefined {
+    const avatar = this.avatars.get(playerId);
+    if (!avatar?.arm || avatar.heldItemKind !== 'flashlight') {
+      return undefined;
+    }
+    return avatar.heldItemParts?.beamOrigin ?? undefined;
+  }
+
+  /** The camera in a player's hand flashes (they just took a photo). */
+  flashCamera(playerId: string): void {
+    const avatar = this.avatars.get(playerId);
+    if (avatar) {
+      avatar.flashAt = this.clock;
+    }
   }
 
   dispose(): void {
@@ -283,9 +326,15 @@ export class PlayerAvatars {
       nameTag,
       speech: null,
       loadToken: 0,
-      handR: null,
+      arm: null,
+      holdWeight: 0,
+      gripWeight: 0,
+      holdKind: null,
+      flashlightOn: player.flashlightOn,
+      flashAt: -Infinity,
       heldItemKind: null,
       heldItemMesh: null,
+      heldItemParts: null,
       heldItemLoadToken: 0,
     };
     this.avatars.set(player.id, avatar);
@@ -347,12 +396,14 @@ export class PlayerAvatars {
           lowerL: bone(model, 'LowerLeg.L'),
           lowerR: bone(model, 'LowerLeg.R'),
         };
-        avatar.handR = bone(model, 'Wrist.R');
+        avatar.arm = findArmRig((name) => bone(model, name), asset.animations);
+        avatar.holdWeight = 0;
+        avatar.gripWeight = 0;
         avatar.locomotion = null;
         avatar.animating = false;
         avatar.group.add(model);
         applyPresence(avatar);
-        // A color change reloads the model (a fresh handR bone) — any
+        // A color change reloads the model (a fresh hand bone) — any
         // gadget already held needs re-parenting onto it.
         this.attachHeldItem(avatar);
       },
@@ -374,7 +425,9 @@ export class PlayerAvatars {
     const token = ++avatar.heldItemLoadToken;
     if (avatar.heldItemMesh) {
       avatar.heldItemMesh.parent?.remove(avatar.heldItemMesh);
+      avatar.heldItemParts?.materials.forEach((material) => material.dispose());
       avatar.heldItemMesh = null;
+      avatar.heldItemParts = null;
     }
     if (!kind) {
       return;
@@ -384,8 +437,13 @@ export class PlayerAvatars {
         if (token !== avatar.heldItemLoadToken || !this.avatars.has(avatar.id)) {
           return; // superseded (kind changed again) or removed meanwhile
         }
-        avatar.heldItemMesh = source.clone(true);
+        const { item, parts } = instantiateHeldItem(source);
+        avatar.heldItemMesh = item;
+        avatar.heldItemParts = parts;
+        avatar.holdKind = kind;
         this.attachHeldItem(avatar);
+        applyPresence(avatar);
+        lightLens(avatar);
       },
       (error: unknown) => {
         console.error(`Failed to load the ${kind} gadget model:`, error);
@@ -393,18 +451,21 @@ export class PlayerAvatars {
     );
   }
 
-  /** Parents the currently-loaded held-item mesh onto the right wrist bone
-   * (or the avatar group, if the model has no such bone yet) — called both
-   * once a gadget mesh finishes loading and again whenever the model
-   * itself reloads (a color change gets a fresh bone instance). */
+  /** Puts the loaded gadget in the right hand — once it finishes loading,
+   * and again whenever the model itself reloads (a color change gets a
+   * fresh hand bone). Until the model is in, there's no hand to hold it. */
   private attachHeldItem(avatar: Avatar): void {
-    if (!avatar.heldItemMesh) {
+    const item = avatar.heldItemMesh;
+    if (!item || !avatar.heldItemKind) {
       return;
     }
-    const parent = avatar.handR ?? avatar.group;
-    parent.add(avatar.heldItemMesh);
-    avatar.heldItemMesh.position.set(...HELD_ITEM_OFFSET);
-    avatar.heldItemMesh.rotation.set(0, 0, 0);
+    if (!avatar.arm) {
+      item.parent?.remove(item);
+      return;
+    }
+    avatar.arm.hand.add(item);
+    const hold = HOLDS[avatar.heldItemKind];
+    placeInHand(item, hold, avatar.seated ? hold.seated : hold.standing);
   }
 
   private updateAvatar(avatar: Avatar, dt: number): void {
@@ -478,6 +539,9 @@ export class PlayerAvatars {
       avatar.emote = null;
     }
 
+    if (avatar.arm) {
+      releaseHold(avatar.arm);
+    }
     avatar.mixer.update(dt);
 
     // Sitting is posed *after* the mixer, so it overrides the idle clip's legs.
@@ -489,6 +553,31 @@ export class PlayerAvatars {
       bendAboutModelAxis(avatar.model, avatar.legs.upperR, SIT_THIGH);
       bendAboutModelAxis(avatar.model, avatar.legs.lowerL, SIT_KNEE);
       bendAboutModelAxis(avatar.model, avatar.legs.lowerR, SIT_KNEE);
+    }
+
+    this.updateHold(avatar, dt);
+  }
+
+  /** Brings the right arm up to hold the gadget (or back down once it's
+   * gone), on top of the clip: an emote gets the whole arm back. */
+  private updateHold(avatar: Avatar, dt: number): void {
+    const holding = !!avatar.heldItemMesh;
+    const k = smoothingFactor(dt, HOLD_HALF_LIFE);
+    avatar.holdWeight = ease(avatar.holdWeight, holding && !avatar.emote ? 1 : 0, k);
+    avatar.gripWeight = ease(avatar.gripWeight, holding ? 1 : 0, k);
+    const kind = avatar.heldItemKind ?? avatar.holdKind;
+    if (avatar.arm && avatar.model && kind && (avatar.holdWeight > 0 || avatar.gripWeight > 0)) {
+      const hold = HOLDS[kind];
+      const pose = avatar.seated ? hold.seated : hold.standing;
+      poseHold(avatar.model, avatar.arm, pose, avatar.holdWeight, avatar.gripWeight);
+      if (avatar.heldItemMesh) {
+        placeInHand(avatar.heldItemMesh, hold, pose);
+      }
+    }
+    const flash = avatar.heldItemParts?.flash;
+    if (flash) {
+      const left = FLASH_SECONDS - (this.clock - avatar.flashAt);
+      flash.emissiveIntensity = left > 0 ? FLASH_GLOW * (left / FLASH_SECONDS) ** 2 : 0;
     }
   }
 
@@ -504,6 +593,7 @@ export class PlayerAvatars {
     avatar.actions = new Map();
     avatar.materials = [];
     avatar.legs = null;
+    avatar.arm = null;
     avatar.emote = null;
   }
 
@@ -562,8 +652,22 @@ function bendAboutModelAxis(
   target.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(scratchAxis, angle));
 }
 
+/** Eases `value` toward `target`, settling exactly once it's close. */
+function ease(value: number, target: number, k: number): number {
+  const next = value + (target - value) * k;
+  return Math.abs(target - next) < 0.001 ? target : next;
+}
+
+/** The flashlight's glass glows while it's on. */
+function lightLens(avatar: Avatar): void {
+  const lens = avatar.heldItemParts?.lens;
+  if (lens) {
+    lens.emissiveIntensity = avatar.flashlightOn ? LENS_GLOW : 0;
+  }
+}
+
 function applyPresence(avatar: Avatar): void {
-  for (const material of avatar.materials) {
+  for (const material of [...avatar.materials, ...(avatar.heldItemParts?.materials ?? [])]) {
     material.transparent = !avatar.connected;
     material.opacity = avatar.connected ? 1 : AWAY_OPACITY;
     material.depthWrite = avatar.connected;

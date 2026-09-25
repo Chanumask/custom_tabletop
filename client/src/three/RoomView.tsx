@@ -97,10 +97,13 @@ import { HeldItems } from '../HeldItems.js';
 import { createPinboard, syncPinboard, disposePinboard, type Pinboard } from './Pinboard.js';
 import { uploadImage } from '../uploads.js';
 import { aimFlashlightBeam } from './flashlightBeam.js';
+import { GadgetLibrary } from './gadgetMeshes.js';
+import { HOLDS } from './heldItems.js';
 
 // Module-level so each character model downloads once per page, not once
 // per room mount (leaving and rejoining a session reuses it).
 const characterLibrary = new CharacterLibrary();
+const gadgetLibrary = new GadgetLibrary();
 /** A dragged mini or die sends where it is this often (ms). */
 const DRAG_SEND_MS = 60;
 /** DiceManager's carry lift (kept in step with its DRAG_LIFT). */
@@ -440,6 +443,7 @@ export function RoomView({
   const flashlightTargetRef = useRef<THREE.Object3D | null>(null);
   const photosRef = useRef<Photo[]>(photos);
   const capturingPhotoRef = useRef(false);
+  const seenPhotoIdsRef = useRef<Set<string> | null>(null);
   const [cameraFlash, setCameraFlash] = useState(false);
   const interactablesRef = useRef<Interactable[]>([]);
   const nearestInteractableIdRef = useRef<string | null>(null);
@@ -611,11 +615,21 @@ export function RoomView({
   }, [inventory]);
 
   useEffect(() => {
+    // A new photo someone else took: their camera flashes in their hand.
+    // (What's already on the board when we arrive doesn't flash.)
+    if (seenPhotoIdsRef.current) {
+      for (const photo of photos) {
+        if (!seenPhotoIdsRef.current.has(photo.id) && photo.takenBy !== playerId) {
+          avatarsRef.current?.flashCamera(photo.takenBy);
+        }
+      }
+    }
+    seenPhotoIdsRef.current = new Set(photos.map((photo) => photo.id));
     photosRef.current = photos;
     if (pinboardRef.current) {
       syncPinboard(pinboardRef.current, photos);
     }
-  }, [photos]);
+  }, [photos, playerId]);
 
   useEffect(() => {
     onNotifyRef.current = onNotify;
@@ -1083,7 +1097,8 @@ export function RoomView({
         tableChairsRef.current = room.chairs;
         seatsRef.current = room.seats;
         room.chairs?.apply(chairCount(playersRef.current.length));
-        const avatars = new PlayerAvatars(scene, characterLibrary, room.seats);
+        gadgetLibrary.preload();
+        const avatars = new PlayerAvatars(scene, characterLibrary, room.seats, gadgetLibrary);
         avatars.sync(playersRef.current, playerId, inventoryRef.current);
         avatarsRef.current = avatars;
 
@@ -1123,6 +1138,8 @@ export function RoomView({
             renderer,
             avatars,
             outside,
+            // Live-tunable: the arm poses and grips read this every frame.
+            holds: HOLDS,
           };
         }
 
@@ -1659,9 +1676,10 @@ export function RoomView({
           updateNight?.(delta);
           avatarsRef.current?.update(delta);
           if (flashlightRef.current) {
-            aimFlashlightBeam(flashlightRef.current, playersRef.current, playerId, camera, (id) =>
-              avatarsRef.current?.objectFor(id),
-            );
+            aimFlashlightBeam(flashlightRef.current, playersRef.current, playerId, camera, {
+              lensOf: (id) => avatarsRef.current?.flashlightLensOf(id),
+              avatarOf: (id) => avatarsRef.current?.objectFor(id),
+            });
           }
           soundboardWallRef.current?.update(delta);
           decorRef.current?.update(delta, timer.getElapsed());

@@ -6,6 +6,37 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-26 — Real gadget models, held properly
+
+### What landed
+
+- **Status docs caught up** (straight to `main`). `overview.md` and `CLAUDE.md` now list the gadgets, and `CLAUDE.md` no longer calls this a solo project.
+- **Four gadget models** (`blender/gadgets.py` → `client/public/models/gadgets/`): flashlight, walkie-talkie, calculator and instant camera, built by script in headless Blender. `GadgetLibrary` loads them, and they're preloaded with the room.
+- **Holding** (`client/src/three/heldItems.ts`, `PlayerAvatars.ts`):
+  - the right arm, hand and fingers are posed per gadget, standing and seated;
+  - the fist is taken from the characters' punching clip;
+  - the arm eases in and out, and emotes take the arm but keep the grip.
+- **Effects:**
+  - the flashlight's beam starts at the lens in the holder's hand, and the lens glows while it's on;
+  - the camera flash pops for everyone when a photo is taken;
+  - a disconnected holder's gadget fades with them.
+- **Fixed on the way:** an animation-mixer gotcha that would have left the fingers in a fist after the gadget went back (decisions.md, "Gadget models").
+
+### Checked
+
+- Tuned and checked live in two browser tabs, from every side, against a woman (blue) and a man (green), one character from each rig:
+  - standing, walking, seated at the table, waving, and after a colour change;
+  - Bob's photo popped the flash on Alice's screen;
+  - the beam starts at the lens and aims 14° down standing, 33° down onto the map seated.
+- New tests:
+  - `heldItems.test.ts`: arm directions, the fist, blending, the release after the mixer, per-avatar material copies;
+  - `PlayerAvatars.test.ts`: the hand holds it and the arm rises and falls back; lens, flash and fading;
+  - `gadgetMeshes.test.ts`: the real GLBs parse, sizes are real-world, fronts face +Z, the lens is at the front;
+  - `flashlightBeam.test.ts`: the beam from the lens.
+- Sanity pass: 718 tests (52 shared, 375 server, 291 client), lint, format and build clean.
+
+---
+
 ## 2026-09-25 (gadgets review) — Fixes from reviewing the gadgets
 
 A colleague's gadget phases 1–6 were reviewed. Everything the review turned up is fixed, and every fix is recorded in decisions.md, "Gadgets review".
@@ -49,7 +80,7 @@ A colleague's gadget phases 1–6 were reviewed. Everything the review turned up
 
 ### Still open
 
-The phase 6 handover's branch note is stale: `feat/single-item-slot` is in `main`. Real Blender gadget meshes, replacing the placeholder shapes, are still to come.
+The phase 6 handover's branch note is stale: `feat/single-item-slot` is in `main`. Real Blender gadget meshes, replacing the placeholder shapes, are still to come *(done 2026-09-26, above)*.
 
 ---
 

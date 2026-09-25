@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import type { Player, PlayerColorId } from '@custom-tabletop/shared';
+import type { InventoryItem, ItemKind, Player, PlayerColorId } from '@custom-tabletop/shared';
 import { PlayerAvatars } from './PlayerAvatars.js';
 import type { CharacterAsset, CharacterSource } from './characters.js';
+import type { GadgetSource } from './gadgetMeshes.js';
+import { armSkeleton, fakeGadget, punchClip } from './testRig.js';
 import { nameTagLabel } from './nameTag.js';
 import { speechSeconds, wrapSpeech } from './speechBubble.js';
 
@@ -182,6 +184,135 @@ describe('PlayerAvatars', () => {
     await flush();
     avatars.dispose();
     expect(scene.getObjectByName('player-avatars')).toBeUndefined();
+  });
+});
+
+/** A character with a right arm to hold things in (testRig.ts), whose
+ * clips hold every bone at rest — like the real clips, they set the whole
+ * arm every frame. */
+function riggedCharacters(): CharacterSource {
+  return {
+    async load(): Promise<CharacterAsset> {
+      const scene = armSkeleton();
+      const tracks: THREE.KeyframeTrack[] = [];
+      scene.traverse((bone) => {
+        if (bone instanceof THREE.Bone) {
+          const rest = bone.quaternion.toArray();
+          tracks.push(
+            new THREE.QuaternionKeyframeTrack(
+              `${bone.name}.quaternion`,
+              [0, 1],
+              [...rest, ...rest],
+            ),
+          );
+        }
+      });
+      const clip = (name: string) => new THREE.AnimationClip(name, 1, tracks);
+      return { scene, animations: [...['Idle', 'Walk', 'Run', 'Wave'].map(clip), punchClip()] };
+    },
+  };
+}
+
+const gadgets: GadgetSource = { load: async () => fakeGadget() };
+
+const holding = (kind: ItemKind, heldBy: string | null = 'a'): InventoryItem[] => [
+  { id: `${kind}-1`, kind, heldBy },
+];
+
+/** Where the right hand is, in the character's own space. */
+function handOf(avatars: PlayerAvatars, id: string): THREE.Vector3 {
+  const group = avatars.objectFor(id)!;
+  group.updateWorldMatrix(true, true);
+  const hand = group.getObjectByName('WristR')!;
+  return group.worldToLocal(hand.getWorldPosition(new THREE.Vector3()));
+}
+
+function gadgetIn(avatars: PlayerAvatars, id: string): THREE.Object3D | undefined {
+  return avatars
+    .objectFor(id)!
+    .getObjectByName('WristR')!
+    .children.find((child) => child.getObjectByName('Lens'));
+}
+
+describe('PlayerAvatars holding a gadget', () => {
+  it('puts it in the right hand and brings the arm up; putting it back lowers it', async () => {
+    const avatars = new PlayerAvatars(new THREE.Scene(), riggedCharacters(), [], gadgets);
+    avatars.sync([player('a')], 'me', holding('camera'));
+    await flush();
+    await flush();
+    expect(gadgetIn(avatars, 'a')).toBeDefined();
+    const hanging = handOf(avatars, 'a');
+
+    for (let i = 0; i < 30; i += 1) avatars.update(1 / 30);
+    const held = handOf(avatars, 'a');
+    // The camera is held up in front, not hanging at the side.
+    expect(held.y - hanging.y).toBeGreaterThan(0.2);
+    expect(held.z - hanging.z).toBeGreaterThan(0.2);
+
+    avatars.sync([player('a')], 'me', holding('camera', null));
+    expect(gadgetIn(avatars, 'a')).toBeUndefined();
+    for (let i = 0; i < 60; i += 1) avatars.update(1 / 30);
+    expect(handOf(avatars, 'a').distanceTo(hanging)).toBeLessThan(0.01);
+  });
+
+  it("lights the flashlight's glass while it's on, and starts the beam there", async () => {
+    const avatars = new PlayerAvatars(new THREE.Scene(), riggedCharacters(), [], gadgets);
+    avatars.sync([player('a', { flashlightOn: true })], 'me', holding('flashlight'));
+    await flush();
+    await flush();
+    const lens = avatars.flashlightLensOf('a');
+    expect(lens?.name).toBe('Lens');
+    const glass = () => {
+      let found: THREE.MeshStandardMaterial | undefined;
+      gadgetIn(avatars, 'a')!.traverse((node) => {
+        if (node instanceof THREE.Mesh) {
+          found = (node.material as THREE.MeshStandardMaterial[]).find(
+            (material) => material.name === 'FlashlightLens',
+          );
+        }
+      });
+      return found!;
+    };
+    expect(glass().emissiveIntensity).toBeGreaterThan(0);
+    avatars.sync([player('a', { flashlightOn: false })], 'me', holding('flashlight'));
+    expect(glass().emissiveIntensity).toBe(0);
+    expect(avatars.flashlightLensOf('b')).toBeUndefined();
+  });
+
+  it('pops the camera flash when they take a photo, then lets it fade', async () => {
+    const avatars = new PlayerAvatars(new THREE.Scene(), riggedCharacters(), [], gadgets);
+    avatars.sync([player('a')], 'me', holding('camera'));
+    await flush();
+    await flush();
+    let flash: THREE.MeshStandardMaterial | undefined;
+    gadgetIn(avatars, 'a')!.traverse((node) => {
+      if (node instanceof THREE.Mesh) {
+        flash = (node.material as THREE.MeshStandardMaterial[]).find(
+          (m) => m.name === 'CameraFlash',
+        );
+      }
+    });
+    avatars.flashCamera('a');
+    avatars.update(0.02);
+    expect(flash!.emissiveIntensity).toBeGreaterThan(1);
+    avatars.update(1);
+    expect(flash!.emissiveIntensity).toBe(0);
+  });
+
+  it("fades a disconnected holder's gadget along with them", async () => {
+    const avatars = new PlayerAvatars(new THREE.Scene(), riggedCharacters(), [], gadgets);
+    avatars.sync([player('a')], 'me', holding('walkie'));
+    await flush();
+    await flush();
+    avatars.sync([player('a', { connected: false })], 'me', holding('walkie'));
+    gadgetIn(avatars, 'a')!.traverse((node) => {
+      if (node instanceof THREE.Mesh) {
+        for (const material of node.material as THREE.Material[]) {
+          expect(material.transparent).toBe(true);
+          expect(material.opacity).toBeLessThan(1);
+        }
+      }
+    });
   });
 });
 

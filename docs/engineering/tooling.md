@@ -28,6 +28,7 @@ Run from the repo root unless noted; each fans out to whichever workspaces defin
 | `npm run bundle -w server`, then `npm start -w server` | The production server: an esbuild bundle (`server/dist/index.js`) run with plain Node. Set `CLIENT_DIST=client/dist` (after `npm run build -w client`) to serve the built client from the same port. Env vars: [deployment.md](deployment.md) |
 | `npm run deploy` | Deploys the committed HEAD to the VPS (`scripts/deploy.mjs`; `npm run deploy -- <commit>` for a specific one). Works from PowerShell, cmd and Git Bash. See [deployment.md](deployment.md) |
 | `E2E_BASE_URL=<url> npx playwright test` | Runs the smoke tests against an already-running app (a local production build, or the live site) instead of starting the dev servers |
+| `blender -b --factory-startup --python blender/gadgets.py` | Rebuilds the four gadget models (`client/public/models/gadgets/`) in headless Blender (5.2 here, not on `PATH`: `"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"`). Add `-- --preview <dir>` to render a PNG of each instead of exporting |
 | `npm run load-test` | Six simulated players against a running server (`scripts/load-test.ts`): message sizes, per-player traffic, ack latency, server CPU |
 
 Scoped to one workspace: `npm run <script> -w server` (or `-w client`, `-w shared`).
