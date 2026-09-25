@@ -6,6 +6,54 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 (evening) — Deployed to the VPS as one sandboxed container; later ideas parked for discussion
+
+**Asked** (user): "lets do the hosting part first and note down the other stuff for later, but none of them should blindly be done later — its still in discussing phase … deploy the game under tabletop.murri.me … make sure to not destroy any existing stuff on my vps since there is critical stuff running". The one question asked (access) was answered "Open + upload limits".
+
+### What landed
+
+- **Later list parked** (`fb89e4f`). roadmap.md's "Later" is now explicitly *in discussion, not decided*: map presets, wall drawing, saving sessions, dev-tooling upgrades, tokens/minis, fog of war, an initiative tracker, a Safari TV check, mobile. None is to be built without the owner's go-ahead (also saved as a memory for future sessions).
+- **Production build and deployment** (`cfacd59`, merged `84ffb03`):
+  - The server can serve the built client from the same origin, with proper cache headers. The client uses its own origin in production builds.
+  - The server is bundled with esbuild.
+  - The Dockerfile has two stages: a build stage, then a runtime stage with production dependencies only and a healthcheck.
+  - `deploy/docker-compose.yml` sandboxes the container: memory/CPU/PID limits, a read-only filesystem, all capabilities dropped, capped logs.
+  - `scripts/deploy.sh` (`npm run deploy`): `git archive` over SSH, build, wait for healthy.
+- **Upload safeguards**, since the site is open (`uploadStorage.ts`):
+  - Uploads no live session uses are pruned after 24 h, and there's a 2 GB cap that evicts the oldest unused files first. A file in use, or younger than 10 minutes, is never deleted.
+  - Past the cap, uploads get a 507, and each IP gets at most 30 uploads per 10 minutes.
+- **The container runs as its own uid** (`8c6eb90`, `0a0e8b4`). The image's uid 1000 is an existing account on the VPS, so the game now runs as 10001, which owns the whole uploads tree.
+- **The e2e smoke tests can target any URL** (`E2E_BASE_URL`). They measure the room from a screenshot, so they also run against production builds.
+- Docs: new [engineering/deployment.md](engineering/deployment.md), plus a decision entry; tooling, architecture, roadmap, overview, README and CLAUDE.md updated.
+
+### On the VPS (only additive)
+
+- **Inspected read-only first:** Debian 12 with Docker Compose projects under `/srv/apps`, NPM on the shared `murrinet` network, and `/srv/manage.sh` plus a `/srv` git repo. It runs 10 containers, including critical ones.
+- **Created:** `/srv/apps/tabletop` (compose project `tabletop`, image `custom-tabletop:latest`, 198 MB). It's on `murrinet` and publishes no host ports. Nothing else was changed: not NPM's config, not `manage.sh`, not the `/srv` repo, not any other container.
+- **Verified:**
+  - The container is healthy, using ~26 MB of RAM.
+  - NPM reaches it: `curl http://tabletop:3001/health` from inside NPM returns ok.
+  - It runs as uid 10001 with a read-only root filesystem, and uploads are writable.
+  - All 10 other containers are still up.
+
+### Checked
+
+- 531 unit tests (47 shared, 271 server, 213 client), plus the new storage and deployment tests.
+- All 9 e2e runs (3 tests × Chromium/Firefox/WebKit) passed against the **local production build** served from one origin, and an upload through it worked.
+- Lint, format and build are clean.
+
+### Next session
+
+- **Waiting on the owner:** create the NPM proxy host for `tabletop.murri.me`. Settings are in [engineering/deployment.md](engineering/deployment.md): forward to `tabletop:3001`, websockets on, Let's Encrypt, Force SSL.
+- **Then:**
+  - Check that `https://tabletop.murri.me/health` answers.
+  - Run `E2E_BASE_URL=https://tabletop.murri.me npx playwright test`.
+  - Play a real session with two devices over the internet.
+- **Not pushed:** `main` is ahead of `origin/main` (`a596f30`) by the deployment commits, and pushing needs the owner's go-ahead. Deploying doesn't: `npm run deploy` ships local commits over SSH.
+- **Deployed revision:** `0a0e8b4` (`cat /srv/apps/tabletop/src/REVISION` on the VPS).
+
+---
+
 ## 2026-09-25 (later) — The plan: seated look-around, the cozy room and TV, M10, cross-browser tests, a polish pass
 
 **Asked** (user):

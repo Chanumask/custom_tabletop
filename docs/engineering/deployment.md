@@ -2,14 +2,16 @@
 
 ← [CLAUDE.md](../../CLAUDE.md) · [engineering index](README.md)
 
-The game runs at **https://tabletop.murri.me** on the owner's VPS (`ssh root@murri.me`, Debian 12, Docker Compose). The decision and its reasoning are in [decisions.md](../decisions.md), 2026-09-25 "Deployment".
+The game is served from **https://tabletop.murri.me** on the owner's VPS (`ssh root@murri.me`, Debian 12, Docker Compose). The decision and its reasoning are in [decisions.md](../decisions.md), 2026-09-25 "Deployment".
+
+**Status (2026-09-25):** the container is deployed and healthy (commit `0a0e8b4`), and Nginx Proxy Manager reaches it on `murrinet`. The NPM proxy host (below) is the owner's step and hasn't been created yet, so the URL doesn't answer until it is.
 
 ## How it's put together
 
 - **One container.** In production the Node server also serves the built client (`CLIENT_DIST`), so the page, `/uploads/*` and Socket.IO share one origin and one port (3001). The client talks to its own origin when built for production (`client/src/socket.ts`). In dev nothing changes: Vite on 5173, the server on 3001.
 - **Image** (`Dockerfile`, multi-stage):
   1. The build stage runs `npm ci`, builds the client, and bundles the server (`npm run bundle -w server`, esbuild; `shared/` is bundled in and the four runtime packages stay external).
-  2. The runtime stage is `node:24-alpine` with only the server's production dependencies, the bundle and `client/dist`, running as `node` with a `/health` healthcheck.
+  2. The runtime stage is `node:24-alpine` with only the server's production dependencies, the bundle and `client/dist`, with a `/health` healthcheck. The image's default user is `node`; on the VPS it runs as uid 10001 (next point).
 - **On the VPS** it follows the box's existing pattern: a compose project in `/srv/apps/tabletop/`, joined to the shared `murrinet` network. Nginx Proxy Manager (NPM) reaches it by service name as `http://tabletop:3001`, and no host port is published.
   ```
   /srv/apps/tabletop/
@@ -42,8 +44,8 @@ All unset in dev.
 ## Deploying
 
 ```bash
-scripts/deploy.sh            # deploys HEAD — committed state only
-scripts/deploy.sh <commit>   # or a specific commit
+npm run deploy               # = scripts/deploy.sh: deploys HEAD (committed state only)
+scripts/deploy.sh <commit>   # a specific commit — also how to roll back
 ```
 
 The script `git archive`s the commit's files over SSH, so **no push is needed** and exactly the tested commit goes out. It then swaps them into `src/`, runs `docker compose -p tabletop build` + `up -d`, and waits for the healthcheck. The first build takes a few minutes; later ones reuse the cached `npm ci` layer unless the lockfile changed. The script only touches `/srv/apps/tabletop` and the `tabletop` project.
@@ -54,7 +56,22 @@ Check a deploy against the live site with the cross-browser smoke tests:
 E2E_BASE_URL=https://tabletop.murri.me npx playwright test
 ```
 
-Useful on the VPS: `docker compose -p tabletop logs -f` and `docker compose -p tabletop ps` (both in `/srv/apps/tabletop`).
+## Operations
+
+Run these on the VPS, in `/srv/apps/tabletop`:
+
+| Task | Command |
+|---|---|
+| Which commit is running | `cat src/REVISION` |
+| Is it healthy | `docker compose -p tabletop ps` |
+| Logs | `docker compose -p tabletop logs -f` |
+| Stop | `docker compose -p tabletop down` |
+| Start again | `docker compose -p tabletop up -d` |
+| Upload usage | `du -sh uploads` |
+
+- **Rolling back:** run `scripts/deploy.sh <older-commit>` from your machine. It rebuilds that commit, so a known-good one is always one command away.
+- **A VPS reboot or Docker restart** brings the container back (`restart: unless-stopped`). Every table in progress is lost, because sessions live in memory; players just host again. Uploads survive on disk until the pruning rules remove them.
+- **Uploads aren't backed up**, and don't need to be: they're only reachable from live sessions.
 
 ## Nginx Proxy Manager proxy host (set up once, by the owner)
 
@@ -69,4 +86,4 @@ The subdomain already resolves: `*.murri.me` is a wildcard A record to the VPS.
 
 ## Not touched
 
-The rest of the VPS is left alone: the other compose projects, NPM's own config and data, `/srv/manage.sh` (it knows nothing about this app, so `./manage.sh all` doesn't touch it), and the `/srv` git repo. To stop the game: `cd /srv/apps/tabletop && docker compose -p tabletop down`.
+The rest of the VPS is left alone: the other compose projects, NPM's own config and data, `/srv/manage.sh` (it knows nothing about this app, so `./manage.sh all` doesn't touch it), and the `/srv` git repo. Removing the game entirely: `docker compose -p tabletop down`, then delete `/srv/apps/tabletop` and the `custom-tabletop` image. Delete the NPM proxy host too.

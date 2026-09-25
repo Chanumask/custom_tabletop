@@ -25,6 +25,9 @@ Run from the repo root unless noted; each fans out to whichever workspaces defin
 | `npm run format` / `npm run format:check` | Prettier, write or check-only |
 | `npm test` | Vitest, `run` mode, per workspace |
 | `npm run test:e2e` | Playwright cross-browser smoke tests (`e2e/`) in Chromium, Firefox and WebKit against the real app; starts the dev server + client itself, or reuses running ones. First time on a machine: `npx playwright install`. On Windows the Chromium project runs headless on the real GPU (`--use-angle=d3d11`) — SwiftShader is too slow for the room. Edge isn't a fixed project (not every machine has it); to include it, run with a throwaway config that spreads `playwright.config.ts` and adds `{ name: 'edge', use: { channel: 'msedge' } }` |
+| `npm run bundle -w server`, then `npm start -w server` | The production server: an esbuild bundle (`server/dist/index.js`) run with plain Node. Set `CLIENT_DIST=client/dist` (after `npm run build -w client`) to serve the built client from the same port. Env vars: [deployment.md](deployment.md) |
+| `npm run deploy` | Deploys the committed HEAD to the VPS (`scripts/deploy.sh`). See [deployment.md](deployment.md) |
+| `E2E_BASE_URL=<url> npx playwright test` | Runs the smoke tests against an already-running app (a local production build, or the live site) instead of starting the dev servers |
 | `npm run load-test` | Six simulated players against a running server (`scripts/load-test.ts`): message sizes, per-player traffic, ack latency, server CPU |
 
 Scoped to one workspace: `npm run <script> -w server` (or `-w client`, `-w shared`).
@@ -40,7 +43,7 @@ Scoped to one workspace: `npm run <script> -w server` (or `-w client`, `-w share
 
 ## Known accepted state
 
-`npm audit` reports vulnerabilities in `vite`/`esbuild`/`vitest`'s dev-server-only code paths (moderate-to-critical severity, but scoped to accepting arbitrary requests against a *local dev server* — not a production runtime risk for this project, which has no production build serving through Vite's dev server). Fixing requires major version bumps (`vite@8`, `vitest@5`) that are a breaking-change upgrade, out of scope for Milestone 1. Revisit before this ever gets deployed or exposed beyond localhost.
+`npm audit` reports vulnerabilities in `vite`/`esbuild`/`vitest`'s dev-server-only code paths (moderate-to-critical severity, but scoped to accepting arbitrary requests against a *local dev server* — not a production runtime risk for this project, which has no production build serving through Vite's dev server). Fixing requires major version bumps (`vite@8`, `vitest@5`) that are a breaking-change upgrade, out of scope for Milestone 1. **Re-checked at deployment (2026-09-25):** `npm audit --omit=dev` reports 0 vulnerabilities, and the deployed image contains only the server's production dependencies. It runs no Vite dev server, so these findings don't reach the live site. The upgrade is parked in roadmap.md's "Later — in discussion" list.
 
 ## Test discipline
 

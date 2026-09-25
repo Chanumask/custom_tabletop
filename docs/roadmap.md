@@ -119,6 +119,17 @@ Done 2026-09-25 (changelog: "The plan: seated look-around, the cozy room and TV,
 
 ---
 
+## Deployment (2026-09-25)
+
+- ✅ Production build: the server serves the built client from one origin, the server is bundled with esbuild, and there's a Docker image.
+- ✅ Upload safeguards for an open site: pruning, a 2 GB cap and a per-IP rate limit.
+- ✅ Deployed to the owner's VPS as a sandboxed compose project (`/srv/apps/tabletop`, `murrinet`), with `npm run deploy` for updates.
+- ⏳ The Nginx Proxy Manager proxy host for `tabletop.murri.me` (the owner's step, since it needs their NPM login). Then verify the live site with `E2E_BASE_URL=https://tabletop.murri.me npx playwright test`.
+
+Details: [engineering/deployment.md](engineering/deployment.md).
+
+---
+
 Later — **in discussion, not decided.** Each of these is an idea on the table, not a plan: talk it through with the user and get an explicit go-ahead (and a shape) before building any of it. Nothing here should be picked up "because it's next" (user, 2026-09-25).
 
 - **Map presets**: a handful of built-in map backgrounds to pick from, mirroring the soundboard's presets. 2026-09-24 user request. (The crop/zoom/pan fit it came with landed on 2026-09-25 as the map crop dialog.)

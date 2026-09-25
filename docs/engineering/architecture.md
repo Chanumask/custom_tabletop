@@ -118,6 +118,8 @@ Grundsätzlich soll die Anwendung nach folgendem Modell aufgebaut werden:
 
 Der Server verwaltet den gemeinsamen Zustand der Session und verteilt Änderungen an die verbundenen Clients.
 
+**As deployed (2026-09-25):** in production the same Node process also serves the built client. Browsers load the page, `/uploads/*` and Socket.IO from one origin (`https://tabletop.murri.me`), through the owner's Nginx Proxy Manager, which terminates TLS. In dev the client is still Vite on 5173, talking to the server on 3001. Details: [deployment.md](deployment.md).
+
 ---
 
 ## Rendering
