@@ -80,7 +80,11 @@ Everything is in [decisions.md](decisions.md), newest first.
   - a firefly bloomed past the glass;
   - the backwards frames.
 
-Nothing from this batch is pushed or deployed yet. The room model grew to 8.96 MB (from 8.86).
+The room model grew to 8.96 MB (from 8.86).
+
+### Deployed
+
+Pushed (`55c931a..36bc644`) and deployed at the owner's go-ahead. The container reported healthy on `36bc644`, the live bundle carries the new code and the new room model, and the smoke tests passed 3/3 in Chromium against https://tabletop.murri.me.
 
 ---
 
