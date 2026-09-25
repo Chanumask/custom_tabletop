@@ -1,6 +1,15 @@
 import { SOUNDBOARD_SLOT_COUNT } from '@custom-tabletop/shared';
 
 export const SOUNDBOARD_COLS = 4;
+
+/** Each wall button's enamel color, one per slot (not per assigned sound),
+ * so a button keeps its color whether or not it's filled — "top-left is the
+ * air horn" by spot. Ordered so neighbours differ. The Sound tab's little
+ * board shows the same colors. */
+export const SOUNDBOARD_JEWELS = [
+  0xb3243a, 0xd9861c, 0x1f9a5a, 0x2456b8, 0x7a3fb0, 0xe0b531, 0x2aa6a0, 0xc4502a, 0x2f3f9e,
+  0xd0527a, 0x8cbf3a, 0x8f1f2c, 0x4cb8c8, 0x9a55d0, 0xd4c23a, 0x3aa88a,
+];
 export const SOUNDBOARD_ROWS = SOUNDBOARD_SLOT_COUNT / SOUNDBOARD_COLS;
 
 /** How far apart each button sits on the wall panel, in metres — a button's

@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ChangeEvent,
+  type FormEvent,
+} from 'react';
 import {
   EMOTES,
   MAX_PLAYER_NAME_LENGTH,
@@ -27,6 +34,11 @@ import { useSettings } from './useSettings.js';
 import { formatKeyCode } from './keyLabel.js';
 import { hostLink } from './hostKeys.js';
 import { MOVEMENT_KEYS, RUN_KEYS } from './three/FirstPersonController.js';
+import { SOUNDBOARD_JEWELS } from './three/soundboardLayout.js';
+
+/** A wall button's enamel color as CSS (the Sound tab's little board). */
+const jewelHex = (index: number) =>
+  `#${(SOUNDBOARD_JEWELS[index] ?? 0x6a5a48).toString(16).padStart(6, '0')}`;
 import { MapIcon, DiceIcon, SoundIcon, PlayersIcon, SettingsIcon, HostIcon } from './icons.js';
 
 export interface SessionViewProps {
@@ -774,11 +786,13 @@ function SoundboardTab({
               key={index}
               type="button"
               className={`slot-cell${name ? ' filled' : ''}${selectedSlot === index ? ' selected' : ''}`}
+              style={{ '--jewel': jewelHex(index) } as CSSProperties}
               title={name ?? `Button ${index + 1} — empty`}
               disabled={!allowed}
               onClick={() => setSelectedSlot(selectedSlot === index ? null : index)}
             >
-              {name ?? '+'}
+              <span className="slot-jewel" aria-hidden="true" />
+              <span className="slot-name">{name ?? '+'}</span>
             </button>
           );
         })}

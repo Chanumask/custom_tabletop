@@ -23,6 +23,7 @@ import {
   playerColorHex,
   type SoundState,
   type PlayerEmoteRequest,
+  type SoundPlayRequest,
   type WhiteboardLine,
   EMOTES,
   WHITEBOARD_LINE_COUNT,
@@ -72,6 +73,7 @@ import {
   type RoomLamp,
 } from './RoomLamp.js';
 import { SoundboardWall } from './SoundboardWall.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { nearestInteractable, type Interactable } from './interaction.js';
 import { findStrokeNear } from './eraser.js';
 import { formatKeyCode } from '../keyLabel.js';
@@ -421,10 +423,12 @@ export function RoomView({
     onRollDiceRef.current = onRollDice;
   }, [onRollDice]);
 
-  // A new clip always starts on the TV.
+  // A new clip always starts on the TV — and its wall button pulses.
+  const startedClipSound = clipView?.clip.soundId;
   useEffect(() => {
     setClipOnCard(false);
-  }, [clipView?.clip.id]);
+    if (startedClipSound) soundboardWallRef.current?.pulse(startedClipSound);
+  }, [clipView?.clip.id, startedClipSound]);
 
   useEffect(() => {
     tvRef.current?.setPlaying(clipView !== null && !clipOnCard);
@@ -703,8 +707,13 @@ export function RoomView({
     socket.on(SocketEvent.DrawingUpdate, handleDrawingUpdate);
     socket.on(SocketEvent.DrawingEnd, handleDrawingEnd);
     socket.on(SocketEvent.DrawingDelete, handleDrawingDelete);
+    // Whoever plays a sound, its button on the wall sinks and flashes.
+    const handleSoundPlayed = (request: SoundPlayRequest) =>
+      soundboardWallRef.current?.pulse(request.soundId);
+    socket.on(SocketEvent.SoundPlay, handleSoundPlayed);
 
     let tableDrawing: TableDrawing | null = null;
+    let brassEnv: THREE.Texture | null = null;
     let chandelier: THREE.Object3D | null = null;
     // Everything a full table redraw should paint, read at paint time (see
     // TableCanvas.redraw) so strokes drawn while a map image loads survive.
@@ -792,7 +801,12 @@ export function RoomView({
           setTvElement(tv.element);
         }
 
-        const soundboardWall = new SoundboardWall(scene, 0);
+        // The board's brass needs something to reflect; the room has no
+        // environment map of its own (a room-wide one would relight it all).
+        const pmrem = new THREE.PMREMGenerator(renderer);
+        brassEnv = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+        pmrem.dispose();
+        const soundboardWall = new SoundboardWall(scene, 0, brassEnv);
         soundboardWall.sync(soundboardRef.current, soundboardSlotsRef.current);
         soundboardWallRef.current = soundboardWall;
 
@@ -1259,6 +1273,7 @@ export function RoomView({
           ambienceRef.current?.update(delta, timer.getElapsed());
           updateFireAudio?.(delta);
           avatarsRef.current?.update(delta);
+          soundboardWallRef.current?.update(delta);
           renderer.render(scene, camera);
           tvRef.current?.render(
             camera,
@@ -1400,6 +1415,7 @@ export function RoomView({
       socket.off(SocketEvent.DrawingUpdate, handleDrawingUpdate);
       socket.off(SocketEvent.DrawingEnd, handleDrawingEnd);
       socket.off(SocketEvent.DrawingDelete, handleDrawingDelete);
+      socket.off(SocketEvent.SoundPlay, handleSoundPlayed);
       if (handleResumeLook) {
         window.removeEventListener(RESUME_LOOK_EVENT, handleResumeLook);
       }
@@ -1431,6 +1447,7 @@ export function RoomView({
       }
       soundboardWallRef.current?.dispose();
       soundboardWallRef.current = null;
+      brassEnv?.dispose();
       whiteboardCanvasRef.current?.dispose();
       whiteboardCanvasRef.current = null;
       roomLightsRef.current = null;

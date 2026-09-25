@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { soundboardSlotOffset } from './soundboardLayout.js';
+import { SOUNDBOARD_SLOT_COUNT } from '@custom-tabletop/shared';
+import { SOUNDBOARD_COLS, SOUNDBOARD_JEWELS, soundboardSlotOffset } from './soundboardLayout.js';
 
 describe('soundboardSlotOffset', () => {
   it('returns null for an out-of-range or non-integer index', () => {
@@ -34,5 +35,17 @@ describe('soundboardSlotOffset', () => {
     const offsets = Array.from({ length: 16 }, (_, i) => soundboardSlotOffset(i));
     const keys = new Set(offsets.map((o) => `${o!.y.toFixed(3)}|${o!.z.toFixed(3)}`));
     expect(keys.size).toBe(16);
+  });
+
+  it('has a jewel color for every slot, no two neighbours alike', () => {
+    expect(SOUNDBOARD_JEWELS).toHaveLength(SOUNDBOARD_SLOT_COUNT);
+    for (let i = 0; i < SOUNDBOARD_SLOT_COUNT; i += 1) {
+      if (i % SOUNDBOARD_COLS !== SOUNDBOARD_COLS - 1) {
+        expect(SOUNDBOARD_JEWELS[i]).not.toBe(SOUNDBOARD_JEWELS[i + 1]);
+      }
+      if (i + SOUNDBOARD_COLS < SOUNDBOARD_SLOT_COUNT) {
+        expect(SOUNDBOARD_JEWELS[i]).not.toBe(SOUNDBOARD_JEWELS[i + SOUNDBOARD_COLS]);
+      }
+    }
   });
 });
