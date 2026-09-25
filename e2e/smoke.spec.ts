@@ -32,11 +32,16 @@ async function join(page: Page, name: string, code: string) {
   await page.getByRole('button', { name: 'Join session' }).click();
 }
 
+/** Waits until the room's model has loaded and the room is showing. */
+async function roomLoaded(page: Page) {
+  await expect(page.locator('.room-view canvas')).toBeVisible();
+  await expect(page.locator('.room-loading')).toHaveCount(0, { timeout: 60_000 });
+}
+
 /** Waits for the room to finish loading, then measures how bright a
  * freshly rendered frame is — a black frame means nothing rendered. */
 async function roomBrightness(page: Page): Promise<number> {
-  await expect(page.locator('.room-view canvas')).toBeVisible();
-  await expect(page.locator('.room-loading')).toHaveCount(0, { timeout: 60_000 });
+  await roomLoaded(page);
   return page.evaluate(() => {
     const hook = (
       window as unknown as {
@@ -97,6 +102,30 @@ test('two players see each other and can chat', async ({ browser, browserName })
   await alice.getByLabel('Chat message').fill('/roll 2d6+3');
   await alice.keyboard.press('Enter');
   await expect(bob.locator('.chat-line', { hasText: 'Alice rolled 2d6+3' })).toBeVisible();
+
+  expect(errors).toEqual([]);
+});
+
+test('a roll lands for everyone, with sound, without errors', async ({ browser, browserName }) => {
+  const code = codeFor(browserName, 'D');
+  const alice = await (await browser.newContext()).newPage();
+  const bob = await (await browser.newContext()).newPage();
+  const errors = [...collectErrors(alice), ...collectErrors(bob)];
+
+  await host(alice, 'Alice', code);
+  await roomLoaded(alice);
+  await join(bob, 'Bob', code);
+  await roomLoaded(bob);
+
+  // Spawning and rolling plays the dice animation and its synthesized
+  // clatter (Web Audio) on both sides.
+  await alice.getByRole('tab', { name: 'Dice' }).click();
+  await alice.getByTitle('Add a d20').click();
+  await alice.getByTitle('Add a d6').click();
+  await alice.getByRole('button', { name: /Roll my dice/ }).click();
+  await expect(bob.locator('.chat-line', { hasText: /Alice rolled/ })).toBeVisible();
+  await expect(alice.locator('.dice-list .dice-result').first()).not.toHaveText('–');
+  await alice.waitForTimeout(1500); // let the tumble and its sound play out
 
   expect(errors).toEqual([]);
 });
