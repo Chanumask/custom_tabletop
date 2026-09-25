@@ -1910,7 +1910,8 @@ button.primary {
 /* 0), so any component's own button style above still wins.           */
 /* ------------------------------------------------------------------ */
 
-.game-shell {
+/* On :root, not .game-shell: the dialogs are portaled to <body>. */
+:root {
   --ink: #f3e6d3;
   --ink-muted: rgba(243, 230, 211, 0.62);
   --edge: rgba(243, 230, 211, 0.14);

@@ -309,8 +309,11 @@ export class Ambience {
       const materials = Array.isArray(node.material) ? node.material : [node.material];
       materials.forEach((material) => {
         if (material instanceof THREE.MeshStandardMaterial && /lamp/i.test(material.name)) {
-          material.emissive.setRGB(1, 0.72, 0.42);
-          material.emissiveIntensity = 2.2;
+          // A dark body under a warm glow: lit by the room's lamps as well,
+          // a white body blew out to flat white patches under the lantern.
+          material.color.setRGB(0.22, 0.14, 0.07);
+          material.emissive.setRGB(1, 0.62, 0.3);
+          material.emissiveIntensity = 1.8;
         }
       });
     });

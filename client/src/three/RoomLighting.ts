@@ -50,8 +50,10 @@ export function addRoomLighting(scene: THREE.Scene, layout: RoomLayout): RoomLig
   key.target.position.set(table.center.x, 0, table.center.z);
   scene.add(key.target);
   add(key);
+  // Hung well below the lantern: a few centimetres under it, inverse-square
+  // falloff blew its bottom ironwork out to flat white patches.
   const bounce = new THREE.PointLight(0xffc488, 16, 11, 2);
-  bounce.position.set(table.center.x, CHANDELIER_BULB_HEIGHT - 0.25, table.center.z);
+  bounce.position.set(table.center.x, CHANDELIER_BULB_HEIGHT - 0.6, table.center.z);
   add(bounce);
 
   const insetX = 1.6;
