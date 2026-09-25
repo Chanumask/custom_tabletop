@@ -56,6 +56,7 @@ import {
   type ItemDropRequest,
   type PhotoCaptureRequest,
   type FlashlightToggleRequest,
+  type WalkieTransmitRequest,
   type Vector3,
   type Point2D,
 } from '@custom-tabletop/shared';
@@ -662,6 +663,23 @@ export function parseFlashlightToggleRequest(payload: unknown): FlashlightToggle
   }
 
   return { sessionId: sessionId.trim(), playerId: playerId.trim() };
+}
+
+export function parseWalkieTransmitRequest(payload: unknown): WalkieTransmitRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+
+  const { sessionId, playerId, text } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || typeof text !== 'string') {
+    return null;
+  }
+  const cleaned = withoutControlChars(text).trim();
+  if (!cleaned || cleaned.length > MAX_CHAT_LENGTH) {
+    return null;
+  }
+
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), text: cleaned };
 }
 
 export function parsePlayerUnmuteRequest(payload: unknown): PlayerUnmuteRequest | null {

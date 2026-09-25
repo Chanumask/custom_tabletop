@@ -89,6 +89,7 @@ import { formatKeyCode } from '../keyLabel.js';
 import { isInteractKeyPress } from '../keyboard.js';
 import { SoundboardAssignMenu } from '../SoundboardAssignMenu.js';
 import { InventoryDialog } from '../InventoryDialog.js';
+import { WalkieDialog } from '../WalkieDialog.js';
 import { HeldItems } from '../HeldItems.js';
 import { createPinboard, syncPinboard, disposePinboard, type Pinboard } from './Pinboard.js';
 import { uploadImage } from '../uploads.js';
@@ -230,6 +231,10 @@ export interface RoomViewProps {
   /** Toggles the local player's flashlight (the gadgets inventory, phase 3)
    * — refused server-side unless they currently hold it. */
   onToggleFlashlight: () => void;
+  /** Sends a private walkie-talkie message (the gadgets inventory, phase 4)
+   * — refused server-side unless the requester holds one and someone else
+   * holds the other. */
+  onTransmitWalkie: (text: string) => void;
   /** Registers a newly-uploaded/linked sound into the shared soundboard —
    * shared with the 2D panel's own upload form (SessionView.tsx), which
    * never passes `slotIndex`. Passing one (from the wall board's assign
@@ -362,6 +367,7 @@ export function RoomView({
   photos,
   onCapturePhoto,
   onToggleFlashlight,
+  onTransmitWalkie,
   onUploadSound,
   onAssignSlot,
   canDraw,
@@ -487,6 +493,12 @@ export function RoomView({
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const inventoryOpenRef = useRef(false);
   const closeInventory = useCallback(() => setInventoryOpen(false), []);
+  // The walkie-talkie's message dialog (gadgets phase 4) — mirrors the
+  // same open-flag + ref pattern.
+  const [walkieOpen, setWalkieOpen] = useState(false);
+  const walkieOpenRef = useRef(false);
+  const closeWalkie = useCallback(() => setWalkieOpen(false), []);
+  const onTransmitWalkieRef = useRef(onTransmitWalkie);
   const whiteboardRef = useRef<WhiteboardLine[]>(whiteboard);
   const whiteboardCanvasRef = useRef<WhiteboardCanvas | null>(null);
   const whiteboardTargetedRef = useRef(false);
@@ -610,6 +622,14 @@ export function RoomView({
   useEffect(() => {
     inventoryOpenRef.current = inventoryOpen;
   }, [inventoryOpen]);
+
+  useEffect(() => {
+    walkieOpenRef.current = walkieOpen;
+  }, [walkieOpen]);
+
+  useEffect(() => {
+    onTransmitWalkieRef.current = onTransmitWalkie;
+  }, [onTransmitWalkie]);
 
   // Re-ink when the lines change *or* when an author changes color.
   useEffect(() => {
@@ -877,6 +897,7 @@ export function RoomView({
     let handleEmoteKey: ((event: KeyboardEvent) => void) | null = null;
     let handleViewKey: ((event: KeyboardEvent) => void) | null = null;
     let handleFlashlightKey: ((event: KeyboardEvent) => void) | null = null;
+    let handleWalkieKey: ((event: KeyboardEvent) => void) | null = null;
     let fireAudioRef: FireAmbience | null = null;
     let startFireAudio: (() => void) | null = null;
     let startNight: (() => void) | null = null;
@@ -1496,6 +1517,37 @@ export function RoomView({
         };
         document.addEventListener('keydown', handleFlashlightKey);
 
+        // R: open the walkie-talkie's message dialog (gadgets phase 4) — a
+        // fixed key, separate from both E (the camera) and F (the
+        // flashlight) so holding several gadgets at once never creates a
+        // key conflict. A silent no-op without a walkie held, or while
+        // another dialog already owns typing.
+        handleWalkieKey = (event: KeyboardEvent) => {
+          if (event.code !== 'KeyR' || event.repeat || isTypingTarget(event.target)) {
+            return;
+          }
+          if (
+            assignSlotIndexRef.current !== null ||
+            whiteboardOpenRef.current ||
+            inventoryOpenRef.current ||
+            walkieOpenRef.current
+          ) {
+            return;
+          }
+          if (
+            inventoryRef.current.some((item) => item.kind === 'walkie' && item.heldBy === playerId)
+          ) {
+            // Consumes the keystroke — without this, the same "r" that
+            // opens the dialog gets typed into its now-focused input (the
+            // same stray-key issue Milestone 8's table sit-down fixed for
+            // E).
+            event.preventDefault();
+            controller.controls.unlock();
+            setWalkieOpen(true);
+          }
+        };
+        document.addEventListener('keydown', handleWalkieKey);
+
         // Chat was opened from a walking view: sending (or Esc) hands the
         // mouse straight back to looking around (ChatPanel.tsx).
         handleResumeLook = () => {
@@ -1720,6 +1772,9 @@ export function RoomView({
       if (handleFlashlightKey) {
         document.removeEventListener('keydown', handleFlashlightKey);
       }
+      if (handleWalkieKey) {
+        document.removeEventListener('keydown', handleWalkieKey);
+      }
       cancelAnimationFrame(animationFrameId);
       timer.dispose();
       controllerRef.current?.dispose();
@@ -1828,7 +1883,8 @@ export function RoomView({
         seatedView !== 'table' &&
         assignSlotIndex === null &&
         !whiteboardOpen &&
-        !inventoryOpen && <div className="crosshair" />}
+        !inventoryOpen &&
+        !walkieOpen && <div className="crosshair" />}
       {cameraFlash && <div className="camera-flash" />}
       <HeldItems
         items={inventory.filter((item) => item.heldBy === playerId)}
@@ -1841,6 +1897,7 @@ export function RoomView({
           assignSlotIndex === null &&
           !whiteboardOpen &&
           !inventoryOpen &&
+          !walkieOpen &&
           // Seated in the chair view, the card below already says it.
           !(seated && !locked && seatedView !== 'table') && (
             <div className="interaction-prompt">{interactionPrompt}</div>
@@ -1849,7 +1906,8 @@ export function RoomView({
           seatedView !== 'table' &&
           assignSlotIndex === null &&
           !whiteboardOpen &&
-          !inventoryOpen && (
+          !inventoryOpen &&
+          !walkieOpen && (
             <button
               type="button"
               className="room-view-overlay"
@@ -1923,6 +1981,9 @@ export function RoomView({
           onDrop={(itemId) => onDropItem(itemId)}
           onClose={closeInventory}
         />
+      )}
+      {walkieOpen && (
+        <WalkieDialog onSend={(text) => onTransmitWalkieRef.current(text)} onClose={closeWalkie} />
       )}
       {seated && (
         <div className="drawing-toolbar">

@@ -1005,6 +1005,39 @@ export class SessionStore {
     return { ok: true, state };
   }
 
+  /** Not host-gated — a player can only ever send from their own held
+   * walkie-talkie (gadgets phase 4). Refused unless someone else currently
+   * holds the other one; the resulting log entry reaches only the two of
+   * them (privacy.ts, the same mechanism a secret dice roll's `visibleTo`
+   * uses — never a targeted socket emit). */
+  transmitOnWalkie(sessionId: string, playerId: string, text: string): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    const author = state?.players.find((player) => player.id === playerId);
+    if (!state || !author) {
+      return { ok: false, error: 'Player not found.' };
+    }
+    const holdsWalkie = state.inventory.some(
+      (item) => item.kind === 'walkie' && item.heldBy === playerId,
+    );
+    if (!holdsWalkie) {
+      return { ok: false, error: 'You need a walkie-talkie.' };
+    }
+    const other = state.inventory.find(
+      (item) => item.kind === 'walkie' && item.heldBy !== null && item.heldBy !== playerId,
+    );
+    if (!other) {
+      return { ok: false, error: 'Nobody else is on the radio.' };
+    }
+    state.log = appendLogEntry(state.log, {
+      ...stamp(),
+      kind: 'radio',
+      ...authorOf(author),
+      text,
+      visibleTo: [playerId, other.heldBy!],
+    });
+    return { ok: true, state };
+  }
+
   /** Registers an already-uploaded photo (gadgets phase 2's camera) and
    * pins it to the wall board — refused unless the requester currently
    * holds the camera. Always pinned, oldest-first: once the board is full

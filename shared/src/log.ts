@@ -45,7 +45,18 @@ export type LogEntry =
       /** A secret roll: only this player sees the line (secret dice). */
       visibleTo?: string;
     } & LogAuthor)
-  | { id: string; at: number; kind: 'system'; text: string };
+  | { id: string; at: number; kind: 'system'; text: string }
+  | ({
+      id: string;
+      at: number;
+      kind: 'radio';
+      text: string;
+      /** The two walkie-talkie holders this reaches (gadgets phase 4) —
+       * always exactly the sender and the other current holder; nobody
+       * else's client ever sees this entry (privacy.ts, the same
+       * mechanism a secret roll's single-player `visibleTo` above uses). */
+      visibleTo: string[];
+    } & LogAuthor);
 
 /** chat:send — a line of chat, or a typed roll (`/roll 2d6+3`, `/r d20`). */
 export interface ChatSendRequest {

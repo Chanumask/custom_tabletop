@@ -201,6 +201,14 @@ function LogLine({
       </>
     );
   }
+  if (entry.kind === 'radio') {
+    return (
+      <>
+        <span aria-hidden="true">📻 </span>
+        {name} <span className="chat-text">{entry.text}</span>
+      </>
+    );
+  }
   const flavor = rollFlavor(entry);
   const single = entry.dice.length === 1 && !entry.modifier;
   return (

@@ -6,6 +6,31 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-25 (gadgets phase 4) — The walkie-talkies
+
+### What landed
+
+- **Reused the secret-dice privacy mechanism** (`server/src/privacy.ts`'s `viewFor`/`hasPrivate`) instead of building a targeted-emit system: a radio message is just a new `LogEntry` kind (`'radio'`, with `visibleTo: string[]` instead of secret dice's single-player `visibleTo: string`), appended to `state.log` and sent through the exact same `broadcastPatch(['log'])` path everything else uses. `viewFor` already strips log entries the viewer isn't allowed to see before any patch or snapshot goes out — extending it to check the new kind was the entire client-facing privacy work; there's no separate "only send to these two sockets" code to get wrong.
+- **`shared`**: `log.ts` gained the `'radio'` `LogEntry` variant. New `walkie.ts` holds `WalkieTransmitRequest`/`Response`. New `walkie:transmit` event.
+- **`server`**: `SessionStore.transmitOnWalkie` — refused unless the requester holds a walkie *and* someone else currently holds the other one ("Nobody else is on the radio." otherwise); the log entry names both current holders. `privacy.ts` extended as above.
+- **`client`**: a fixed **R** key (holding a walkie, and nothing else already owns typing) opens `WalkieDialog.tsx`, a small dialog to type and send. Radio lines render in the existing `ChatPanel` (a 📻 tag ahead of the name) — since the server never sends a client a radio entry it isn't part of, there's no extra filtering needed there either. No speech bubble for a radio message (unlike chat) — that's a visible-to-everyone-nearby 3D effect, which would leak the "private" part.
+
+### A bug caught live, not by review
+
+Pressing R to open the dialog typed a literal "r" into it — the same stray-keystroke issue Milestone 8 hit for E (see decisions.md). `handleWalkieKey` was missing the `event.preventDefault()` that `handleInteractKey` already has for exactly this reason. Fixed; reverified with two real browser tabs.
+
+### Checked
+
+- New tests: `SessionStore` unit tests (refuses without holding one, refuses alone, logs an entry naming both holders), and a socket-level `walkie.test.ts` proving the private-channel property directly — a third player at the same table, holding nothing, receives *nothing* (checked via `onAny` on their socket, not just "the UI doesn't show it"), and a late joiner's initial snapshot doesn't carry it either.
+- Full `sanity-check` (lint/format/build/test): 649 tests (47 shared, 356 server, 246 client), all clean.
+- **Live browser verification with two real tabs/players** (not just one tab and a simulated second): both took a walkie, one transmitted, the other's chat feed showed the line live with the radio tag. Caught and fixed the stray-"r" bug in this pass.
+
+### Next session
+
+Phase 5 (the calculator) still to build — the last gadget in the plan.
+
+---
+
 ## 2026-09-25 (gadgets phase 3) — The flashlight
 
 ### What landed

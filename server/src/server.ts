@@ -45,6 +45,7 @@ import {
   type ItemDropResponse,
   type PhotoCaptureResponse,
   type FlashlightToggleResponse,
+  type WalkieTransmitResponse,
   type WhiteboardWriteResponse,
   WHITEBOARD_LINE_COUNT,
   WHITEBOARD_MAX_LINE_LENGTH,
@@ -92,6 +93,7 @@ import {
   parseItemDropRequest,
   parsePhotoCaptureRequest,
   parseFlashlightToggleRequest,
+  parseWalkieTransmitRequest,
   parseWhiteboardWriteRequest,
 } from './validation.js';
 import { registerUploadRoutes } from './uploads.js';
@@ -1470,6 +1472,32 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         ack?.(result);
         if (result.ok) {
           broadcastPatch(request.sessionId, result.state, ['players']);
+        }
+      },
+    );
+
+    // The walkie-talkies (gadgets phase 4) — not host-gated, refused
+    // server-side unless the requester holds one and someone else holds
+    // the other. `own()` filters the ack itself the same way `dice:roll`
+    // does for a secret roll; `broadcastPatch`'s own privacy check (it
+    // touches `log`) sends everyone else a view with the entry stripped.
+    socket.on(
+      SocketEvent.WalkieTransmit,
+      (payload: unknown, ack?: (response: WalkieTransmitResponse) => void) => {
+        const request = parseWalkieTransmitRequest(payload);
+        if (!request) {
+          ack?.({ ok: false, error: 'sessionId, playerId, and text are required.' });
+          return;
+        }
+        if (!actsAs(request.sessionId, request.playerId)) {
+          ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
+          return;
+        }
+
+        const result = sessions.transmitOnWalkie(request.sessionId, request.playerId, request.text);
+        ack?.(own(result));
+        if (result.ok) {
+          broadcastPatch(request.sessionId, result.state, ['log']);
         }
       },
     );

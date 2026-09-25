@@ -485,6 +485,9 @@ export function App() {
   const handleToggleFlashlight = () =>
     sendAction(SocketEvent.FlashlightToggle, {}, "Couldn't toggle the flashlight");
 
+  const handleTransmitWalkie = (text: string) =>
+    sendAction(SocketEvent.WalkieTransmit, { text }, "Couldn't send that over the radio");
+
   const handleMutePlayer = (targetPlayerId: string) =>
     sendAction(SocketEvent.PlayerMute, { targetPlayerId }, 'Failed to mute player');
 
@@ -657,6 +660,7 @@ export function App() {
             photos={gameState.photos}
             onCapturePhoto={handleCapturePhoto}
             onToggleFlashlight={handleToggleFlashlight}
+            onTransmitWalkie={handleTransmitWalkie}
             onUploadSound={handleUploadSound}
             onAssignSlot={handleAssignSlot}
             theme={gameState.theme ?? 'classic'}

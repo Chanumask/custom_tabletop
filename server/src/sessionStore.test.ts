@@ -769,3 +769,44 @@ describe('SessionStore flashlight (gadgets phase 3)', () => {
     expect(result.state.players.find((p) => p.id === 'p1')?.flashlightOn).toBe(false);
   });
 });
+
+describe('SessionStore walkie-talkies (gadgets phase 4)', () => {
+  it('refuses to transmit without holding a walkie', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    expect(store.transmitOnWalkie('abc', 'p1', 'hello')).toEqual({
+      ok: false,
+      error: 'You need a walkie-talkie.',
+    });
+  });
+
+  it('refuses to transmit when nobody else holds the other one', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.takeItem('abc', 'p1', 'walkie-1');
+    expect(store.transmitOnWalkie('abc', 'p1', 'hello')).toEqual({
+      ok: false,
+      error: 'Nobody else is on the radio.',
+    });
+  });
+
+  it('logs a radio entry visible only to the two current holders', () => {
+    const store = new SessionStore();
+    store.join('abc', 'p1', 'Alice');
+    store.join('abc', 'p2', 'Bob');
+    store.join('abc', 'p3', 'Carol');
+    store.takeItem('abc', 'p1', 'walkie-1');
+    store.takeItem('abc', 'p2', 'walkie-2');
+
+    const result = store.transmitOnWalkie('abc', 'p1', 'do you copy');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const entry = result.state.log.at(-1);
+    expect(entry).toMatchObject({
+      kind: 'radio',
+      text: 'do you copy',
+      playerId: 'p1',
+      visibleTo: ['p1', 'p2'],
+    });
+  });
+});

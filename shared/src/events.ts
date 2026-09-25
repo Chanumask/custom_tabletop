@@ -84,6 +84,9 @@ export const SocketEvent = {
   PhotoCapture: 'photo:capture',
   /** The flashlight (gadgets phase 3) — toggle it on/off. */
   FlashlightToggle: 'flashlight:toggle',
+  /** The walkie-talkies (gadgets phase 4) — a private message between the
+   * two current holders. */
+  WalkieTransmit: 'walkie:transmit',
 
   /** Save the whiteboard's lines (whiteboard.ts). */
   WhiteboardWrite: 'whiteboard:write',
