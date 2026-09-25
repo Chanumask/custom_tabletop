@@ -16,6 +16,8 @@ export interface ClientSettings {
   interactKey: string;
   /** The fireplace's crackle (fireAmbience.ts) — on by default. */
   fireSound: boolean;
+  /** The night outside through the windows (nightAmbience.ts) — on by default. */
+  nightSounds: boolean;
   /** The session menu folded down to its header, leaving the room clear. */
   menuCollapsed: boolean;
 }
@@ -24,6 +26,7 @@ export const DEFAULT_SETTINGS: ClientSettings = {
   masterVolume: 1,
   interactKey: 'KeyE',
   fireSound: true,
+  nightSounds: true,
   menuCollapsed: false,
 };
 

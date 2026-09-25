@@ -60,6 +60,7 @@ import { OutsideWorld } from './outside/OutsideWorld.js';
 import { HalloweenDecor } from './HalloweenDecor.js';
 import { hangPaintings } from './paintings.js';
 import { FireAmbience } from '../fireAmbience.js';
+import { NightAmbience } from '../nightAmbience.js';
 import { TV_PLAYER_HEIGHT, TV_PLAYER_WIDTH, TvScreen } from './TvScreen.js';
 import { ClipControls, YouTubeClip, YouTubeEmbed, type ClipView } from '../YouTubeClip.js';
 import { createPortal } from 'react-dom';
@@ -223,6 +224,8 @@ export interface RoomViewProps {
   onRollDice: (diceIds: string[]) => void;
   /** Whether to play the fireplace's crackle (a client setting). */
   fireSound: boolean;
+  /** Whether this player hears the night through the windows. */
+  nightSounds: boolean;
   /** The YouTube clip everyone is watching (on the room's TV), if any. */
   clipView: ClipView | null;
   /** The session log: new chat lines and typed rolls pop up as speech
@@ -320,6 +323,7 @@ export function RoomView({
   onRollDice,
   log,
   fireSound,
+  nightSounds,
   clipView,
 }: RoomViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -337,6 +341,7 @@ export function RoomView({
   useEffect(() => {
     themeRef.current = theme;
     outsideRef.current?.setTheme(theme);
+    nightRef.current?.setTheme(theme);
     decorRef.current?.setVisible(theme === 'halloween');
     ambienceRef.current?.setTheme(theme);
   }, [theme]);
@@ -381,6 +386,9 @@ export function RoomView({
   const ambienceRef = useRef<Ambience | null>(null);
   const fireSoundRef = useRef(fireSound);
   fireSoundRef.current = fireSound;
+  const nightSoundsRef = useRef(nightSounds);
+  nightSoundsRef.current = nightSounds;
+  const nightRef = useRef<NightAmbience | null>(null);
   // The console TV (TvScreen.ts): where shared YouTube clips play, unless a
   // player pops the clip out into the corner card.
   const tvRef = useRef<TvScreen | null>(null);
@@ -774,6 +782,8 @@ export function RoomView({
     let handleViewKey: ((event: KeyboardEvent) => void) | null = null;
     let fireAudioRef: FireAmbience | null = null;
     let startFireAudio: (() => void) | null = null;
+    let startNight: (() => void) | null = null;
+    let updateNight: ((dt: number) => void) | null = null;
     let updateFireAudio: ((dt: number) => void) | null = null;
     let handleResumeLook: (() => void) | null = null;
 
@@ -821,6 +831,27 @@ export function RoomView({
 
         // The fire's crackle: needs a user gesture to start (browser audio
         // policy) — the first click or key press in the room does it.
+        // The night outside, loudest by a window (nightAmbience.ts).
+        const night = new NightAmbience();
+        night.setTheme(themeRef.current);
+        nightRef.current = night;
+        const windowSpots = room.windowViews.map((pane) =>
+          new THREE.Box3().setFromObject(pane).getCenter(new THREE.Vector3()),
+        );
+        startNight = () => night.start();
+        document.addEventListener('pointerdown', startNight);
+        document.addEventListener('keydown', startNight);
+        updateNight = (dt: number) => {
+          let nearest = Infinity;
+          for (const spot of windowSpots) {
+            nearest = Math.min(
+              nearest,
+              Math.hypot(camera.position.x - spot.x, camera.position.z - spot.z),
+            );
+          }
+          night.update(dt, nearest, nightSoundsRef.current);
+        };
+
         const fireSpot = room.fireSpot;
         if (fireSpot) {
           const fireAudio = new FireAmbience();
@@ -1322,6 +1353,7 @@ export function RoomView({
           tablePings.update(delta);
           ambienceRef.current?.update(delta, timer.getElapsed());
           updateFireAudio?.(delta);
+          updateNight?.(delta);
           avatarsRef.current?.update(delta);
           soundboardWallRef.current?.update(delta);
           decorRef.current?.update(delta, timer.getElapsed());
@@ -1518,6 +1550,12 @@ export function RoomView({
         document.removeEventListener('keydown', startFireAudio);
       }
       fireAudioRef?.dispose();
+      if (startNight) {
+        document.removeEventListener('pointerdown', startNight);
+        document.removeEventListener('keydown', startNight);
+      }
+      nightRef.current?.dispose();
+      nightRef.current = null;
       setTvElement(null);
       renderer.dispose();
       if (renderer.domElement.parentNode === container) {

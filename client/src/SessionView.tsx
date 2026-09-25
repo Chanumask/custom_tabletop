@@ -1268,6 +1268,17 @@ function SettingsTab() {
           onChange={(event) => updateSettings({ fireSound: event.target.checked })}
         />
       </label>
+
+      <label className="settings-row">
+        <span>Night sounds</span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="switch"
+          checked={settings.nightSounds}
+          onChange={(event) => updateSettings({ nightSounds: event.target.checked })}
+        />
+      </label>
     </div>
   );
 }

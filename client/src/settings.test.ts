@@ -20,12 +20,14 @@ describe('loadSettings', () => {
       masterVolume: 0.4,
       interactKey: 'KeyF',
       fireSound: false,
+      nightSounds: false,
       menuCollapsed: true,
     });
     expect(loadSettings(storage)).toEqual({
       masterVolume: 0.4,
       interactKey: 'KeyF',
       fireSound: false,
+      nightSounds: false,
       menuCollapsed: true,
     });
   });
