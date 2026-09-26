@@ -238,3 +238,61 @@ export function playSwitchClick(place: Placement): void {
   burst(ctx, out, at, 'bandpass', 3400, 4, 0.12, 0.018);
   burst(ctx, out, at + 0.012, 'bandpass', 1800, 3, 0.06, 0.03);
 }
+
+/** A log dropped on the fire: a wooden clunk, the flames taking it with a
+ * rush, and a burst of crackles. */
+export function playLogOnFire(place: Placement): void {
+  const v = voice('fire', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.02;
+  thump(ctx, out, at, 130, 60, 0.35, 0.2);
+  burst(ctx, out, at, 'lowpass', 600, 0.7, 0.2, 0.15);
+  // The rush of air as it catches: a slow swell of low noise.
+  const source = ctx.createBufferSource();
+  source.buffer = noise(ctx);
+  source.loop = true;
+  const low = ctx.createBiquadFilter();
+  low.type = 'lowpass';
+  low.frequency.setValueAtTime(300, at + 0.2);
+  low.frequency.linearRampToValueAtTime(900, at + 1.1);
+  const swell = ctx.createGain();
+  swell.gain.setValueAtTime(0.0001, at + 0.2);
+  swell.gain.exponentialRampToValueAtTime(0.16, at + 0.9);
+  swell.gain.exponentialRampToValueAtTime(0.0001, at + 2.4);
+  source.connect(low).connect(swell).connect(out);
+  source.start(at + 0.2);
+  source.stop(at + 2.5);
+  for (let i = 0; i < 9; i++) {
+    burst(
+      ctx,
+      out,
+      at + 0.3 + Math.random() * 1.6,
+      'bandpass',
+      900 + Math.random() * 3000,
+      2.5,
+      0.1 + Math.random() * 0.12,
+      0.03 + Math.random() * 0.04,
+    );
+  }
+}
+
+/** Blowing a candle out: a short breath. */
+export function playBlowOut(place: Placement): void {
+  const v = voice('room', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.01;
+  burst(ctx, out, at, 'bandpass', 1500, 0.8, 0.14, 0.32);
+  burst(ctx, out, at, 'lowpass', 500, 0.7, 0.06, 0.25);
+}
+
+/** Lighting a candle: a match struck along the box, then it flares. */
+export function playMatchStrike(place: Placement): void {
+  const v = voice('room', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.01;
+  burst(ctx, out, at, 'highpass', 2600, 0.7, 0.12, 0.12);
+  burst(ctx, out, at + 0.1, 'bandpass', 900, 0.9, 0.12, 0.35);
+}

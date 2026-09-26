@@ -1369,6 +1369,12 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           case 'lamp':
             result = sessions.setReadingLamp(request.sessionId, request.on);
             break;
+          case 'hearth':
+            result = sessions.stokeFire(request.sessionId);
+            break;
+          case 'candles':
+            result = sessions.setCandles(request.sessionId, request.target, request.on);
+            break;
           case 'table':
             result =
               request.seated === undefined

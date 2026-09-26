@@ -31,6 +31,12 @@ export class FireAmbience {
   private source: AudioBufferSourceNode | null = null;
   private crackleBuffer: AudioBuffer | null = null;
   private loudness = 0;
+  /** How big the fire burns (room.ts `fireLevel`): a stoked fire roars. */
+  private level = 1;
+
+  setLevel(level: number): void {
+    this.level = level;
+  }
 
   /** Call from a user gesture (a click, a key press). Safe to call again. */
   start(): void {
@@ -78,10 +84,16 @@ export class FireAmbience {
     const target = categoryVolume('fire') > 0 ? fireLoudness(distance) : 0;
     // Smooth it, so walking past doesn't step the volume.
     this.loudness += (target - this.loudness) * Math.min(1, dt * 3);
-    this.roar.gain.setTargetAtTime(this.loudness * PEAK_GAIN * 0.55, ctx.currentTime, 0.1);
+    const roar = Math.min(1, Math.max(0, (this.level - 1) / 0.75));
+    this.roar.gain.setTargetAtTime(
+      this.loudness * PEAK_GAIN * 0.55 * (1 + 0.8 * roar),
+      ctx.currentTime,
+      0.1,
+    );
 
-    // Crackles: a few a second, random pitch and size, louder up close.
-    if (this.loudness > 0.02 && this.crackleBuffer && Math.random() < dt * 7) {
+    // Crackles: a few a second (more when it's just been stoked), random
+    // pitch and size, louder up close.
+    if (this.loudness > 0.02 && this.crackleBuffer && Math.random() < dt * 7 * (1 + 1.5 * roar)) {
       const at = ctx.currentTime + Math.random() * 0.05;
       const source = ctx.createBufferSource();
       source.buffer = this.crackleBuffer;

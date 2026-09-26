@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import type { RoomAsset } from './RoomLoader.js';
-import type { RoomTheme } from '@custom-tabletop/shared';
+import type { CandleGroup, RoomTheme } from '@custom-tabletop/shared';
+import { candleGroupOf } from './candles.js';
+
+/** Where a group of candles stands (for aiming at it) — see `candleSpots`. */
+export interface CandleSpot {
+  center: THREE.Vector3;
+  radius: number;
+}
 
 /**
  * Everything that makes the room feel lived-in and warm, beyond its static
@@ -22,6 +29,14 @@ export class Ambience {
   private roomLightsOn = true;
   private readonly pointMaterials: THREE.ShaderMaterial[] = [];
   private recolorFairyLights: ((theme: RoomTheme) => void) | null = null;
+  /** How big the fire burns (1 = usual; more right after a log goes on). */
+  private fireLevel = 1;
+  /** Throws a shower of sparks up the chimney (a log just went on). */
+  private sparkBurst: (() => void) | null = null;
+  private candlesOut: ReadonlySet<CandleGroup> = new Set();
+  private readonly candleSpotsByGroup = new Map<CandleGroup, CandleSpot>();
+  /** A little curl of smoke where a candle was just blown out. */
+  private smokeAt: ((at: THREE.Vector3) => void) | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -42,6 +57,26 @@ export class Ambience {
   /** Halloween turns the fairy lights orange and violet. */
   setTheme(theme: RoomTheme): void {
     this.recolorFairyLights?.(theme);
+  }
+
+  /** How big the fire burns this frame (room.ts `fireLevel`). */
+  setFireLevel(level: number): void {
+    this.fireLevel = level;
+  }
+
+  /** A log just went on: sparks fly. */
+  stoke(): void {
+    this.sparkBurst?.();
+  }
+
+  /** Which candle groups are out. Newly blown-out ones smoke a little. */
+  setCandlesOut(out: ReadonlySet<CandleGroup>): void {
+    this.candlesOut = out;
+  }
+
+  /** Where each candle group stands, for aiming at it. */
+  candleSpots(): ReadonlyMap<CandleGroup, CandleSpot> {
+    return this.candleSpotsByGroup;
   }
 
   update(dt: number, time: number): void {
@@ -202,7 +237,21 @@ export class Ambience {
     sparks.renderOrder = 22;
     this.group.add(sparks);
 
+    // A log going on: every spark at once, flying fast and high.
+    this.sparkBurst = () => {
+      for (let i = 0; i < SPARKS; i++) {
+        respawn(i);
+        velocities[i * 3 + 1] = 0.9 + Math.random() * 1.1;
+        velocities[i * 3]! *= 2.5;
+        velocities[i * 3 + 2]! *= 2.5;
+        lives[i] = 1 + Math.random() * 1.2;
+      }
+    };
+
     this.updaters.push((dt, time) => {
+      const level = this.fireLevel;
+      // 0 at the usual size, 1 at its biggest right after a log goes on.
+      const roar = Math.min(1, Math.max(0, (level - 1) / 0.75));
       const flicker = this.reducedMotion
         ? 1
         : 0.82 +
@@ -212,15 +261,21 @@ export class Ambience {
       for (const tongue of tongues) {
         const t = time * 1.9 + tongue.phase;
         const wobble = this.reducedMotion ? 0 : Math.sin(t * 3.1) * 0.25 + Math.sin(t * 5.7) * 0.15;
-        const height = tongue.h * (0.85 + 0.25 * (0.5 + 0.5 * Math.sin(t * 2.3)) + 0.1 * wobble);
-        tongue.sprite.scale.set(height * 0.55, height, 1);
+        const height =
+          tongue.h *
+          (1 + 0.45 * roar) *
+          (0.85 + 0.25 * (0.5 + 0.5 * Math.sin(t * 2.3)) + 0.1 * wobble);
+        tongue.sprite.scale.set(height * (0.55 + 0.1 * roar), height, 1);
         tongue.sprite.position.set(tongue.x, spot.y - 0.02, tongue.z + wobble * 0.02);
         (tongue.sprite.material as THREE.SpriteMaterial).opacity = 0.75 + 0.2 * Math.sin(t * 4.1);
       }
       const dark = this.roomLightsOn ? 1 : 1.25;
-      light.intensity = 7 * flicker * dark;
-      (haze.material as THREE.SpriteMaterial).opacity = 0.42 * flicker;
-      if (emberMaterial) emberMaterial.emissiveIntensity = emberBase * (0.75 + 0.35 * flicker);
+      light.intensity = 7 * flicker * dark * (1 + 0.35 * roar);
+      (haze.material as THREE.SpriteMaterial).opacity = 0.42 * flicker * (1 + 0.5 * roar);
+      haze.scale.setScalar(1.1 * (1 + 0.25 * roar));
+      if (emberMaterial) {
+        emberMaterial.emissiveIntensity = emberBase * (0.75 + 0.35 * flicker) * (1 + 0.3 * roar);
+      }
       for (let i = 0; i < SPARKS; i++) {
         ages[i]! += dt;
         if (ages[i]! >= lives[i]!) respawn(i);
@@ -255,16 +310,46 @@ export class Ambience {
       flame.material = material;
       const at = new THREE.Box3().setFromObject(flame).getCenter(new THREE.Vector3());
       const halo = this.addHalo(at, 0.16, 0xffa850, 0.55, glow);
-      return { flame, halo, baseScale: flame.scale.clone(), phase: Math.random() * 100 };
+      return {
+        flame,
+        halo,
+        at,
+        group: candleGroupOf(flame),
+        baseScale: flame.scale.clone(),
+        phase: Math.random() * 100,
+        /** 1 burning, 0 out; eased between. */
+        lit: 1,
+      };
     });
+    // Where each group stands: the middle of its flames, and how far they spread.
+    for (const group of new Set(entries.map((entry) => entry.group))) {
+      if (!group) continue;
+      const spots = entries.filter((entry) => entry.group === group).map((entry) => entry.at);
+      const center = spots
+        .reduce((sum, at) => sum.add(at), new THREE.Vector3())
+        .divideScalar(spots.length);
+      const spread = Math.max(...spots.map((at) => at.distanceTo(center)));
+      // A little lower than the flames: the candles themselves.
+      this.candleSpotsByGroup.set(group, {
+        center: center.clone().add(new THREE.Vector3(0, -0.06, 0)),
+        radius: spread + 0.12,
+      });
+    }
+    this.buildSmoke(glow);
 
     // A few shared lights rather than one per flame (every light costs every
     // lit pixel): flames within ~2.5 m share one at their average position.
     const clusters: THREE.Vector3[][] = [];
+    const clusterOf: number[] = [];
     for (const { halo } of entries) {
-      const near = clusters.find((cluster) => cluster[0]!.distanceTo(halo.position) < 2.6);
-      if (near) near.push(halo.position);
-      else clusters.push([halo.position]);
+      const index = clusters.findIndex((cluster) => cluster[0]!.distanceTo(halo.position) < 2.6);
+      if (index >= 0) {
+        clusters[index]!.push(halo.position);
+        clusterOf.push(index);
+      } else {
+        clusters.push([halo.position]);
+        clusterOf.push(clusters.length - 1);
+      }
     }
     const candleLights = clusters.map((cluster) => {
       const center = cluster
@@ -286,23 +371,96 @@ export class Ambience {
     });
     const lightBase = candleLights.map((light) => light.intensity);
 
-    this.updaters.push((_dt, time) => {
-      for (const entry of entries) {
+    let settled = false;
+    this.updaters.push((dt, time) => {
+      const litPerCluster = clusters.map(() => 0);
+      entries.forEach((entry, index) => {
+        const wanted = entry.group && this.candlesOut.has(entry.group) ? 0 : 1;
+        // Candles already out when we arrive were blown out before: no smoke.
+        if (!settled) entry.lit = wanted;
+        if (entry.lit !== wanted) {
+          // Out in a breath; lighting takes a moment to catch.
+          if (wanted === 0 && entry.lit === 1) this.smokeAt?.(entry.at);
+          entry.lit =
+            wanted === 0 ? Math.max(0, entry.lit - dt / 0.12) : Math.min(1, entry.lit + dt / 0.7);
+        }
+        litPerCluster[clusterOf[index]!]! += entry.lit;
         const t = time * 2.2 + entry.phase;
         const flicker = this.reducedMotion
           ? 1
           : 0.9 + 0.07 * Math.sin(t * 9.1) + 0.05 * Math.sin(t * 15.3);
+        entry.flame.visible = entry.lit > 0.01;
         entry.flame.scale.set(
-          entry.baseScale.x * (0.96 + 0.04 * Math.sin(t * 6.1)),
-          entry.baseScale.y * flicker,
+          entry.baseScale.x * (0.96 + 0.04 * Math.sin(t * 6.1)) * (0.4 + 0.6 * entry.lit),
+          entry.baseScale.y * flicker * entry.lit,
           entry.baseScale.z,
         );
-        (entry.halo.material as THREE.SpriteMaterial).opacity = 0.5 * flicker;
-      }
+        entry.halo.visible = entry.lit > 0.01;
+        (entry.halo.material as THREE.SpriteMaterial).opacity = 0.5 * flicker * entry.lit;
+      });
       candleLights.forEach((light, i) => {
         const wobble = this.reducedMotion ? 1 : 0.9 + 0.1 * Math.sin(time * 8.3 + i * 1.7);
-        light.intensity = lightBase[i]! * wobble * (this.roomLightsOn ? 1 : 1.4);
+        const burning = litPerCluster[i]! / clusters[i]!.length;
+        light.intensity = lightBase[i]! * wobble * (this.roomLightsOn ? 1 : 1.4) * burning;
       });
+      settled = true;
+    });
+  }
+
+  // --- Smoke from a candle just blown out -------------------------------
+
+  private buildSmoke(glow: THREE.Texture) {
+    const PUFFS = 48;
+    const positions = new Float32Array(PUFFS * 3);
+    const alphas = new Float32Array(PUFFS);
+    const ages = new Float32Array(PUFFS).fill(Infinity);
+    const drift = new Float32Array(PUFFS * 2);
+    let next = 0;
+    const geometry = this.keep(new THREE.BufferGeometry());
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
+    const material = makePointsMaterial(glow, new THREE.Color(0.55, 0.52, 0.5), 0.05);
+    // Smoke isn't light: drawn over what's behind it, not added to it.
+    material.blending = THREE.NormalBlending;
+    const smoke = new THREE.Points(geometry, this.points(material));
+    smoke.frustumCulled = false;
+    smoke.renderOrder = 23;
+    this.group.add(smoke);
+    const LIFE = 2.2;
+    this.smokeAt = (at) => {
+      for (let n = 0; n < 6; n++) {
+        const i = next;
+        next = (next + 1) % PUFFS;
+        positions[i * 3] = at.x;
+        positions[i * 3 + 1] = at.y + n * 0.015;
+        positions[i * 3 + 2] = at.z;
+        ages[i] = -n * 0.08;
+        drift[i * 2] = (Math.random() - 0.5) * 0.05;
+        drift[i * 2 + 1] = (Math.random() - 0.5) * 0.05;
+      }
+    };
+    this.updaters.push((dt, time) => {
+      for (let i = 0; i < PUFFS; i++) {
+        if (ages[i] === Infinity) continue;
+        ages[i]! += dt;
+        const age = ages[i]!;
+        if (age >= LIFE) {
+          ages[i] = Infinity;
+          alphas[i] = 0;
+          continue;
+        }
+        if (age < 0) {
+          alphas[i] = 0;
+          continue;
+        }
+        // Rising, curling, spreading and fading.
+        positions[i * 3]! += (drift[i * 2]! + Math.sin(time * 2 + i) * 0.03) * dt;
+        positions[i * 3 + 1]! += 0.12 * dt;
+        positions[i * 3 + 2]! += (drift[i * 2 + 1]! + Math.cos(time * 1.7 + i) * 0.03) * dt;
+        alphas[i] = 0.35 * Math.min(1, age * 6) * (1 - age / LIFE);
+      }
+      geometry.attributes.position!.needsUpdate = true;
+      geometry.attributes.alpha!.needsUpdate = true;
     });
   }
 

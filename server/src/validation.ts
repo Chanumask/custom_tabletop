@@ -582,7 +582,7 @@ export function parseObjectInteractRequest(payload: unknown): ObjectInteractRequ
     return null;
   }
 
-  const { sessionId, playerId, objectId, seated, seatIndex, on } = payload as Record<
+  const { sessionId, playerId, objectId, seated, seatIndex, on, target } = payload as Record<
     string,
     unknown
   >;
@@ -592,6 +592,7 @@ export function parseObjectInteractRequest(payload: unknown): ObjectInteractRequ
     !isNonEmptyString(objectId) ||
     (seated !== undefined && typeof seated !== 'boolean') ||
     (on !== undefined && typeof on !== 'boolean') ||
+    (target !== undefined && !(isNonEmptyString(target) && target.length <= 40)) ||
     (seatIndex !== undefined &&
       !(
         Number.isInteger(seatIndex) &&
@@ -609,6 +610,7 @@ export function parseObjectInteractRequest(payload: unknown): ObjectInteractRequ
     ...(seated !== undefined ? { seated } : {}),
     ...(seatIndex !== undefined ? { seatIndex: seatIndex as number } : {}),
     ...(on !== undefined ? { on } : {}),
+    ...(target !== undefined ? { target: (target as string).trim() } : {}),
   };
 }
 

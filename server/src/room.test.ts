@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
-import { SocketEvent, type GameState } from '@custom-tabletop/shared';
+import {
+  DEFAULT_ROOM_STATE,
+  SocketEvent,
+  STOKE_MIN_INTERVAL_MS,
+  type GameState,
+} from '@custom-tabletop/shared';
 import { createAppServer, type AppServer } from './server.js';
 import { SessionStore } from './sessionStore.js';
 import { onStateUpdates } from './testSupport.js';
@@ -96,6 +101,57 @@ describe('a saved table from before the room had its own switches', () => {
       credentialHashes: {},
       state: older as GameState,
     });
-    expect(restored.room).toEqual({ readingLampOn: true });
+    expect(restored.room).toEqual(DEFAULT_ROOM_STATE);
+  });
+});
+
+describe('the fire and the candles', () => {
+  it('a log on the fire is seen by everyone, and one at a time', () => {
+    const store = new SessionStore();
+    store.join('ROOM', 'alice', 'Alice');
+    const first = store.stokeFire('ROOM', 1000);
+    expect(first.ok && first.state.room.fireStokedAt).toBe(1000);
+    store.stokeFire('ROOM', 1000 + STOKE_MIN_INTERVAL_MS - 1);
+    expect(store.get('ROOM')!.room.fireStokedAt).toBe(1000);
+    store.stokeFire('ROOM', 1000 + STOKE_MIN_INTERVAL_MS);
+    expect(store.get('ROOM')!.room.fireStokedAt).toBe(1000 + STOKE_MIN_INTERVAL_MS);
+  });
+
+  it('blows out and lights candle groups, and knows only the real ones', () => {
+    const store = new SessionStore();
+    store.join('ROOM', 'alice', 'Alice');
+    store.setCandles('ROOM', 'mantel-north', false);
+    store.setCandles('ROOM', 'oil-lamp');
+    expect(store.get('ROOM')!.room.candlesOut).toEqual(['mantel-north', 'oil-lamp']);
+    // Blowing out one that is already out changes nothing.
+    store.setCandles('ROOM', 'mantel-north', false);
+    expect(store.get('ROOM')!.room.candlesOut).toEqual(['mantel-north', 'oil-lamp']);
+    store.setCandles('ROOM', 'oil-lamp');
+    store.setCandles('ROOM', 'mantel-north', true);
+    expect(store.get('ROOM')!.room.candlesOut).toEqual([]);
+    expect(store.setCandles('ROOM', 'the-moon', false).ok).toBe(false);
+    expect(store.setCandles('ROOM', undefined).ok).toBe(false);
+  });
+
+  it('reach everyone over the socket', async () => {
+    const alice = await connect();
+    const bob = await connect();
+    await join(alice, 'alice');
+    await join(bob, 'bob');
+    let bobSees = {} as GameState;
+    onStateUpdates(bob, (state) => {
+      bobSees = state;
+    });
+    const out = await interact(alice, 'alice', {
+      objectId: 'candles',
+      target: 'sconce-east',
+      on: false,
+    });
+    expect(out.ok).toBe(true);
+    const stoked = await interact(alice, 'alice', { objectId: 'hearth' });
+    expect(stoked.state?.room.fireStokedAt).toEqual(expect.any(Number));
+    await settle();
+    expect(bobSees.room.candlesOut).toEqual(['sconce-east']);
+    expect(bobSees.room.fireStokedAt).toBe(stoked.state?.room.fireStokedAt);
   });
 });

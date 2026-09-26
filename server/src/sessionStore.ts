@@ -13,7 +13,9 @@ import {
   STARTING_INVENTORY,
   PINBOARD_SLOT_COUNT,
   emptyWhiteboard,
+  isCandleGroup,
   normalizeRoomState,
+  STOKE_MIN_INTERVAL_MS,
   spawnPointFor,
   parseYouTubeUrl,
   clampToTable,
@@ -832,6 +834,44 @@ export class SessionStore {
       return { ok: false, error: 'Session not found.' };
     }
     state.room = { ...state.room, readingLampOn: on ?? !state.room.readingLampOn };
+    return { ok: true, state };
+  }
+
+  /** Puts another log on the fire: it flares up and slowly burns back
+   * down (room.ts `fireLevel`). One log at a time — stoking again within
+   * `STOKE_MIN_INTERVAL_MS` changes nothing. */
+  stokeFire(sessionId: string, now = Date.now()): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const last = state.room.fireStokedAt;
+    if (last === null || now - last >= STOKE_MIN_INTERVAL_MS) {
+      state.room = { ...state.room, fireStokedAt: now };
+    }
+    return { ok: true, state };
+  }
+
+  /** Lights (`on`) or blows out a group of candles; no `on` = the other
+   * way round. Anyone may. */
+  setCandles(sessionId: string, target: string | undefined, on?: boolean): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    if (!isCandleGroup(target)) {
+      return { ok: false, error: 'There are no candles there.' };
+    }
+    const out = state.room.candlesOut.includes(target);
+    const light = on ?? out;
+    state.room = {
+      ...state.room,
+      candlesOut: light
+        ? state.room.candlesOut.filter((group) => group !== target)
+        : out
+          ? state.room.candlesOut
+          : [...state.room.candlesOut, target],
+    };
     return { ok: true, state };
   }
 

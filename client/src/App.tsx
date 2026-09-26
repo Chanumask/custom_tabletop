@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 
 import type { Socket } from 'socket.io-client';
 import {
+  DEFAULT_ROOM_STATE,
   SESSION_ENDED_ERROR,
   REMOVED_FROM_TABLE_ERROR,
   mayUse,
@@ -478,6 +479,9 @@ export function App() {
   const handleObjectInteract = (objectId: string) =>
     sendAction(SocketEvent.ObjectInteract, { objectId }, 'Failed to interact');
 
+  const handleRoomAction = (objectId: string, fields: { target?: string; on?: boolean } = {}) =>
+    sendAction(SocketEvent.ObjectInteract, { objectId, ...fields }, 'That didn’t work');
+
   const handleTakeItem = (itemId: string) =>
     sendAction(SocketEvent.ItemTake, { itemId }, 'Failed to take that');
 
@@ -655,6 +659,9 @@ export function App() {
             onMoveDie={handleMoveDie}
             lightOn={gameState.lightOn}
             readingLampOn={gameState.room?.readingLampOn ?? true}
+            room={gameState.room ?? DEFAULT_ROOM_STATE}
+            serverOffset={serverOffset}
+            onRoomAction={handleRoomAction}
             soundboard={gameState.soundboard}
             soundboardSlots={gameState.soundboardSlots}
             interactKey={settings.interactKey}

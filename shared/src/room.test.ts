@@ -1,0 +1,42 @@
+import { describe, expect, it } from 'vitest';
+import {
+  DEFAULT_ROOM_STATE,
+  FIRE_BURN_MS,
+  FIRE_STOKE_BOOST,
+  fireLevel,
+  normalizeRoomState,
+} from './room.js';
+
+describe('the fire', () => {
+  it('burns at its usual size until someone puts a log on', () => {
+    expect(fireLevel(null, 1_000_000)).toBe(1);
+  });
+
+  it('flares up as the new log catches, then burns back down', () => {
+    const stoked = 1_000_000;
+    expect(fireLevel(stoked, stoked)).toBe(1);
+    const caught = fireLevel(stoked, stoked + 2000);
+    expect(caught).toBeGreaterThan(1.6);
+    expect(caught).toBeLessThanOrEqual(1 + FIRE_STOKE_BOOST);
+    const later = fireLevel(stoked, stoked + FIRE_BURN_MS / 2);
+    expect(later).toBeLessThan(caught);
+    expect(later).toBeGreaterThan(1);
+    expect(fireLevel(stoked, stoked + FIRE_BURN_MS)).toBe(1);
+    expect(fireLevel(stoked, stoked - 500)).toBe(1);
+  });
+});
+
+describe('normalizeRoomState', () => {
+  it('fills a room from before any of this in with the defaults', () => {
+    expect(normalizeRoomState(undefined)).toEqual(DEFAULT_ROOM_STATE);
+    expect(normalizeRoomState({ readingLampOn: false })).toEqual({
+      ...DEFAULT_ROOM_STATE,
+      readingLampOn: false,
+    });
+  });
+
+  it('keeps only real candle groups, in their own order', () => {
+    const saved = { candlesOut: ['oil-lamp', 'bogus', 'mantel-north'] } as never;
+    expect(normalizeRoomState(saved).candlesOut).toEqual(['mantel-north', 'oil-lamp']);
+  });
+});

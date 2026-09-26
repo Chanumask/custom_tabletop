@@ -28,6 +28,9 @@ import {
   type PlayerEmoteRequest,
   type SoundPlayRequest,
   type RoomTheme,
+  type RoomState,
+  type CandleGroup,
+  fireLevel,
   type WhiteboardLine,
   EMOTES,
   WHITEBOARD_LINE_COUNT,
@@ -99,6 +102,10 @@ import { createPinboard, syncPinboard, disposePinboard, type Pinboard } from './
 import { uploadImage } from '../uploads.js';
 import { aimFlashlightBeam } from './flashlightBeam.js';
 import { RoomLife } from './RoomLife.js';
+import { pickAimTarget, type AimTarget } from './aimTargets.js';
+import { candlePrompt } from './candles.js';
+import { playBlowOut, playLogOnFire, playMatchStrike } from '../roomSounds.js';
+import { placeSound } from '../spatialAudio.js';
 import { LIGHT_SWITCH_RANGE, LIGHT_SWITCH_SPOT } from './LightSwitch.js';
 import { GadgetLibrary } from './gadgetMeshes.js';
 import { HOLDS } from './heldItems.js';
@@ -219,6 +226,13 @@ export interface RoomViewProps {
   lightOn: boolean;
   /** The reading lamp by the armchair — its own switch (GameState.room). */
   readingLampOn: boolean;
+  /** The room's shared switches and states: the fire, the candles, … */
+  room: RoomState;
+  /** serverClock - localClock (ms): the fire's stoke time is on the server's. */
+  serverOffset: number;
+  /** Lights or blows out a candle group, stokes the fire, … (object:interact
+   * with a target and a wanted state). */
+  onRoomAction: (objectId: string, fields?: { target?: string; on?: boolean }) => void;
   soundboard: SoundState[];
   /** Slot index -> assigned sound id or null (Milestone 8 follow-up's wall
    * board — see shared/src/types.ts). */
@@ -373,6 +387,9 @@ export function RoomView({
   onMoveDie,
   lightOn,
   readingLampOn,
+  room,
+  serverOffset,
+  onRoomAction,
   soundboard,
   soundboardSlots,
   interactKey,
@@ -398,6 +415,7 @@ export function RoomView({
   clipView,
 }: RoomViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controllerRef = useRef<FirstPersonController | null>(null);
   const avatarsRef = useRef<PlayerAvatars | null>(null);
   const playersRef = useRef<Player[]>(players);
@@ -438,6 +456,15 @@ export function RoomView({
   const seatsRef = useRef<Seat[]>([]);
   const lightOnRef = useRef<boolean>(lightOn);
   const readingLampOnRef = useRef<boolean>(readingLampOn);
+  const roomRef = useRef<RoomState>(room);
+  const serverOffsetRef = useRef(serverOffset);
+  serverOffsetRef.current = serverOffset;
+  const onRoomActionRef = useRef(onRoomAction);
+  onRoomActionRef.current = onRoomAction;
+  // "Look at it and press E" (aimTargets.ts): the candles, the fire, …
+  const aimTargetsRef = useRef<AimTarget[]>([]);
+  const aimTargetRef = useRef<AimTarget | null>(null);
+  const fireSpotRef = useRef<THREE.Vector3 | null>(null);
   // Footsteps, the clock, the door, the light switch (RoomLife.ts).
   const roomLifeRef = useRef<RoomLife | null>(null);
   const tableMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
@@ -734,6 +761,33 @@ export function RoomView({
     tableMaterialRef.current?.color.setScalar(lightOn ? 1 : TABLE_DIMMED_BRIGHTNESS);
   }, [lightOn]);
 
+  // The fire and the candles (GameState.room): a log going on flares the
+  // fire up; a candle group blown out or lit makes its little sound.
+  useEffect(() => {
+    const before = roomRef.current;
+    roomRef.current = room;
+    const ambience = ambienceRef.current;
+    const camera = cameraRef.current;
+    const yaw = controllerRef.current?.getYaw() ?? 0;
+    const listener = camera ? { x: camera.position.x, z: camera.position.z, yaw } : null;
+    if (room.fireStokedAt !== before.fireStokedAt && room.fireStokedAt !== null) {
+      ambience?.stoke();
+      const fire = fireSpotRef.current;
+      if (listener && fire) playLogOnFire(placeSound(listener, fire, 1.5, 12));
+    }
+    const was = new Set(before.candlesOut);
+    const now = new Set(room.candlesOut);
+    ambience?.setCandlesOut(now);
+    const spots = ambience?.candleSpots();
+    if (listener && spots) {
+      for (const [group, spot] of spots) {
+        if (now.has(group) && !was.has(group)) playBlowOut(placeSound(listener, spot.center, 1, 8));
+        if (!now.has(group) && was.has(group))
+          playMatchStrike(placeSound(listener, spot.center, 1, 8));
+      }
+    }
+  }, [room]);
+
   // The reading lamp by the armchair has its own switch now.
   useEffect(() => {
     if (readingLampOnRef.current !== readingLampOn) roomLifeRef.current?.readingLampSwitched();
@@ -777,6 +831,7 @@ export function RoomView({
     const start = self?.position ?? DEFAULT_SPAWN_POSITION;
     camera.position.set(start.x, DEFAULT_SPAWN_POSITION.y, start.z);
     camera.rotation.set(0, (self?.rotationY ?? Math.PI) + Math.PI, 0, 'YXZ');
+    cameraRef.current = camera;
 
     // alpha: the TV's screen punches a transparent hole so the YouTube
     // player underneath the canvas shows through (TvScreen.ts).
@@ -972,7 +1027,34 @@ export function RoomView({
         );
         ambience.setRoomLightsOn(lightOnRef.current);
         ambience.setViewport(renderer.domElement.clientHeight, camera.fov);
+        ambience.setCandlesOut(new Set(roomRef.current.candlesOut));
         ambienceRef.current = ambience;
+        fireSpotRef.current = room.fireSpot;
+
+        // Look at them and press E: the candle groups, and the fire.
+        const keyLabel = () => formatKeyCode(interactKeyRef.current);
+        const candleTargets: AimTarget[] = [...ambience.candleSpots()].map(([group, spot]) => ({
+          id: `candles:${group}`,
+          center: spot.center,
+          radius: spot.radius,
+          reach: 2.4,
+          prompt: () => candlePrompt(group, !isOut(group), keyLabel()),
+          act: () => onRoomActionRef.current('candles', { target: group, on: isOut(group) }),
+        }));
+        const isOut = (group: CandleGroup) => roomRef.current.candlesOut.includes(group);
+        const fireTarget: AimTarget[] = room.fireSpot
+          ? [
+              {
+                id: 'hearth',
+                center: room.fireSpot.clone().add(new THREE.Vector3(0.05, 0.12, 0)),
+                radius: 0.42,
+                reach: 3.2,
+                prompt: () => `Press ${keyLabel()} to put another log on the fire`,
+                act: () => onRoomActionRef.current('hearth'),
+              },
+            ]
+          : [];
+        aimTargetsRef.current = [...candleTargets, ...fireTarget];
         outside = new OutsideWorld(
           room.windowViews,
           window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -1550,6 +1632,10 @@ export function RoomView({
             setWhiteboardOpen(true);
             return;
           }
+          if (aimTargetRef.current) {
+            aimTargetRef.current.act();
+            return;
+          }
           const nearestId = nearestInteractableIdRef.current;
           if (nearestId === 'light' || nearestId === 'lamp') {
             onObjectInteractRef.current(nearestId);
@@ -1672,6 +1758,7 @@ export function RoomView({
         };
         document.addEventListener('keydown', handleEmoteKey);
 
+        const aimDirection = new THREE.Vector3();
         let lastSentAt = 0;
         const lastSentPosition = new THREE.Vector3(Infinity, Infinity, Infinity);
         let lastSentYaw = Infinity;
@@ -1687,6 +1774,12 @@ export function RoomView({
           diceManagerRef.current?.update(delta, camera);
           miniManagerRef.current?.update(delta);
           tablePings.update(delta);
+          const fireNow = fireLevel(
+            roomRef.current.fireStokedAt,
+            Date.now() + serverOffsetRef.current,
+          );
+          ambienceRef.current?.setFireLevel(fireNow);
+          fireAudioRef?.setLevel(fireNow);
           ambienceRef.current?.update(delta, timer.getElapsed());
           updateFireAudio?.(delta);
           updateNight?.(delta);
@@ -1768,6 +1861,25 @@ export function RoomView({
               whiteboardRaycaster.intersectObject(whiteboardSurface, false).length > 0;
           }
           whiteboardTargetedRef.current = whiteboardTargeted;
+          // The candles, the fire, …: whatever the crosshair is on, if nothing
+          // above already is.
+          let aimTarget: AimTarget | null = null;
+          if (
+            targetedSlot === null &&
+            targetedDie === null &&
+            !whiteboardTargeted &&
+            !controller.isSeated &&
+            controller.controls.isLocked &&
+            !aDialogIsOpen()
+          ) {
+            camera.getWorldDirection(aimDirection);
+            aimTarget = pickAimTarget(
+              { origin: camera.position, direction: aimDirection },
+              aimTargetsRef.current,
+            );
+          }
+          aimTargetRef.current = aimTarget;
+          const aimPrompt = aimTarget?.prompt() ?? null;
           const boardTarget =
             targetedSlot !== null
               ? {
@@ -1782,20 +1894,21 @@ export function RoomView({
 
           const heldItemKind =
             inventoryRef.current.find((item) => item.heldBy === playerId)?.kind ?? null;
-          const promptKey = `${nearestId}|${controller.seatedView}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}|${targetedDie}|${heldItemKind}`;
+          const promptKey = `${nearestId}|${controller.seatedView}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}|${targetedDie}|${heldItemKind}|${aimPrompt}`;
           if (promptKey !== lastPromptKeyRef.current) {
             lastPromptKeyRef.current = promptKey;
             setInteractionPrompt(
-              promptFor(
-                nearestId,
-                controller.seatedView,
-                controller.hasChair,
-                interactKeyRef.current,
-                boardTarget,
-                whiteboardTargeted,
-                targetedDieKind,
-                heldItemKind,
-              ),
+              aimPrompt ??
+                promptFor(
+                  nearestId,
+                  controller.seatedView,
+                  controller.hasChair,
+                  interactKeyRef.current,
+                  boardTarget,
+                  whiteboardTargeted,
+                  targetedDieKind,
+                  heldItemKind,
+                ),
             );
           }
 
