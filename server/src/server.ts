@@ -1385,6 +1385,11 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           case 'curtains':
             result = sessions.setCurtains(request.sessionId, request.target, request.on);
             break;
+          case 'record':
+            result = allowed(request.sessionId, request.playerId, 'sounds')
+              ? sessions.setRecord(request.sessionId, request.playerId, request.target, request.on)
+              : { ok: false, error: SOUNDS_OFF_ERROR };
+            break;
           case 'lounge':
             result = sessions.setLounge(
               request.sessionId,
@@ -1410,7 +1415,14 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
 
         ack?.(own(result));
         if (result.ok) {
-          broadcastPatch(request.sessionId, result.state, ['lightOn', 'players', 'room']);
+          broadcastPatch(
+            request.sessionId,
+            result.state,
+            // Putting a record on says so in the log.
+            request.objectId === 'record'
+              ? ['lightOn', 'players', 'room', 'log']
+              : ['lightOn', 'players', 'room'],
+          );
         }
       },
     );

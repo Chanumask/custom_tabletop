@@ -59,6 +59,29 @@ export interface WindowState {
   drawn: boolean;
 }
 
+/** The record player's own records — the music itself is made in each
+ * player's browser, the same for everyone (client/src/music). */
+export const RECORDS = [
+  { id: 'tavern', name: 'Tavern Night', hint: 'a fiddle, a lute and a drum by the fire' },
+  { id: 'lofi', name: 'Lo-fi Evening', hint: 'soft keys and a lazy beat' },
+  { id: 'rain-jazz', name: 'Rain Jazz', hint: 'brushes, a walking bass, late-night piano' },
+] as const;
+export type RecordId = (typeof RECORDS)[number]['id'];
+
+export function isRecordId(value: unknown): value is RecordId {
+  return RECORDS.some((record) => record.id === value);
+}
+
+/** A soundboard sound put on the record player instead (an audio file). */
+export const SOUND_RECORD_PREFIX = 'sound:';
+
+/** The record on the turntable: one of `RECORDS`, or `sound:<id>` — and
+ * when it was put on (server clock, ms), which everyone plays it from. */
+export interface RecordPlaying {
+  record: string;
+  startedAt: number;
+}
+
 export interface RoomState {
   /** The reading lamp by the armchair — its own switch, apart from the
    * room's main light (`GameState.lightOn`, the switch by the door). */
@@ -72,6 +95,8 @@ export interface RoomState {
   weather: Weather;
   /** Every window, open or shut, curtains drawn or not. */
   windows: Record<WindowId, WindowState>;
+  /** What's playing on the record player, or null. */
+  record: RecordPlaying | null;
 }
 
 const closedWindows = (): Record<WindowId, WindowState> =>
@@ -86,6 +111,7 @@ export const DEFAULT_ROOM_STATE: RoomState = {
   candlesOut: [],
   weather: 'clear',
   windows: closedWindows(),
+  record: null,
 };
 
 /** How long a freshly stoked fire takes to burn back down (ms). */
@@ -127,5 +153,9 @@ export function normalizeRoomState(saved: Partial<RoomState> | undefined): RoomS
         return [id, { open: window?.open === true, drawn: window?.drawn === true }];
       }),
     ) as Record<WindowId, WindowState>,
+    record:
+      typeof saved?.record?.record === 'string' && typeof saved.record.startedAt === 'number'
+        ? { record: saved.record.record, startedAt: saved.record.startedAt }
+        : null,
   };
 }

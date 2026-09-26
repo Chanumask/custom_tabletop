@@ -69,3 +69,20 @@ describe('parseObjectInteractRequest seat fields', () => {
     expect(parseObjectInteractRequest(payload)).toBeNull();
   });
 });
+
+describe('parseObjectInteractRequest targets', () => {
+  it('takes a soundboard sound on the record player (a uuid is long)', () => {
+    const target = 'sound:3f2b9c1e-8d4a-4c55-9e1b-7a6f0c2d5e88';
+    expect(
+      parseObjectInteractRequest({ sessionId: 's', playerId: 'p', objectId: 'record', target }),
+    ).toMatchObject({ target });
+    expect(
+      parseObjectInteractRequest({
+        sessionId: 's',
+        playerId: 'p',
+        objectId: 'record',
+        target: 'x'.repeat(81),
+      }),
+    ).toBeNull();
+  });
+});

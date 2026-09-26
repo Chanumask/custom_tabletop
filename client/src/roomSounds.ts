@@ -370,3 +370,23 @@ export function playChairCreak(place: Placement, pitch = 1): void {
     osc.stop(at + length + 0.05);
   }
 }
+
+/** The tonearm settling onto a record: a soft thud through the plinth and
+ * the hiss of the needle finding the groove. */
+export function playNeedleDrop(place: Placement): void {
+  const v = voice('room', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.85;
+  thump(ctx, out, at, 70, 40, 0.1, 0.18);
+  burst(ctx, out, at, 'bandpass', 2600, 0.8, 0.03, 0.5);
+}
+
+/** The tonearm lifting off: a small click, and the hum stopping. */
+export function playNeedleLift(place: Placement): void {
+  const v = voice('room', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.02;
+  burst(ctx, out, at, 'bandpass', 3400, 4, 0.05, 0.025);
+}

@@ -15,6 +15,9 @@ import {
   emptyWhiteboard,
   isCandleGroup,
   isLoungeSeat,
+  isRecordId,
+  RECORDS,
+  SOUND_RECORD_PREFIX,
   isWindowId,
   normalizeRoomState,
   type Weather,
@@ -933,6 +936,53 @@ export class SessionStore {
     player.seatIndex = seatIndex ?? null;
     player.lounge = null;
     return { ok: true, state };
+  }
+
+  /** Puts a record on (`on`, the default) — one of the record player's own
+   * (`RECORDS`) or a soundboard sound that's an audio file (`sound:<id>`) —
+   * or takes it off. Starts from the top for everyone, and says so. */
+  setRecord(
+    sessionId: string,
+    playerId: string,
+    record: string | undefined,
+    on = true,
+    now = Date.now(),
+  ): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const player = state.players.find((candidate) => candidate.id === playerId);
+    if (!player) {
+      return { ok: false, error: 'Player not found.' };
+    }
+    if (!on) {
+      if (state.room.record) {
+        state.room = { ...state.room, record: null };
+        addSystemEntry(state, `${player.name} took the record off`);
+      }
+      return { ok: true, state };
+    }
+    const name = this.recordName(state, record);
+    if (!record || !name) {
+      return { ok: false, error: "That record isn't in the box." };
+    }
+    state.room = { ...state.room, record: { record, startedAt: now } };
+    addSystemEntry(state, `${player.name} put on ${name}`);
+    return { ok: true, state };
+  }
+
+  /** What a record is called — or null if there's no such record, or the
+   * sound it names isn't one a record player can play. */
+  private recordName(state: GameState, record: string | undefined): string | null {
+    if (isRecordId(record)) {
+      return RECORDS.find((candidate) => candidate.id === record)!.name;
+    }
+    if (!record?.startsWith(SOUND_RECORD_PREFIX)) return null;
+    const soundId = record.slice(SOUND_RECORD_PREFIX.length);
+    const sound = state.soundboard.find((candidate) => candidate.id === soundId);
+    if (!sound || !sound.url || parseYouTubeUrl(sound.url)) return null;
+    return `“${sound.name}”`;
   }
 
   /** Sits a player on a seat away from the table (`on`, the default), if

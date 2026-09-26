@@ -32,7 +32,8 @@ export interface ObjectInteractRequest {
    * Absent = toggle. */
   on?: boolean;
   /** Which one, where there are several (room.ts): the candle group, the
-   * window, the seat (`lounge`: sit down on it, or with `on: false` get up). */
+   * window, the seat (`lounge`: sit down on it, or with `on: false` get up),
+   * the record (`record`: put it on, or with `on: false` take it off). */
   target?: string;
 }
 

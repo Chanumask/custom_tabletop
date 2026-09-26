@@ -593,7 +593,7 @@ export function parseObjectInteractRequest(payload: unknown): ObjectInteractRequ
     !isNonEmptyString(objectId) ||
     (seated !== undefined && typeof seated !== 'boolean') ||
     (on !== undefined && typeof on !== 'boolean') ||
-    (target !== undefined && !(isNonEmptyString(target) && target.length <= 40)) ||
+    (target !== undefined && !(isNonEmptyString(target) && target.length <= 80)) ||
     (seatIndex !== undefined &&
       !(
         Number.isInteger(seatIndex) &&

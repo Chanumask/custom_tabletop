@@ -593,6 +593,108 @@ body {
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
 }
 
+/* The record box (RecordDialog.tsx): a record to put on, and your own
+ * music volume — same centered-modal weight as the other room dialogs. */
+.record-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  width: min(24rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 1.1rem 1.2rem;
+  border-radius: 12px;
+  background: rgba(24, 17, 12, 0.97);
+  color: #f3e6d3;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+
+.record-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.record-choice {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: rgba(243, 230, 211, 0.04);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+.record-choice:hover:not(:disabled) {
+  background: rgba(243, 230, 211, 0.09);
+}
+
+.record-choice.playing {
+  border-color: rgba(240, 196, 106, 0.55);
+  background: linear-gradient(180deg, rgba(240, 196, 106, 0.16), rgba(217, 164, 65, 0.08));
+}
+
+.record-choice:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.record-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.record-text small {
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+}
+
+/* A little record: black grooves round a colored label. */
+.record-disc {
+  flex: none;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, #f3e6d3 0 6%, var(--label) 7% 30%, transparent 31%),
+    repeating-radial-gradient(circle, #151515 0 1.5px, #262626 1.5px 3px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.record-choice.playing .record-disc {
+  animation: record-spin 1.8s linear infinite;
+}
+
+@keyframes record-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .record-choice.playing .record-disc {
+    animation: none;
+  }
+}
+
+.record-dialog .sound-mix-row {
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--edge);
+}
+
 /* The calculator (CalculatorDialog.tsx, gadgets phase 5) — same
  * centered-modal weight as .walkie-dialog/.inventory-dialog. */
 .calculator-dialog {

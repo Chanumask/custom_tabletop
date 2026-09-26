@@ -49,6 +49,15 @@ describe('normalizeRoomState', () => {
     expect(normalizeRoomState({ weather: 'storm' }).weather).toBe('storm');
   });
 
+  it('keeps a record that was playing, and drops a broken one', () => {
+    expect(normalizeRoomState({ record: { record: 'lofi', startedAt: 12 } }).record).toEqual({
+      record: 'lofi',
+      startedAt: 12,
+    });
+    expect(normalizeRoomState({ record: { record: 'lofi' } as never }).record).toBeNull();
+    expect(normalizeRoomState({}).record).toBeNull();
+  });
+
   it('keeps only real candle groups, in their own order', () => {
     const saved = { candlesOut: ['oil-lamp', 'bogus', 'mantel-north'] } as never;
     expect(normalizeRoomState(saved).candlesOut).toEqual(['mantel-north', 'oil-lamp']);

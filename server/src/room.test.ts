@@ -3,6 +3,7 @@ import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import {
   DEFAULT_ROOM_STATE,
   SocketEvent,
+  SOUNDS_OFF_ERROR,
   STOKE_MIN_INTERVAL_MS,
   type GameState,
 } from '@custom-tabletop/shared';
@@ -314,5 +315,70 @@ describe('the sofa and the chairs away from the table', () => {
       on: false,
     });
     expect(up.state?.players.find((player) => player.id === 'alice')?.lounge).toBeNull();
+  });
+});
+
+describe('the record player', () => {
+  function room() {
+    const store = new SessionStore();
+    store.join('ROOM', 'alice', 'Alice');
+    store.addSound('ROOM', 'song-1', 'Our Theme', 'http://localhost/uploads/sounds/theme.mp3');
+    store.addSound('ROOM', 'clip-1', 'A Video', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+    return store;
+  }
+
+  it('puts a record on for everyone, from the top, and says so', () => {
+    const store = room();
+    const put = store.setRecord('ROOM', 'alice', 'rain-jazz', true, 5000);
+    expect(put.ok && put.state.room.record).toEqual({ record: 'rain-jazz', startedAt: 5000 });
+    expect(store.get('ROOM')!.log.at(-1)).toMatchObject({ text: 'Alice put on Rain Jazz' });
+    // The same record again starts it over.
+    store.setRecord('ROOM', 'alice', 'rain-jazz', true, 9000);
+    expect(store.get('ROOM')!.room.record?.startedAt).toBe(9000);
+    store.setRecord('ROOM', 'alice', undefined, false);
+    expect(store.get('ROOM')!.room.record).toBeNull();
+    expect(store.get('ROOM')!.log.at(-1)).toMatchObject({ text: 'Alice took the record off' });
+    // Taking off nothing says nothing.
+    const entries = store.get('ROOM')!.log.length;
+    store.setRecord('ROOM', 'alice', undefined, false);
+    expect(store.get('ROOM')!.log.length).toBe(entries);
+  });
+
+  it('plays a soundboard sound that is an audio file, and nothing else', () => {
+    const store = room();
+    expect(store.setRecord('ROOM', 'alice', 'sound:song-1').ok).toBe(true);
+    expect(store.get('ROOM')!.log.at(-1)).toMatchObject({ text: 'Alice put on “Our Theme”' });
+    expect(store.setRecord('ROOM', 'alice', 'sound:clip-1').ok).toBe(false);
+    expect(store.setRecord('ROOM', 'alice', 'sound:nope').ok).toBe(false);
+    expect(store.setRecord('ROOM', 'alice', 'polka').ok).toBe(false);
+    expect(store.setRecord('ROOM', 'alice', undefined).ok).toBe(false);
+  });
+
+  it('is everyone’s over the socket — unless the host turned sounds off', async () => {
+    const alice = await connect();
+    const bob = await connect();
+    await join(alice, 'alice');
+    await join(bob, 'bob');
+    let bobSees = {} as GameState;
+    onStateUpdates(bob, (state) => {
+      bobSees = state;
+    });
+    const put = await interact(bob, 'bob', { objectId: 'record', target: 'lofi' });
+    expect(put.ok).toBe(true);
+    await settle();
+    expect(bobSees.room.record?.record).toBe('lofi');
+    expect(bobSees.log.at(-1)).toMatchObject({ text: 'bob put on Lo-fi Evening' });
+    await emitAck(alice, SocketEvent.HostAction, {
+      sessionId: 'ROOM',
+      playerId: 'alice',
+      action: 'permission',
+      permission: 'sounds',
+      allowed: false,
+    });
+    const refused = await interact(bob, 'bob', { objectId: 'record', on: false });
+    expect(refused).toMatchObject({ ok: false, error: SOUNDS_OFF_ERROR });
+    // The host still can.
+    const off = await interact(alice, 'alice', { objectId: 'record', on: false });
+    expect(off.state?.room.record).toBeNull();
   });
 });

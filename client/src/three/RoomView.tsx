@@ -99,6 +99,9 @@ import { SoundboardAssignMenu } from '../SoundboardAssignMenu.js';
 import { InventoryDialog } from '../InventoryDialog.js';
 import { WalkieDialog } from '../WalkieDialog.js';
 import { CalculatorDialog } from '../CalculatorDialog.js';
+import { RecordDialog } from '../RecordDialog.js';
+import { MusicPlayer } from '../music/MusicPlayer.js';
+import { RecordPlayer } from './RecordPlayer.js';
 import { HeldItems } from '../HeldItems.js';
 import { createPinboard, syncPinboard, disposePinboard, type Pinboard } from './Pinboard.js';
 import { uploadImage } from '../uploads.js';
@@ -114,6 +117,8 @@ import { candlePrompt } from './candles.js';
 import {
   playBlowOut,
   playCurtains,
+  playNeedleDrop,
+  playNeedleLift,
   playLogOnFire,
   playMatchStrike,
   playWindowSash,
@@ -459,6 +464,8 @@ export function RoomView({
   const winterRef = useRef<WinterDecor | null>(null);
   const windowsRef = useRef<RoomWindows | null>(null);
   const weatherAudioRef = useRef<WeatherAudio | null>(null);
+  const recordPlayerRef = useRef<RecordPlayer | null>(null);
+  const musicRef = useRef<MusicPlayer | null>(null);
   // The room's obstacles (the controller walks against these): the winter
   // tree joins them while it's up.
   const obstaclesRef = useRef<import('./collision.js').Obstacle[] | null>(null);
@@ -583,6 +590,10 @@ export function RoomView({
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const calculatorOpenRef = useRef(false);
   const closeCalculator = useCallback(() => setCalculatorOpen(false), []);
+  // The record box (RecordDialog), opened at the record player.
+  const [recordOpen, setRecordOpen] = useState(false);
+  const recordOpenRef = useRef(false);
+  const closeRecords = useCallback(() => setRecordOpen(false), []);
   const whiteboardRef = useRef<WhiteboardLine[]>(whiteboard);
   const whiteboardCanvasRef = useRef<WhiteboardCanvas | null>(null);
   const whiteboardTargetedRef = useRef(false);
@@ -731,6 +742,10 @@ export function RoomView({
     calculatorOpenRef.current = calculatorOpen;
   }, [calculatorOpen]);
 
+  useEffect(() => {
+    recordOpenRef.current = recordOpen;
+  }, [recordOpen]);
+
   // Re-ink when the lines change *or* when an author changes color.
   useEffect(() => {
     whiteboardRef.current = whiteboard;
@@ -827,6 +842,15 @@ export function RoomView({
         if (old.open !== next.open) playWindowSash(place, next.open);
         if (old.drawn !== next.drawn) playCurtains(place);
       }
+    }
+    // The record player: what's on, and the needle going down or up.
+    musicRef.current?.setRecord(room.record);
+    recordPlayerRef.current?.setPlaying(room.record?.record ?? null);
+    const turntable = recordPlayerRef.current?.soundSpot;
+    if (listener && turntable && room.record?.startedAt !== before.record?.startedAt) {
+      const place = placeSound(listener, turntable, 1, 8);
+      if (room.record) playNeedleDrop(place);
+      else playNeedleLift(place);
     }
     const was = new Set(before.candlesOut);
     const now = new Set(room.candlesOut);
@@ -1303,6 +1327,46 @@ export function RoomView({
         roomLife.syncPlayers(playersRef.current);
         roomLife.setLightOn(lightOnRef.current, true);
         if (winter.wreath) roomLife.hangOnDoor(winter.wreath);
+
+        // The record player: a cabinet by the reading lamp, its turntable,
+        // and the music itself (MusicPlayer), following GameState.room.
+        let darkWood: THREE.Material | null = null;
+        room.object3D.traverse((node) => {
+          if (!darkWood && node instanceof THREE.Mesh && !Array.isArray(node.material)) {
+            if (node.material.name === 'dark_wood') darkWood = node.material;
+          }
+        });
+        const recordPlayer = new RecordPlayer(scene, darkWood);
+        recordPlayerRef.current = recordPlayer;
+        room.layout.obstacles.push(recordPlayer.obstacle);
+        const music = new MusicPlayer(
+          () => Date.now() + serverOffsetRef.current,
+          (soundId) => soundboardRef.current.find((sound) => sound.id === soundId)?.url ?? null,
+        );
+        musicRef.current = music;
+        music.setRecord(roomRef.current.record);
+        recordPlayer.setPlaying(roomRef.current.record?.record ?? null);
+        aimTargetsRef.current = [
+          ...aimTargetsRef.current,
+          {
+            id: 'record-player',
+            center: recordPlayer.aim.center,
+            radius: recordPlayer.aim.radius,
+            reach: 2.4,
+            prompt: () =>
+              roomRef.current.record
+                ? `Press ${keyLabel()} for the records · Shift+${keyLabel()} to take this one off`
+                : `Press ${keyLabel()} to put a record on`,
+            act: (shift) => {
+              if (shift && roomRef.current.record) {
+                onRoomActionRef.current('record', { on: false });
+                return;
+              }
+              controller.controls.unlock();
+              setRecordOpen(true);
+            },
+          },
+        ];
         roomLifeRef.current = roomLife;
 
         // The sofa, the armchair and the rocking chair: look at one and press
@@ -1404,6 +1468,8 @@ export function RoomView({
             renderer,
             avatars,
             outside,
+            music,
+            recordPlayer,
             // Live-tunable: the arm poses and grips read this every frame.
             holds: HOLDS,
           };
@@ -1768,7 +1834,8 @@ export function RoomView({
             whiteboardOpenRef.current ||
             inventoryOpenRef.current ||
             walkieOpenRef.current ||
-            calculatorOpenRef.current
+            calculatorOpenRef.current ||
+            recordOpenRef.current
           ) {
             return;
           }
@@ -1835,7 +1902,8 @@ export function RoomView({
           whiteboardOpenRef.current ||
           inventoryOpenRef.current ||
           walkieOpenRef.current ||
-          calculatorOpenRef.current;
+          calculatorOpenRef.current ||
+          recordOpenRef.current;
 
         // V: switch between looking out from the chair and the table view.
         handleViewKey = (event: KeyboardEvent) => {
@@ -1984,6 +2052,17 @@ export function RoomView({
           decorRef.current?.update(delta, timer.getElapsed());
           winterRef.current?.update(delta, timer.getElapsed());
           windowsRef.current?.update(delta);
+          recordPlayer.update(delta);
+          {
+            const place = placeSound(
+              { x: camera.position.x, z: camera.position.z, yaw: controller.getYaw() },
+              recordPlayer.soundSpot,
+              2,
+              16,
+            );
+            // Heard all over the room, a little louder close by.
+            music.setPlacement({ volume: 0.55 + 0.45 * place.volume, pan: place.pan * 0.5 });
+          }
           // Lightning through the windows (a storm; never for a player who
           // turned flashing effects off).
           outside?.setFlashAllowed(flashingAllowed());
@@ -2221,6 +2300,10 @@ export function RoomView({
       windowsRef.current = null;
       weatherAudioRef.current?.dispose();
       weatherAudioRef.current = null;
+      recordPlayerRef.current?.dispose();
+      recordPlayerRef.current = null;
+      musicRef.current?.dispose();
+      musicRef.current = null;
       whiteboardCanvasRef.current?.dispose();
       whiteboardCanvasRef.current = null;
       roomLightsRef.current = null;
@@ -2296,7 +2379,8 @@ export function RoomView({
         !whiteboardOpen &&
         !inventoryOpen &&
         !walkieOpen &&
-        !calculatorOpen && <div className="crosshair" />}
+        !calculatorOpen &&
+        !recordOpen && <div className="crosshair" />}
       {cameraFlash && <div className="camera-flash" />}
       <HeldItems items={inventory.filter((item) => item.heldBy === playerId)} />
       {/* One bottom-center stack, so the prompt always sits above the hint
@@ -2308,6 +2392,7 @@ export function RoomView({
           !inventoryOpen &&
           !walkieOpen &&
           !calculatorOpen &&
+          !recordOpen &&
           // Seated in the chair view, the card below already says it.
           !(seated && !locked && seatedView !== 'table') && (
             <div className="interaction-prompt">{interactionPrompt}</div>
@@ -2318,7 +2403,8 @@ export function RoomView({
           !whiteboardOpen &&
           !inventoryOpen &&
           !walkieOpen &&
-          !calculatorOpen && (
+          !calculatorOpen &&
+          !recordOpen && (
             <button
               type="button"
               className="room-view-overlay"
@@ -2397,6 +2483,22 @@ export function RoomView({
         <WalkieDialog onSend={(text) => onTransmitWalkieRef.current(text)} onClose={closeWalkie} />
       )}
       {calculatorOpen && <CalculatorDialog onClose={closeCalculator} />}
+      {recordOpen && (
+        <RecordDialog
+          playing={room.record}
+          soundboard={soundboard}
+          canUseSounds={canUseSounds}
+          onPlay={(record) => {
+            onRoomAction('record', { target: record, on: true });
+            setRecordOpen(false);
+          }}
+          onStop={() => {
+            onRoomAction('record', { on: false });
+            setRecordOpen(false);
+          }}
+          onClose={closeRecords}
+        />
+      )}
       {seated && (
         <div className="drawing-toolbar">
           {hasChair && (
