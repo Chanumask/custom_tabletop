@@ -12,7 +12,7 @@ export const LIGHT_SWITCH_SPOT = { x: 3.64, z: 3.55 };
 const LEVER_TILT = 0.45;
 
 /**
- * The room's main light switch (docs/decisions.md, "The cozy room"): a
+ * The room's main light switch (docs/decisions.md, "The cozy room, lived in"): a
  * brass plate with a little ivory lever, on the wall by the door — the
  * reading lamp by the armchair has its own switch now.
  */

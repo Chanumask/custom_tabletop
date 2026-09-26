@@ -66,7 +66,7 @@ interface Playing {
 }
 
 /**
- * The record player's sound (docs/decisions.md, "The cozy room"): plays
+ * The record player's sound (docs/decisions.md, "The cozy room, lived in"): plays
  * what `GameState.room.record` says — one of its own records, composed as
  * it plays (songs.ts) and scheduled a little ahead in step with the
  * server's clock so everyone hears the same bar at the same moment; or a

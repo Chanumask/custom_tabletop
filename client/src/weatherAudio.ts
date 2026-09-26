@@ -21,7 +21,7 @@ export function rainLoudness(distance: number, open: boolean, drawn: boolean): n
 
 /**
  * Rain on the windows and the roof, and thunder rolling in after lightning
- * (docs/decisions.md, "The cozy room"). Synthesized like the fire and the
+ * (docs/decisions.md, "The cozy room, lived in"). Synthesized like the fire and the
  * night: noise shaped into a steady hiss plus the patter of heavy drops,
  * and a long low rumble for thunder. In the player's "Rain & thunder" sound
  * category (audioMix.ts).

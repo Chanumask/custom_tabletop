@@ -1,5 +1,5 @@
 /**
- * "Look at it and press E" (docs/decisions.md, "The cozy room"): small
+ * "Look at it and press E" (docs/decisions.md, "The cozy room, lived in"): small
  * things close together — the candles on the mantel, the fire under them,
  * the cat on the rug in front — can't be told apart by who's nearest, the
  * way the chest or the table can. Each is a sphere in the room; the one the

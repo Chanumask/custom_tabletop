@@ -20,7 +20,7 @@ export interface WeatherPiece extends Piece {
 }
 
 /**
- * The weather outside (docs/decisions.md, "The cozy room"): rain streaks
+ * The weather outside (docs/decisions.md, "The cozy room, lived in"): rain streaks
  * (heavier in a storm, with lightning), or snow drifting down. Both are
  * GPU-driven — every drop's fall is computed in its vertex shader from the
  * time, so thousands cost nothing per frame on the CPU. `onThunder` is

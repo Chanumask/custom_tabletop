@@ -3,7 +3,7 @@ import type { Drink } from '@custom-tabletop/shared';
 
 /**
  * The mug a player holds (tea or cocoa) and the popcorn bowl on the table
- * (docs/decisions.md, "The cozy room"), built from a few shapes — small
+ * (docs/decisions.md, "The cozy room, lived in"), built from a few shapes — small
  * enough not to need a model file. The mug's origin is where the hand
  * grips its handle; its body sits toward -X, and it's upright along +Y.
  */

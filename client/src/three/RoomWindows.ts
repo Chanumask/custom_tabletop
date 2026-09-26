@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { WindowId, WindowState } from '@custom-tabletop/shared';
+import { mergeStatic } from './mergeStatic.js';
 
 /** Each window's parts in the room model. */
 const PARTS: Record<
@@ -78,7 +79,7 @@ interface Window {
 }
 
 /**
- * The room's windows (docs/decisions.md, "The cozy room"): old sash
+ * The room's windows (docs/decisions.md, "The cozy room, lived in"): old sash
  * windows, whose lower half slides up to open — clear of the curtains,
  * which draw across from their outer edges to meet in the middle. Open,
  * the curtains stir in the breeze. Shared state: GameState.room.
@@ -188,6 +189,11 @@ export class RoomWindows {
       sashGlass.position.set(0, (BAR + rail.min.y) / 2, (LOWER_FROM + DEPTH) / 2);
       sashGlass.visible = false;
       sash.add(sashGlass);
+      // Each sash's bars as one mesh (the lower one moves as a whole).
+      this.geometries.push(
+        ...mergeStatic(frame, (part) => part === sash),
+        ...mergeStatic(sash, (part) => part === sashGlass),
+      );
       // Up until its meeting rail tucks under the upper sash's top rail.
       const slide = Math.max(0, height - BAR - rail.max.y);
 

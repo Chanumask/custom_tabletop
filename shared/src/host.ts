@@ -28,7 +28,7 @@ export type RoomTheme = (typeof ROOM_THEMES)[number];
 export const CLEAR_TARGETS = ['drawings', 'whiteboard', 'dice', 'minis', 'photos'] as const;
 export type ClearTarget = (typeof CLEAR_TARGETS)[number];
 
-/** The host's mood presets (docs/decisions.md, "The cozy room"): each sets
+/** The host's mood presets (docs/decisions.md, "The cozy room, lived in"): each sets
  * a few of the room's own switches at once — the lights, the candles, the
  * fire, the weather, the record — which all stay theirs to change by hand. */
 export const MOODS = [

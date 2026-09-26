@@ -37,7 +37,7 @@ const DOOR_CLOSES_AFTER = 3.6;
 const STRIKE_GAP = 2.2;
 
 /**
- * The room's small signs of life (docs/decisions.md, "The cozy room"):
+ * The room's small signs of life (docs/decisions.md, "The cozy room, lived in"):
  * footsteps on the boards (your own and everyone else's), the grandfather
  * clock keeping time, a knock at the door when someone arrives — who then
  * walks in — the light switch by the door, and the seats away from the

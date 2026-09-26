@@ -40,7 +40,7 @@ type State =
   | { kind: 'walking'; path: PathPoint[]; leg: number; t: number; to: CatSpotId };
 
 /**
- * The room's cat (docs/decisions.md, "The cozy room"): curled up asleep by
+ * The room's cat (docs/decisions.md, "The cozy room, lived in"): curled up asleep by
  * the fire — or on the sofa, the armchair, the chest — breathing slowly,
  * wandering to another spot now and then (catRoutes.ts decides where, the
  * same for everyone), and waking for a moment to be petted. Made of a few

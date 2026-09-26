@@ -1,6 +1,6 @@
 /**
  * Tea and cocoa from the tea set by the sofa, and the snack bowl on the
- * table (docs/decisions.md, "The cozy room"). A drink is held in the hand
+ * table (docs/decisions.md, "The cozy room, lived in"). A drink is held in the hand
  * like a gadget — the same single slot: pouring one puts a held gadget
  * back in the chest, and taking a gadget sets the drink down.
  */

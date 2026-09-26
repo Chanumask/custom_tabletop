@@ -2,7 +2,7 @@ import type { RecordId } from '@custom-tabletop/shared';
 
 /**
  * The record player's three records, composed as they play (docs/decisions.md,
- * "The cozy room"): each is a tune with a form — chords, a bass, drums, a
+ * "The cozy room, lived in"): each is a tune with a form — chords, a bass, drums, a
  * melody — worked out bar by bar from nothing but the bar's number, so every
  * player's browser plays the very same notes at the very same time (the
  * record's start is shared, GameState.room.record). Pure: this only says

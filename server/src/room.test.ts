@@ -12,7 +12,7 @@ import { createAppServer, type AppServer } from './server.js';
 import { SessionStore } from './sessionStore.js';
 import { onStateUpdates } from './testSupport.js';
 
-// The room's shared switches (docs/decisions.md, "The cozy room").
+// The room's shared switches (docs/decisions.md, "The cozy room, lived in").
 
 let app: AppServer;
 let url: string;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BOOK_COVERS, type Book } from '@custom-tabletop/shared';
 import type { Obstacle } from './collision.js';
+import { mergeStatic } from './mergeStatic.js';
 import { woodBox } from './woodBox.js';
 
 /** Against the west wall between the bookshelf and the grandfather clock,
@@ -12,7 +13,7 @@ const DESK_TILT = 0.42;
 const SHELF_BOOKS = 10;
 
 /**
- * The lectern (docs/decisions.md, "The cozy room"): a reading stand by the
+ * The lectern (docs/decisions.md, "The cozy room, lived in"): a reading stand by the
  * bookshelf with a book lying open on it, and the host's books (books.ts)
  * standing on the shelf underneath, one spine for each, in its cover's
  * color. Everyone reads them here; the host writes them here.
@@ -110,6 +111,11 @@ export class Lectern {
       spine.visible = false;
       this.group.add(spine);
       this.spines.push(spine);
+    }
+    for (const geometry of mergeStatic(this.group, (part) =>
+      this.spines.includes(part as THREE.Mesh),
+    )) {
+      this.keep(geometry);
     }
   }
 

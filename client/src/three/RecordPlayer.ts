@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Obstacle } from './collision.js';
+import { mergeStatic } from './mergeStatic.js';
 import { woodBox } from './woodBox.js';
 
 /** The record cabinet stands against the south wall under the star-map
@@ -37,7 +38,7 @@ const SLEEVES = [
 ];
 
 /**
- * The record player (docs/decisions.md, "The cozy room"): a little walnut
+ * The record player (docs/decisions.md, "The cozy room, lived in"): a little walnut
  * record cabinet with its records on a shelf and a turntable on top. The
  * platter spins while a record plays, the tonearm swings over and back, a
  * small lamp glows. What plays is shared (GameState.room.record, played by
@@ -144,15 +145,18 @@ export class RecordPlayer {
     knob.position.set(-0.14, 0, 0.016);
     door.add(knob);
     // Records on the shelf, leaning a little.
-    const sleeveGeometry = this.keep(new THREE.BoxGeometry(0.011, 0.31, 0.31));
-    const sleeveMaterials = SLEEVES.map((color) =>
-      this.keep(new THREE.MeshStandardMaterial({ color, roughness: 0.85 })),
+    // One material, each sleeve its own color in its vertices — so they
+    // all merge into one mesh below.
+    const sleeveMaterial = this.keep(
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }),
     );
     for (let i = 0; i < 17; i++) {
-      const sleeve = new THREE.Mesh(
-        sleeveGeometry,
-        sleeveMaterials[(i * 7) % sleeveMaterials.length]!,
-      );
+      const shape = this.keep(new THREE.BoxGeometry(0.011, 0.31, 0.31));
+      const color = new THREE.Color(SLEEVES[(i * 7) % SLEEVES.length]!);
+      const colors = new Float32Array(shape.attributes.position!.count * 3);
+      for (let v = 0; v < colors.length; v += 3) colors.set([color.r, color.g, color.b], v);
+      shape.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      const sleeve = new THREE.Mesh(shape, sleeveMaterial);
       const lean = i > 13 ? 0.28 : 0;
       sleeve.position.set(
         -0.36 + i * 0.0145 + (i > 13 ? (i - 13) * 0.02 : 0),
@@ -260,6 +264,13 @@ export class RecordPlayer {
     lamp.position.set(0.19, TOP + 0.03, 0.182);
     this.group.add(lamp);
     this.record.visible = false;
+    // Everything that doesn't move (or glow) as a few meshes, not forty.
+    for (const geometry of mergeStatic(
+      this.group,
+      (part) => part === this.spinner || part === this.arm || part === lamp,
+    )) {
+      this.keep(geometry);
+    }
   }
 
   /** What's on (a record id, `sound:<id>`) or null; `update` shows it. */

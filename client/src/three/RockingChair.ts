@@ -16,7 +16,7 @@ export function rockAngle(phase: number, amount: number): number {
 }
 
 /**
- * The rocking chair (docs/decisions.md, "The cozy room"): rocks gently
+ * The rocking chair (docs/decisions.md, "The cozy room, lived in"): rocks gently
  * while someone sits in it — the sitter with it, and their view — and
  * slows to a stop when they get up, creaking at the end of each swing.
  * Every player's room rocks it on its own (only who's sitting is shared),

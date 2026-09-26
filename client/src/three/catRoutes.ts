@@ -2,7 +2,7 @@ import type { LoungeSeat } from '@custom-tabletop/shared';
 
 /**
  * Where the room's cat likes to be, and how it gets there (docs/decisions.md,
- * "The cozy room"). Pure: RoomCat.ts animates it. Everyone's room works out
+ * "The cozy room, lived in"). Pure: RoomCat.ts animates it. Everyone's room works out
  * the same spot from the server's clock, so the cat is in the same place for
  * every player; only its walk between spots is each room's own.
  */

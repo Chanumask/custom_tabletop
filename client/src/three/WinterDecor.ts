@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeStatic } from './mergeStatic.js';
 import { seededRandom } from './parchment.js';
 import { Kit, glowPointsMaterial } from './outside/kit.js';
 import type { Obstacle } from './collision.js';
@@ -9,7 +10,7 @@ import type { RoomAsset } from './RoomLoader.js';
 const TREE = { x: -2.55, z: -3.38, height: 2.05, radius: 0.6 };
 
 /**
- * The room dressed for winter (docs/decisions.md, "The cozy room"): a
+ * The room dressed for winter (docs/decisions.md, "The cozy room, lived in"): a
  * decorated tree with twinkling lights and a star, presents under it,
  * stockings hanging from the mantel, a garland along it, and a wreath on the
  * door. Placed from the room model like the Halloween decor, and like it,
@@ -46,6 +47,15 @@ export class WinterDecor {
     }
     const door = box('Door_Leaf');
     if (door) this.addWreath(door);
+    // Dozens of little shapes as a few meshes. Only materials and point
+    // colors change as it twinkles, so all of it can merge — the wreath on
+    // its own, since it will hang on (and swing with) the door.
+    const wreath = this.wreath;
+    const merged = [
+      ...(wreath ? mergeStatic(wreath) : []),
+      ...mergeStatic(this.group, (part) => part === wreath),
+    ];
+    merged.forEach((geometry) => this.kit.keep(geometry));
   }
 
   setVisible(visible: boolean): void {
