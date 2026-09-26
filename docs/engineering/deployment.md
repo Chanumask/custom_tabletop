@@ -4,7 +4,9 @@
 
 The game is served from **https://tabletop.murri.me** on the owner's VPS (`ssh root@murri.me`, Debian 12, Docker Compose). The decision and its reasoning are in [decisions.md](../decisions.md), 2026-09-25 "Deployment".
 
-**Status (2026-09-26): live.** The container runs commit `cf5dcf1` (the cozy-room batch after its final check), and the owner has created the NPM proxy host. All 9 cross-browser smoke runs pass against `https://tabletop.murri.me`.
+**Status (2026-09-26): live.** The container runs commit `5356bcf` (player profiles), and the owner has created the NPM proxy host.
+- All 12 cross-browser runs (the smoke tests and the profile test) pass against `https://tabletop.murri.me`.
+- An 8.6 MB profile image goes through the proxy in under 2 s.
 
 ## How it's put together
 

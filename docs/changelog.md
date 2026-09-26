@@ -47,7 +47,10 @@ The owner asked for player profiles as images: shared on joining or later, seen 
   - In the first full server run, 9 older multi-player socket tests failed. Five reruns (plain, cold cache, under load) passed; they rely on fixed short waits that a busy machine can outrun.
 - Lint, format and build are clean.
 
-Not yet pushed or deployed: waiting for the owner's go-ahead.
+**Pushed and deployed** on the owner's go-ahead ("push and deploy"). The live site runs `5356bcf`, and the deploy's health check passed. Against `https://tabletop.murri.me`:
+- All 12 cross-browser runs pass (Chromium, Firefox and WebKit: the profile test and the smoke tests).
+- A separate check went through the proxy with a real-size image. An 8.6 MB image was stored in 1.8 s and came back byte-identical, marked not to be cached.
+- Without credentials the server refused it (401), and once its player left the table the image was gone.
 
 ---
 
