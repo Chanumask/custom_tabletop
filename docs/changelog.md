@@ -48,7 +48,7 @@ The owner asked for a final check: "everything is working as intended, no weird 
 - Lint, format and build clean.
 - A production build passes the smoke tests and the new-features run in Chromium, Firefox and WebKit (12/12).
 
-Not yet pushed or deployed: waiting for the owner's go-ahead.
+**Pushed and deployed** (owner: "push and deploy"): `cf5dcf1` is live and healthy. The live RoomView bundle is the tested build (same hash). Against `https://tabletop.murri.me`, all 12 browser runs pass: the smoke tests and the new-features run in Chromium, Firefox and WebKit, with no errors.
 
 ---
 
