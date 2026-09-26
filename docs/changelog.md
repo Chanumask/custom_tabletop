@@ -6,6 +6,52 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-26 (final check) — The cozy-room batch, audited
+
+The owner asked for a final check: "everything is working as intended, no weird collisions, everything robust". Fixed in `190de2b`; the reasoning is in decisions.md, "The cozy room, lived in" (its "After the final check" part).
+
+### How it was checked
+
+- **A collision audit in the running room:**
+  - every obstacle against the spawn points and the cat's routes;
+  - every new object's bounds against the room's meshes;
+  - overlapping aim targets;
+  - a scan of the whole scene for broken (NaN) transforms.
+- **Multi-player interplay, live:**
+  - two players racing for the armchair;
+  - getting up by walking off;
+  - sitting where the cat lies (sofa and armchair);
+  - taking a gadget with a drink in hand;
+  - the cat in the armchair under the crosshair.
+- **The first-person mug** at a wall, raised and sipping; the lamp from the armchair.
+
+### What it found and fixed
+
+- **The cat:**
+  - her ears and tail tip were never drawn until first petted (a NaN from `-Infinity`);
+  - her chest spot sat on the candlestick, so it's gone;
+  - she hopped off through a sitter's legs;
+  - she finished a walk into a seat that had been taken, and could be walked through by the fire.
+- **The mug:** your own mug sank into walls, and the sip was hidden at the bottom of the screen.
+- **The popcorn bowl** sat 2 cm into the table's rails.
+- **Controls:**
+  - the reading lamp couldn't be switched from the armchair (it answers to its shade now);
+  - emotes gave a "Wave!" while sitting, though nobody saw it.
+- **Robustness:**
+  - no flood guard on room interactions;
+  - music could pile up notes before the audio clock started;
+  - socket tests slept a fixed 80 ms and could flake under load (seven did once).
+
+### Checked after
+
+- 832 tests (63 shared, 405 server, 364 client), passing three runs in a row.
+- Lint, format and build clean.
+- A production build passes the smoke tests and the new-features run in Chromium, Firefox and WebKit (12/12).
+
+Not yet pushed or deployed: waiting for the owner's go-ahead.
+
+---
+
 ## 2026-09-26 — The cozy room, lived in
 
 The owner asked for a room that feels lived in, for everyone's own control over what they hear, and for five extras, all in one go ("ok do all of them … in the end push and deploy"). Every decision is recorded in decisions.md, "The cozy room, lived in".
@@ -23,7 +69,7 @@ Each part was built on its own branch and squash-merged into `main`:
 - **Sitting anywhere** (`3fbec12`): three places on the sofa, the armchair and the rocking chair (it rocks), leaning back into the cushions.
 - **A record player** (`af82bb9`): a record cabinet by the reading lamp. Its three records (Tavern Night, Lo-fi Evening, Rain Jazz) are composed in the browser, the same notes for everyone. Any audio file from the soundboard plays as a record too.
 - **Tea, cocoa and popcorn** (`d8c2451`): pour one at the tea set and carry it (one hand, like a gadget). R sips, 7 raises your mug to the others (with a clink when someone's close), and there's a bowl of popcorn on the table's corner.
-- **Ember, the cat** (`7d0f2dd`): asleep by the fire, purring. She wanders to the sofa, the armchair or the chest, is in the same place for everyone, and can be petted.
+- **Ember, the cat** (`7d0f2dd`): asleep by the fire, purring. She wanders to the sofa or the armchair (the chest spot was dropped at the final check, below), is in the same place for everyone, and can be petted.
 - **Books** (`1b9a828`): the host writes lore, letters or house rules at a lectern by the bookshelf, and everyone reads them. A guide to the room is always there.
 - **Moods** (`622f9d5`): story time, break and storm, as one click for the host, while every switch stays manual.
 - **Fewer draw calls** (`66a0284`): the new furniture's static parts are merged, taking the whole room from 374 to 315 calls (431 to 325 in winter) with no visible change.

@@ -76,6 +76,19 @@ A mood never piles on a second log within 4 s, and it doesn't restart a record t
 
 **Rules out:** music files shipped with the app; syncing anything that's only animation (the rocking, the cat's walk, the curtains' breeze); new scene lights for any of it; seats, drinks or books outside the server's say.
 
+**After the final check (same day, owner: "everything is working as intended, no weird collisions, everything robust").** An audit ran in the live room, and tuning from it changed a few calls above:
+- **The cat's spots.** She naps by the fire, on the sofa or in the armchair. The chest spot is gone: its top holds the oil lamp and a candlestick, with no 33 cm gap, and there's none on the sideboard either.
+- **The cat's moves.**
+  - She hops off a seat from its front corner, past a sitter's legs.
+  - She's off within a fraction of a second when someone sits on her.
+  - She changes course at the next waypoint when her seat is taken on the way.
+  - Asleep on the rug, she's a small obstacle to walk round.
+- **Your own mug is drawn at 40% size and 40% of the distance.** It looks the same on screen but never reaches past ~21 cm, so it can't sink into a wall you stand at (you can get within 30 cm).
+- **A flood guard on room interactions:** 12 per 2 s per player. Every one of them makes a sound for everyone.
+- **Music is never scheduled into an audio clock that hasn't started.** Those notes would all sound at once when it did.
+- **A sentinel gotcha:** `-Infinity` as "never", fed through `Math.sin`, is NaN, and 0 × NaN is NaN. Use a large finite value.
+- **Tests:** socket tests wait for what they expect (`eventually`, `testSupport.ts`) instead of a fixed sleep that a busy machine can outrun.
+
 ---
 
 ## 2026-09-26 — Gadget models, and how the characters hold them
