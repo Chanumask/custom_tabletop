@@ -4,6 +4,7 @@ import {
   type SceneDeleteRequest,
   ROOM_THEMES,
   WEATHERS,
+  cleanBook,
   type HostActionRequest,
   type DiceMoveRequest,
   type MiniMoveRequest,
@@ -887,6 +888,17 @@ export function parseHostActionRequest(payload: unknown): HostActionRequest | nu
   const target = CLEAR_TARGETS.find((candidate) => candidate === fields.target);
   if (action === 'clear' && target) {
     return { ...base, action, target };
+  }
+  if (action === 'writeBook') {
+    const book = cleanBook({ title: fields.title, text: fields.text, cover: fields.cover });
+    const bookId = fields.bookId;
+    if (!book || (bookId !== undefined && !(isNonEmptyString(bookId) && bookId.length <= 64))) {
+      return null;
+    }
+    return { ...base, action, ...book, ...(bookId !== undefined ? { bookId } : {}) };
+  }
+  if (action === 'removeBook' && isNonEmptyString(fields.bookId)) {
+    return { ...base, action, bookId: fields.bookId };
   }
   return null;
 }

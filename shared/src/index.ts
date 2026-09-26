@@ -23,3 +23,4 @@ export * from './host.js';
 export * from './seats.js';
 export * from './room.js';
 export * from './refreshments.js';
+export * from './books.js';

@@ -15,6 +15,8 @@ import {
   emptyWhiteboard,
   isCandleGroup,
   isDrink,
+  MAX_BOOKS,
+  normalizeBooks,
   isLoungeSeat,
   isRecordId,
   RECORDS,
@@ -1343,6 +1345,44 @@ export class SessionStore {
     return { ok: true, state };
   }
 
+  /** Host only: writes a new book for the lectern, or rewrites one. */
+  writeBook(
+    sessionId: string,
+    actorId: string,
+    book: { bookId?: string; title: string; text: string; cover: number },
+  ): GameStateMutationResult {
+    const table = this.asHost(sessionId, actorId);
+    if (!table.ok) return table;
+    const { state, host } = table;
+    const { bookId, title, text, cover } = book;
+    if (bookId) {
+      const existing = state.books.find((candidate) => candidate.id === bookId);
+      if (!existing) return { ok: false, error: 'That book is gone.' };
+      state.books = state.books.map((candidate) =>
+        candidate.id === bookId ? { id: bookId, title, text, cover } : candidate,
+      );
+      return { ok: true, state };
+    }
+    if (state.books.length >= MAX_BOOKS) {
+      return { ok: false, error: `The lectern holds ${MAX_BOOKS} books — take one away first.` };
+    }
+    state.books = [...state.books, { id: randomUUID(), title, text, cover }];
+    addSystemEntry(state, `${host.name} left a new book by the bookshelf: “${title}”`);
+    return { ok: true, state };
+  }
+
+  /** Host only: takes a book off the lectern. */
+  removeBook(sessionId: string, actorId: string, bookId: string): GameStateMutationResult {
+    const table = this.asHost(sessionId, actorId);
+    if (!table.ok) return table;
+    const { state } = table;
+    if (!state.books.some((book) => book.id === bookId)) {
+      return { ok: false, error: 'That book is gone.' };
+    }
+    state.books = state.books.filter((book) => book.id !== bookId);
+    return { ok: true, state };
+  }
+
   /** Host only: the weather outside. */
   setWeather(sessionId: string, actorId: string, weather: Weather): GameStateMutationResult {
     const table = this.asHost(sessionId, actorId);
@@ -1608,6 +1648,7 @@ function normalizeRestoredState(sessionId: string, saved: GameState): GameState 
     lounge: isLoungeSeat(player.lounge) ? player.lounge : null,
     carrying: isDrink(player.carrying) ? player.carrying : null,
   }));
+  state.books = normalizeBooks(saved.books);
   // Seat numbers from an older save may point at chairs this table
   // doesn't have (or were numbered differently): settle them.
   settleSeats(state.players, chairCount(state.players.length));
@@ -1648,6 +1689,7 @@ function createEmptySession(sessionId: string, hostId: string): GameState {
     photos: [],
     lightOn: true,
     room: normalizeRoomState(undefined),
+    books: [],
     whiteboard: emptyWhiteboard(),
     log: [],
     clip: null,

@@ -662,6 +662,8 @@ export function App() {
             room={gameState.room ?? DEFAULT_ROOM_STATE}
             serverOffset={serverOffset}
             onRoomAction={handleRoomAction}
+            books={gameState.books ?? []}
+            onHostAction={handleHostAction}
             soundboard={gameState.soundboard}
             soundboardSlots={gameState.soundboardSlots}
             interactKey={settings.interactKey}

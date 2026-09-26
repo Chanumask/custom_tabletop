@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { io as ioClient, type Socket as ClientSocket } from 'socket.io-client';
 import {
   DEFAULT_ROOM_STATE,
+  MAX_BOOKS,
   SocketEvent,
   SOUNDS_OFF_ERROR,
   STOKE_MIN_INTERVAL_MS,
@@ -455,5 +456,118 @@ describe('tea, cocoa and popcorn', () => {
       { sessionId: 'ROOM', playerId: 'alice', gesture: 'snack' },
       { sessionId: 'ROOM', playerId: 'alice', gesture: 'pet' },
     ]);
+  });
+});
+
+describe('the books on the lectern', () => {
+  function room() {
+    const store = new SessionStore();
+    store.join('ROOM', 'alice', 'Alice');
+    store.join('ROOM', 'bob', 'Bob');
+    return store;
+  }
+
+  it('are the host’s to write, rewrite and take away, and everyone hears of a new one', () => {
+    const store = room();
+    expect(store.writeBook('ROOM', 'bob', { title: 'Mine', text: '', cover: 0 }).ok).toBe(false);
+    const written = store.writeBook('ROOM', 'alice', {
+      title: 'Lore',
+      text: 'Once upon',
+      cover: 2,
+    });
+    expect(written.ok).toBe(true);
+    const book = store.get('ROOM')!.books[0]!;
+    expect(book).toMatchObject({ title: 'Lore', text: 'Once upon', cover: 2 });
+    expect(store.get('ROOM')!.log.at(-1)).toMatchObject({
+      text: 'Alice left a new book by the bookshelf: “Lore”',
+    });
+    const entries = store.get('ROOM')!.log.length;
+    store.writeBook('ROOM', 'alice', {
+      bookId: book.id,
+      title: 'Lore, revised',
+      text: 'Twice',
+      cover: 1,
+    });
+    expect(store.get('ROOM')!.books).toEqual([
+      { id: book.id, title: 'Lore, revised', text: 'Twice', cover: 1 },
+    ]);
+    expect(store.get('ROOM')!.log.length).toBe(entries);
+    expect(
+      store.writeBook('ROOM', 'alice', { bookId: 'gone', title: 'x', text: '', cover: 0 }).ok,
+    ).toBe(false);
+    expect(store.removeBook('ROOM', 'bob', book.id).ok).toBe(false);
+    expect(store.removeBook('ROOM', 'alice', book.id).ok).toBe(true);
+    expect(store.get('ROOM')!.books).toEqual([]);
+  });
+
+  it('fit a dozen on the lectern', () => {
+    const store = room();
+    for (let i = 0; i < MAX_BOOKS; i++) {
+      expect(store.writeBook('ROOM', 'alice', { title: `Book ${i}`, text: '', cover: 0 }).ok).toBe(
+        true,
+      );
+    }
+    expect(store.writeBook('ROOM', 'alice', { title: 'One too many', text: '', cover: 0 }).ok).toBe(
+      false,
+    );
+  });
+
+  it('come back with a saved table', () => {
+    const store = room();
+    store.writeBook('ROOM', 'alice', { title: 'Kept', text: 'Safe', cover: 3 });
+    const saved = structuredClone(store.get('ROOM')!) as Partial<GameState>;
+    const restored = store.restore({
+      sessionId: 'S',
+      hostKey: 'k',
+      credentialHashes: {},
+      state: saved as GameState,
+    });
+    expect(restored.books).toMatchObject([{ title: 'Kept', text: 'Safe', cover: 3 }]);
+    delete saved.books;
+    const older = store.restore({
+      sessionId: 'T',
+      hostKey: 'k',
+      credentialHashes: {},
+      state: saved as GameState,
+    });
+    expect(older.books).toEqual([]);
+  });
+
+  it('reach everyone over the socket', async () => {
+    const alice = await connect();
+    const bob = await connect();
+    await join(alice, 'alice');
+    await join(bob, 'bob');
+    let bobSees = {} as GameState;
+    onStateUpdates(bob, (state) => {
+      bobSees = state;
+    });
+    const written = await emitAck(alice, SocketEvent.HostAction, {
+      sessionId: 'ROOM',
+      playerId: 'alice',
+      action: 'writeBook',
+      title: 'Letter',
+      text: 'Dear all',
+      cover: 4,
+    });
+    expect(written.ok).toBe(true);
+    await settle();
+    expect(bobSees.books).toMatchObject([{ title: 'Letter', text: 'Dear all', cover: 4 }]);
+    const refused = await emitAck(bob, SocketEvent.HostAction, {
+      sessionId: 'ROOM',
+      playerId: 'bob',
+      action: 'removeBook',
+      bookId: bobSees.books[0]!.id,
+    });
+    expect(refused.ok).toBe(false);
+    const empty = await emitAck(alice, SocketEvent.HostAction, {
+      sessionId: 'ROOM',
+      playerId: 'alice',
+      action: 'writeBook',
+      title: '   ',
+      text: 'no title',
+      cover: 0,
+    });
+    expect(empty.ok).toBe(false);
   });
 });

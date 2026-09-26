@@ -15,6 +15,7 @@ import type { LogEntry } from './log.js';
 import type { RoomTheme, TablePermissions } from './host.js';
 import type { LoungeSeat, RoomState } from './room.js';
 import type { Drink } from './refreshments.js';
+import type { Book } from './books.js';
 
 export interface Vector3 {
   x: number;
@@ -259,6 +260,8 @@ export interface GameState {
 
   /** Recent chat, rolls and arrivals/departures, oldest first (log.ts). */
   log: LogEntry[];
+  /** The host's books on the lectern (books.ts), read by everyone. */
+  books: Book[];
 }
 
 /**

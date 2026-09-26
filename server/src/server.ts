@@ -694,7 +694,11 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
                 ? sessions.setTheme(sessionId, playerId, request.theme)
                 : request.action === 'weather'
                   ? sessions.setWeather(sessionId, playerId, request.weather)
-                  : sessions.clearTable(sessionId, playerId, request.target);
+                  : request.action === 'writeBook'
+                    ? sessions.writeBook(sessionId, playerId, request)
+                    : request.action === 'removeBook'
+                      ? sessions.removeBook(sessionId, playerId, request.bookId)
+                      : sessions.clearTable(sessionId, playerId, request.target);
         ack?.(own(result));
         if (!result.ok) return;
         const changed: PatchKey | 'drawings' =
@@ -706,7 +710,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
                 ? 'theme'
                 : request.action === 'weather'
                   ? 'room'
-                  : request.target;
+                  : request.action === 'writeBook' || request.action === 'removeBook'
+                    ? 'books'
+                    : request.target;
         if (changed === 'drawings') {
           // Drawings only travel in full snapshots (SessionPatch).
           broadcastState(sessionId, result.state);

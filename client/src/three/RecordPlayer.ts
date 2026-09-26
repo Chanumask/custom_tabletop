@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Obstacle } from './collision.js';
+import { woodBox } from './woodBox.js';
 
 /** The record cabinet stands against the south wall under the star-map
  * poster, between the TV's sideboard and the reading lamp, facing the room. */
@@ -294,19 +295,8 @@ export class RecordPlayer {
     this.disposables.forEach((item) => item.dispose());
   }
 
-  /** A wood box whose grain is the same size on every face (the texture
-   * tiles once a metre). */
   private woodBox(w: number, h: number, d: number): THREE.BoxGeometry {
-    const geometry = this.keep(new THREE.BoxGeometry(w, h, d));
-    const uv = geometry.attributes.uv!;
-    const normal = geometry.attributes.normal!;
-    for (let i = 0; i < uv.count; i++) {
-      const nx = Math.abs(normal.getX(i));
-      const ny = Math.abs(normal.getY(i));
-      const [su, sv] = nx > 0.5 ? [d, h] : ny > 0.5 ? [w, d] : [w, h];
-      uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
-    }
-    return geometry;
+    return this.keep(woodBox(w, h, d));
   }
 
   private keep<T extends { dispose(): void }>(item: T): T {

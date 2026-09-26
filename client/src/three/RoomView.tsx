@@ -41,6 +41,8 @@ import {
   type Drink,
   type Gesture,
   type PlayerGestureRequest,
+  type Book,
+  type HostAction,
 } from '@custom-tabletop/shared';
 import { loadRoom } from './RoomLoader.js';
 import { FirstPersonController, type SeatedView } from './FirstPersonController.js';
@@ -102,8 +104,11 @@ import { InventoryDialog } from '../InventoryDialog.js';
 import { WalkieDialog } from '../WalkieDialog.js';
 import { CalculatorDialog } from '../CalculatorDialog.js';
 import { RecordDialog } from '../RecordDialog.js';
+import { BookshelfDialog } from '../BookshelfDialog.js';
+import { Lectern } from './Lectern.js';
 import { MusicPlayer } from '../music/MusicPlayer.js';
 import { RecordPlayer } from './RecordPlayer.js';
+import { roomWood } from './woodBox.js';
 import { HeldMugView } from './HeldMugView.js';
 import type { HeldKind } from './heldItems.js';
 import { buildSnackBowl, SNACK_BOWL, TEA_SET } from './refreshmentMeshes.js';
@@ -262,6 +267,10 @@ export interface RoomViewProps {
   /** Lights or blows out a candle group, stokes the fire, … (object:interact
    * with a target and a wanted state). */
   onRoomAction: (objectId: string, fields?: { target?: string; on?: boolean }) => void;
+  /** The host's books on the lectern (books.ts). */
+  books: Book[];
+  /** The host's own controls — writing the books. */
+  onHostAction: (action: HostAction) => void;
   soundboard: SoundState[];
   /** Slot index -> assigned sound id or null (Milestone 8 follow-up's wall
    * board — see shared/src/types.ts). */
@@ -439,6 +448,8 @@ export function RoomView({
   room,
   serverOffset,
   onRoomAction,
+  books,
+  onHostAction,
   soundboard,
   soundboardSlots,
   interactKey,
@@ -480,6 +491,8 @@ export function RoomView({
   const weatherAudioRef = useRef<WeatherAudio | null>(null);
   const recordPlayerRef = useRef<RecordPlayer | null>(null);
   const musicRef = useRef<MusicPlayer | null>(null);
+  const lecternRef = useRef<Lectern | null>(null);
+  const booksRef = useRef(books);
   const heldMugRef = useRef<HeldMugView | null>(null);
   // The room's obstacles (the controller walks against these): the winter
   // tree joins them while it's up.
@@ -609,6 +622,10 @@ export function RoomView({
   const [recordOpen, setRecordOpen] = useState(false);
   const recordOpenRef = useRef(false);
   const closeRecords = useCallback(() => setRecordOpen(false), []);
+  // The lectern's books (BookshelfDialog).
+  const [booksOpen, setBooksOpen] = useState(false);
+  const booksOpenRef = useRef(false);
+  const closeBooks = useCallback(() => setBooksOpen(false), []);
   const whiteboardRef = useRef<WhiteboardLine[]>(whiteboard);
   const whiteboardCanvasRef = useRef<WhiteboardCanvas | null>(null);
   const whiteboardTargetedRef = useRef(false);
@@ -763,6 +780,15 @@ export function RoomView({
   useEffect(() => {
     recordOpenRef.current = recordOpen;
   }, [recordOpen]);
+
+  useEffect(() => {
+    booksOpenRef.current = booksOpen;
+  }, [booksOpen]);
+
+  useEffect(() => {
+    booksRef.current = books;
+    lecternRef.current?.setBooks(books);
+  }, [books]);
 
   // Re-ink when the lines change *or* when an author changes color.
   useEffect(() => {
@@ -1350,12 +1376,16 @@ export function RoomView({
 
         // The record player: a cabinet by the reading lamp, its turntable,
         // and the music itself (MusicPlayer), following GameState.room.
-        let darkWood: THREE.Material | null = null;
-        room.object3D.traverse((node) => {
-          if (!darkWood && node instanceof THREE.Mesh && !Array.isArray(node.material)) {
-            if (node.material.name === 'dark_wood') darkWood = node.material;
-          }
-        });
+        const darkWood = roomWood(room.object3D);
+        // The lectern by the bookshelf, with the host's books (books.ts).
+        const lectern = new Lectern(scene, darkWood);
+        lecternRef.current = lectern;
+        room.layout.obstacles.push(lectern.obstacle);
+        lectern.setBooks(booksRef.current);
+        const openBooks = () => {
+          controller.controls.unlock();
+          setBooksOpen(true);
+        };
         const recordPlayer = new RecordPlayer(scene, darkWood);
         recordPlayerRef.current = recordPlayer;
         room.layout.obstacles.push(recordPlayer.obstacle);
@@ -1368,6 +1398,22 @@ export function RoomView({
         recordPlayer.setPlaying(roomRef.current.record?.record ?? null);
         aimTargetsRef.current = [
           ...aimTargetsRef.current,
+          {
+            id: 'lectern',
+            center: lectern.aim.center,
+            radius: lectern.aim.radius,
+            reach: 2.4,
+            prompt: () => `Press ${keyLabel()} to read the books`,
+            act: openBooks,
+          },
+          {
+            id: 'bookshelf',
+            center: { x: -4.05, y: 1.1, z: -3.62 },
+            radius: 0.55,
+            reach: 3,
+            prompt: () => `Press ${keyLabel()} to look at the books`,
+            act: openBooks,
+          },
           {
             id: 'record-player',
             center: recordPlayer.aim.center,
@@ -1974,7 +2020,8 @@ export function RoomView({
             inventoryOpenRef.current ||
             walkieOpenRef.current ||
             calculatorOpenRef.current ||
-            recordOpenRef.current
+            recordOpenRef.current ||
+            booksOpenRef.current
           ) {
             return;
           }
@@ -2042,7 +2089,8 @@ export function RoomView({
           inventoryOpenRef.current ||
           walkieOpenRef.current ||
           calculatorOpenRef.current ||
-          recordOpenRef.current;
+          recordOpenRef.current ||
+          booksOpenRef.current;
 
         // V: switch between looking out from the chair and the table view.
         handleViewKey = (event: KeyboardEvent) => {
@@ -2458,6 +2506,8 @@ export function RoomView({
       weatherAudioRef.current = null;
       recordPlayerRef.current?.dispose();
       recordPlayerRef.current = null;
+      lecternRef.current?.dispose();
+      lecternRef.current = null;
       scene.getObjectByName('snack-bowl')?.removeFromParent();
       disposeCat?.();
       musicRef.current?.dispose();
@@ -2538,7 +2588,8 @@ export function RoomView({
         !inventoryOpen &&
         !walkieOpen &&
         !calculatorOpen &&
-        !recordOpen && <div className="crosshair" />}
+        !recordOpen &&
+        !booksOpen && <div className="crosshair" />}
       {cameraFlash && <div className="camera-flash" />}
       <HeldItems
         items={inventory.filter((item) => item.heldBy === playerId)}
@@ -2554,6 +2605,7 @@ export function RoomView({
           !walkieOpen &&
           !calculatorOpen &&
           !recordOpen &&
+          !booksOpen &&
           // Seated in the chair view, the card below already says it.
           !(seated && !locked && seatedView !== 'table') && (
             <div className="interaction-prompt">{interactionPrompt}</div>
@@ -2565,7 +2617,8 @@ export function RoomView({
           !inventoryOpen &&
           !walkieOpen &&
           !calculatorOpen &&
-          !recordOpen && (
+          !recordOpen &&
+          !booksOpen && (
             <button
               type="button"
               className="room-view-overlay"
@@ -2644,6 +2697,15 @@ export function RoomView({
         <WalkieDialog onSend={(text) => onTransmitWalkieRef.current(text)} onClose={closeWalkie} />
       )}
       {calculatorOpen && <CalculatorDialog onClose={closeCalculator} />}
+      {booksOpen && (
+        <BookshelfDialog
+          books={books}
+          isHost={hostId === playerId}
+          onWrite={(book) => onHostAction({ action: 'writeBook', ...book })}
+          onRemove={(bookId) => onHostAction({ action: 'removeBook', bookId })}
+          onClose={closeBooks}
+        />
+      )}
       {recordOpen && (
         <RecordDialog
           playing={room.record}

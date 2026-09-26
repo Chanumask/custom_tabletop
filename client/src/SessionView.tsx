@@ -1195,6 +1195,10 @@ function HostTab({
           ))}
         </div>
       </div>
+      <p className="settings-hint">
+        Books for everyone to read — lore, a letter, the rules of the house — you write at the
+        lectern by the bookshelf.
+      </p>
 
       <p className="host-section">The table</p>
       <label className="settings-row">

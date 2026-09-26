@@ -34,7 +34,10 @@ export type HostAction =
   | { action: 'remove'; targetPlayerId: string }
   | { action: 'clear'; target: ClearTarget }
   | { action: 'theme'; theme: RoomTheme }
-  | { action: 'weather'; weather: Weather };
+  | { action: 'weather'; weather: Weather }
+  /** A new book (no `bookId`) or a rewrite of one (books.ts). */
+  | { action: 'writeBook'; bookId?: string; title: string; text: string; cover: number }
+  | { action: 'removeBook'; bookId: string };
 
 export type HostActionRequest = { sessionId: string; playerId: string } & HostAction;
 
