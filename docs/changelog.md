@@ -6,6 +6,51 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-26 — Player profiles
+
+The owner asked for player profiles as images: shared on joining or later, seen by the host, and each player sees only their own. It had to be robust. Before building, the owner answered four questions: a character sheet (so 10 MB and a zoomable viewer), PNG/JPG/WebP, kept with the table and remembered in the browser, and access that follows the host role. The reasoning is in decisions.md, "Player profiles".
+
+### What's new
+
+- **On the join screen:** an optional "Your profile" field. It checks the file there and then (type, size, pixels, whether it displays), and offers the copy this device kept last time.
+- **In the Players tab:** "Your profile", to view, replace or remove yours, with an upload progress bar and "Keep a copy on this device".
+- **For the host:** a sheet button on every player row with a profile, which opens a full-screen viewer (zoom, pan, 1:1, fit). The host hears when someone shares or updates one.
+- **Private all the way:**
+  - images are kept outside the public uploads and reached only with the player's own token;
+  - other players aren't even told one exists;
+  - GPS, camera and other hidden data are stripped, while a sideways photo stays upright.
+- **Kept safely:** through reloads, reconnects and restarts. A profile is deleted when its player leaves or is removed, and shared again by itself if the table lost it.
+- Player rows wrap their buttons to a second line, so names stay readable.
+
+### How it was checked
+
+- **Unit and integration tests** (894 in all: 73 shared, 445 server, 376 client; twice in a row):
+  - who can see what, over real sockets and HTTP;
+  - forged and missing credentials;
+  - host handover both ways;
+  - leave, remove, grace period, restart, lost file;
+  - the rate limit, a full disk and a busy server;
+  - metadata stripping for all three formats: progressive JPEGs, orientation, a phone's appended second picture, truncated and broken files.
+- **Live, three players in the dev build:**
+  - Alice shared a 1240 × 1754 sheet on joining, and the host read its smallest print at 1:1.
+  - Bob saw nothing, and his requests for it were refused (403, and 401 with a guessed token).
+  - The handover to Bob moved the button to him and took it from Hana.
+  - A sideways phone photo with a planted GPS text showed upright with the text gone, and the host's open viewer switched to it by itself.
+  - Removing it closed the host's viewer.
+  - Reloading kept it without uploading it again.
+  - A lost file was shared again automatically after a restart.
+  - Bad files got clear messages: a disguised text file, a 30000 × 30000 PNG, 11 MB, a GIF.
+- **Cross-browser:** a new end-to-end test, `e2e/profiles.spec.ts`, passes in Chromium, Firefox and WebKit, alongside the smoke tests. It covers sharing on join, the host viewing, another player refused, the device copy offered in a new tab, a sideways photo upright and stripped, and withdrawing.
+- **Against a production build** (the bundled server serving the built client): the profile test and the smoke tests pass in all three engines, 12/12.
+- **Two fixes found on the way:**
+  - The smoke tests' wait for the room's canvas went from 15 s to 60 s, and the two heaviest tests are marked slow in WebKit. Late in a full run, WebKit took longer than 15 s to show the room and longer than 90 s to finish the dice test, since it renders in software.
+  - In the first full server run, 9 older multi-player socket tests failed. Five reruns (plain, cold cache, under load) passed; they rely on fixed short waits that a busy machine can outrun.
+- Lint, format and build are clean.
+
+Not yet pushed or deployed: waiting for the owner's go-ahead.
+
+---
+
 ## 2026-09-26 (final check) — The cozy-room batch, audited
 
 The owner asked for a final check: "everything is working as intended, no weird collisions, everything robust". Fixed in `190de2b`; the reasoning is in decisions.md, "The cozy room, lived in" (its "After the final check" part).

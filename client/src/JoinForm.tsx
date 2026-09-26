@@ -19,6 +19,7 @@ import { ColorPicker } from './ColorPicker.js';
 import { describeJoinStatus, type JoinMode } from './joinStatus.js';
 import { connectionStatusLabel, type ConnectionStatus } from './connectionStatus.js';
 import { CHARACTER_TITLES } from './characterTitles.js';
+import { JoinProfileField } from './JoinProfileField.js';
 // three.js is big: the form paints at once, the 3D preview follows.
 const CharacterPreview = lazy(() =>
   import('./three/CharacterPreview.js').then((module) => ({ default: module.CharacterPreview })),
@@ -33,9 +34,19 @@ export interface JoinFormProps {
   /** From an invite link (`?join=CODE`) — opens straight into join mode. */
   inviteCode: string | null;
   onPeek: (sessionId: string) => Promise<SessionPeekResponse>;
-  onJoin: (playerName: string, sessionId: string, color: PlayerColorId) => void;
+  /** `profileImage`: shared with the host once the join goes through. */
+  onJoin: (
+    playerName: string,
+    sessionId: string,
+    color: PlayerColorId,
+    profileImage: Blob | null,
+  ) => void;
   /** Whether this browser holds the host key for a table (hostKeys.ts). */
   hasHostKey: (sessionId: string) => boolean;
+  /** The profile image this device keeps (useProfileSharing). */
+  deviceCopy: Blob | null | undefined;
+  keepCopy: boolean;
+  onKeepCopyChange: (keep: boolean) => void;
 }
 
 const PEEK_DEBOUNCE_MS = 250;
@@ -59,6 +70,9 @@ export function JoinForm({
   onPeek,
   onJoin,
   hasHostKey,
+  deviceCopy,
+  keepCopy,
+  onKeepCopyChange,
 }: JoinFormProps) {
   const [mode, setMode] = useState<JoinMode>(inviteCode ? 'join' : 'host');
   const [name, setName] = useState(initialName);
@@ -66,6 +80,7 @@ export function JoinForm({
   const [hostCode, setHostCode] = useState(generateSessionCode);
   const [joinCode, setJoinCode] = useState(inviteCode ?? '');
   const [peek, setPeek] = useState<{ code: string; result: SessionPeekResponse } | null>(null);
+  const [profileImage, setProfileImage] = useState<Blob | null>(null);
 
   const code = mode === 'host' ? hostCode : joinCode;
   const offline = connection !== 'connected';
@@ -135,7 +150,7 @@ export function JoinForm({
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (canSubmit) {
-      onJoin(trimmedName, code, color);
+      onJoin(trimmedName, code, color, profileImage);
     }
   }
 
@@ -208,6 +223,13 @@ export function JoinForm({
           <span className="join-label">Your character</span>
           <ColorPicker value={color} taken={taken} onChange={setColor} label="Your color" />
         </div>
+
+        <JoinProfileField
+          deviceCopy={deviceCopy}
+          keepCopy={keepCopy}
+          onKeepCopyChange={onKeepCopyChange}
+          onChange={setProfileImage}
+        />
 
         <div className="join-field">
           <label className="join-label" htmlFor="session-code">

@@ -23,6 +23,7 @@ import {
   type SessionHostKey,
   parseYouTubeUrl,
   type GameState,
+  type Player,
   type PlayerColorId,
   type SessionJoinResponse,
   type SessionLeaveResponse,
@@ -60,6 +61,8 @@ import { randomDiceSpawnPosition } from './diceSpawn.js';
 import { playSound } from './sounds.js';
 import { isPlayerMuted, mixedVolume, setAudioPreferences } from './audioMix.js';
 import { useSettings } from './useSettings.js';
+import { useProfileSharing } from './useProfileSharing.js';
+import { markShared } from './profileMemory.js';
 // Type only: the session menu itself stays in its own lazy chunk.
 import type { MapActions } from './SessionView.js';
 
@@ -76,6 +79,8 @@ const SessionView = lazy(() =>
 type AckResponse = { ok: true } | { ok: false; error: string };
 
 const PEEK_TIMEOUT_MS = 3000;
+/** No players yet (the join screen): one array, not a new one each render. */
+const NO_PLAYERS: Player[] = [];
 const NO_SESSION: SessionPeekResponse = {
   exists: false,
   playerCount: 0,
@@ -163,6 +168,18 @@ export function App() {
   // A clip this browser couldn't play (e.g. blocked here): hidden locally,
   // without stopping it for everyone else.
   const [failedClipId, setFailedClipId] = useState<string | null>(null);
+  // Counts successful joins (and rejoins): after each, the profile image
+  // may need sharing (useProfileSharing).
+  const [joinEpoch, setJoinEpoch] = useState(0);
+  const { sharing: profile, afterJoin } = useProfileSharing({
+    sessionId: gameState?.sessionId ?? null,
+    playerId,
+    playerToken,
+    players: gameState?.players ?? NO_PLAYERS,
+    hostId: gameState?.hostId ?? null,
+    joinEpoch,
+    toast,
+  });
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -178,6 +195,8 @@ export function App() {
   const forgetSession = useCallback((error: string | null) => {
     lastJoinRef.current = null;
     clearLastJoin(window.sessionStorage);
+    // Gone from the table, and the profile image with it.
+    markShared(window.sessionStorage, null);
     setGameState(null);
     setRejoining(false);
     setJoinError(error);
@@ -212,6 +231,7 @@ export function App() {
             saveLastJoin(window.sessionStorage, intent);
             clearInviteFromUrl();
             setGameState(response.state);
+            setJoinEpoch((epoch) => epoch + 1);
           } else if (resume) {
             forgetSession(
               response.error === SESSION_ENDED_ERROR
@@ -385,8 +405,15 @@ export function App() {
     [],
   );
 
-  function handleJoin(playerName: string, sessionId: string, color: PlayerColorId) {
+  function handleJoin(
+    playerName: string,
+    sessionId: string,
+    color: PlayerColorId,
+    profileImage: Blob | null,
+  ) {
     if (socketRef.current) {
+      // Shared once the join has gone through (it needs the player to exist).
+      afterJoin(sessionId, profileImage);
       joinSession(socketRef.current, playerName, sessionId, false, color);
     }
   }
@@ -709,6 +736,7 @@ export function App() {
             onMoveMini={handleMoveMini}
             onHostAction={handleHostAction}
             onLockClip={handleClipLock}
+            profile={profile}
           />
         </Suspense>
         <ChatPanel log={gameState.log} players={gameState.players} onSend={handleSendChat} />
@@ -751,6 +779,9 @@ export function App() {
           onPeek={handlePeek}
           onJoin={handleJoin}
           hasHostKey={hasHostKey}
+          deviceCopy={profile.deviceCopy}
+          keepCopy={profile.keepCopy}
+          onKeepCopyChange={profile.setKeepCopy}
         />
       )}
       <Toasts toasts={toasts} onDismiss={dismiss} />

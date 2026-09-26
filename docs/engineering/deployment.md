@@ -20,6 +20,7 @@ The game is served from **https://tabletop.murri.me** on the owner's VPS (`ssh r
     src/                 ← the source of the last deploy attempt
     uploads/             ← uploaded maps and sounds (volume, owned by uid 10001)
     tables/              ← saved tables, one JSON file each (volume, owned by uid 10001)
+      profiles/          ← players' profile images: private, never served as files
   ```
 - **Sandboxed for a shared box** (critical services run next to it): its own uid (10001, no account on the VPS; the image's `node` user is uid 1000, which is an existing account there), 512 MB memory, 1 CPU, a PID limit, a read-only root filesystem (writes only to the uploads volume and a tmpfs `/tmp`), all capabilities dropped, no-new-privileges, and logs capped at 3 × 10 MB.
 
@@ -43,6 +44,14 @@ All unset in dev.
 - **Never deleted:** a file a live session uses, meaning its map or a soundboard sound (`SessionStore.referencedUploads`). Neither is a file younger than 10 minutes, since an upload is registered into its session a moment after it lands.
 - **Deleted:** unused files older than 24 h, then the oldest unused files while the folder is over the cap. Sessions only live in memory, so an unused upload is unreachable garbage. This runs hourly, at startup, and whenever an upload finds the cap reached.
 - **Refused:** new uploads get a clear 507 error while everything left is still in use and over the cap. Each IP also gets at most 30 uploads per 10 minutes (429).
+
+## Player profiles (private images)
+
+`server/src/profileImages.ts`, decisions.md "Player profiles":
+- **Where:** `tables/profiles/` inside the tables volume. That's outside `uploads/`, which is served publicly. Nothing new to mount.
+- **Who can see one:** only through `/api/profile-image`, with the player's own token in the request headers. Only the image's player and the current host can see it.
+- **Deleted:** when its player leaves the table. An hourly sweep also clears files no table uses, running after the saved tables are loaded at startup.
+- **Limits:** 1 GB in all (507 when full), 30 shares per IP per 10 minutes, 300 views, 3 uploads in memory at once.
 
 ## Deploying
 
@@ -71,6 +80,7 @@ Run these on the VPS, in `/srv/apps/tabletop`:
 | Stop | `docker compose -p tabletop down` |
 | Start again | `docker compose -p tabletop up -d` |
 | Upload usage | `du -sh uploads` |
+| Profile image usage | `du -sh tables/profiles` |
 
 - **Rolling back:** run `npm run deploy -- <older-commit>` from your machine. It rebuilds that commit, so a known-good one is always one command away.
 - **A VPS reboot or Docker restart** brings the container back (`restart: unless-stopped`), and with it every saved table (see "Saved tables" below). A table in play loses at most the last 5 seconds on a hard crash; a normal stop saves everything.

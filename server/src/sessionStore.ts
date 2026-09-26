@@ -17,6 +17,8 @@ import {
   isDrink,
   MAX_BOOKS,
   normalizeBooks,
+  normalizeProfileImage,
+  type ProfileImage,
   MOODS,
   type Mood,
   WINDOWS,
@@ -81,6 +83,10 @@ export interface SessionStoreOptions {
   /** Called when the last player leaves, just before the table is dropped
    * from memory — the moment to save it. */
   onEmptied?: (table: EmptiedTable) => void;
+  /** Called whenever a player leaves the table for good (left, removed by
+   * the host, or away past the grace period) — with their record as it
+   * was, e.g. to delete their profile image. */
+  onPlayerLeft?: (sessionId: string, player: Player) => void;
 }
 
 /** Shared by every mutation that's infrequent/authorized enough to ack with
@@ -139,6 +145,53 @@ export class SessionStore {
   authorizeJoin(sessionId: string, playerId: string, credential: string): boolean {
     const known = this.credentials.get(sessionId)?.get(playerId);
     return known === undefined || secretsMatch(known, hashSecret(credential));
+  }
+
+  /** Whether `credential` proves someone is `playerId`, a player at
+   * `sessionId` right now — for requests that don't come over that player's
+   * socket (their profile image, profileImages.ts). Unlike `authorizeJoin`,
+   * a player with no credential on record is never vouched for. */
+  verifyPlayer(sessionId: string, playerId: string, credential: string): boolean {
+    const known = this.credentials.get(sessionId)?.get(playerId);
+    const present = this.sessions.get(sessionId)?.players.some((player) => player.id === playerId);
+    return !!present && known !== undefined && secretsMatch(known, hashSecret(credential));
+  }
+
+  /** A player's profile image, if they're at the table and have shared one. */
+  profileImageOf(sessionId: string, playerId: string): ProfileImage | null {
+    return (
+      this.sessions.get(sessionId)?.players.find((player) => player.id === playerId)
+        ?.profileImage ?? null
+    );
+  }
+
+  /** Shares (or with null, withdraws) a player's own profile image. Returns
+   * the one it replaced, so its file can go. */
+  setProfileImage(
+    sessionId: string,
+    playerId: string,
+    image: ProfileImage | null,
+  ): { ok: true; state: GameState; previous: ProfileImage | null } | { ok: false; error: string } {
+    const state = this.sessions.get(sessionId);
+    const player = state?.players.find((candidate) => candidate.id === playerId);
+    if (!state || !player) {
+      return { ok: false, error: 'You’re no longer at this table.' };
+    }
+    const previous = player.profileImage;
+    player.profileImage = image;
+    return { ok: true, state, previous };
+  }
+
+  /** Every profile image a table in memory still uses (by id) — what the
+   * profile storage sweep must keep. */
+  referencedProfileImages(): Set<string> {
+    const ids = new Set<string>();
+    for (const state of this.sessions.values()) {
+      for (const player of state.players) {
+        if (player.profileImage) ids.add(player.profileImage.id);
+      }
+    }
+    return ids;
   }
 
   /** The table's host key — for its host only (the join ack, the host link). */
@@ -311,6 +364,7 @@ export class SessionStore {
     }
     if (leaving) {
       addSystemEntry(state, `${leaving.name} ${farewell}`);
+      this.options.onPlayerLeft?.(sessionId, leaving);
     }
 
     if (state.players.length === 0) {
@@ -1689,6 +1743,7 @@ function normalizeRestoredState(sessionId: string, saved: GameState): GameState 
     flashlightOn: player.flashlightOn ?? false,
     lounge: isLoungeSeat(player.lounge) ? player.lounge : null,
     carrying: isDrink(player.carrying) ? player.carrying : null,
+    profileImage: normalizeProfileImage(player.profileImage),
   }));
   state.books = normalizeBooks(saved.books);
   // Seat numbers from an older save may point at chairs this table
@@ -1791,5 +1846,6 @@ function createPlayer(id: string, name: string, color: PlayerColorId): Player {
     carrying: null,
     connected: true,
     flashlightOn: false,
+    profileImage: null,
   };
 }

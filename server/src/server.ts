@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import { createServer, type Server as HttpServer } from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { Server as SocketIoServer, type Socket } from 'socket.io';
 import {
@@ -100,6 +101,12 @@ import {
   parseWhiteboardWriteRequest,
 } from './validation.js';
 import { registerUploadRoutes } from './uploads.js';
+import {
+  DEFAULT_PROFILE_IMAGE_POLICY,
+  ProfileImageStorage,
+  registerProfileImageRoutes,
+  type ProfileImagePolicy,
+} from './profileImages.js';
 import type { StoragePolicy } from './uploadStorage.js';
 import { hasPrivate, viewFor } from './privacy.js';
 import {
@@ -144,6 +151,18 @@ export interface AppServerOptions {
   /** Express's "trust proxy" setting, so behind a reverse proxy the upload
    * rate limit sees each player's real IP, not the proxy's. */
   trustProxy?: string;
+  /** Where players' profile images are kept (profileImages.ts) — never
+   * under `uploadsDir`, which is served publicly. Default: a `profiles`
+   * folder inside `tablesDir` (they belong to the tables), or a temp
+   * folder without one. */
+  profilesDir?: string;
+  /** Profile image storage cap and sweep (default: profileImages.ts). */
+  profilePolicy?: ProfileImagePolicy;
+  /** Profile shares/withdrawals and views per client IP per window. */
+  profileUploadLimit?: { limit: number; windowMs: number };
+  profileViewLimit?: { limit: number; windowMs: number };
+  /** Profile uploads read into memory at once. */
+  maxConcurrentProfileUploads?: number;
 }
 
 const DEFAULT_DISCONNECT_GRACE_MS = 45_000;
@@ -221,7 +240,19 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
   /** sessionId -> the player last sent the host key (see syncHostKey). */
   const hostKeySentTo = new Map<string, string>();
 
+  const profilePolicy = options.profilePolicy ?? DEFAULT_PROFILE_IMAGE_POLICY;
+  const profiles = new ProfileImageStorage(
+    options.profilesDir ??
+      (options.tablesDir
+        ? path.join(options.tablesDir, 'profiles')
+        : path.join(os.tmpdir(), 'custom-tabletop-profiles')),
+  );
+
   const sessions = new SessionStore({
+    // Gone for good: so is their profile image.
+    onPlayerLeft: (_sessionId, player) => {
+      if (player.profileImage) profiles.remove(player.profileImage);
+    },
     // The last player left: keep the table, reopenable by its host.
     onEmptied: ({ state, hostKey, hostName }) => {
       lastSaved.delete(state.sessionId);
@@ -270,12 +301,23 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     rateLimit: options.uploadRateLimit,
   });
 
+  const stopProfileSweeps = registerProfileImageRoutes(app, {
+    storage: profiles,
+    sessions,
+    policy: profilePolicy,
+    uploadLimit: options.profileUploadLimit,
+    viewLimit: options.profileViewLimit,
+    maxConcurrentUploads: options.maxConcurrentProfileUploads,
+    onChange: (sessionId, playerId) => sendProfileChange(sessionId, playerId),
+  });
+
   if (options.clientDist) {
     serveClient(app, options.clientDist);
   }
 
   const http = createServer(app);
   http.on('close', stopUploadSweeps);
+  http.on('close', stopProfileSweeps);
   const io = new SocketIoServer(http, {
     cors: { origin: corsOrigin },
   });
@@ -300,7 +342,15 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     }
   };
 
-  const broadcastPatch = (sessionId: string, state: GameState, keys: PatchKey[]) => {
+  const broadcastPatch = (sessionId: string, state: GameState, changed: PatchKey[]) => {
+    // A new host sees the profile images the old one no longer does
+    // (privacy.ts): both their player lists change with the role.
+    const keys =
+      changed.includes('hostId') &&
+      !changed.includes('players') &&
+      state.players.some((player) => player.profileImage)
+        ? [...changed, 'players' as const]
+        : changed;
     const patchFrom = (view: GameState) => {
       const patch: SessionPatch['patch'] = {};
       for (const key of keys) {
@@ -308,7 +358,10 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       }
       return { sessionId, patch } satisfies SessionPatch;
     };
-    if ((keys.includes('dice') || keys.includes('log')) && hasPrivate(state)) {
+    if (
+      (keys.includes('dice') || keys.includes('log') || keys.includes('players')) &&
+      hasPrivate(state)
+    ) {
       forEachViewer(sessionId, (target, viewer) =>
         target.emit(SocketEvent.SessionPatch, patchFrom(viewFor(state, viewer))),
       );
@@ -329,6 +382,20 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     } else {
       io.to(sessionId).emit(SocketEvent.SessionState, state);
     }
+  };
+
+  /** A player shared, replaced or withdrew their profile image: only they
+   * and the host can tell — nobody else is sent anything at all. */
+  const sendProfileChange = (sessionId: string, playerId: string) => {
+    const state = sessions.get(sessionId);
+    if (!state) return;
+    forEachViewer(sessionId, (target, viewer) => {
+      if (viewer !== playerId && viewer !== state.hostId) return;
+      target.emit(SocketEvent.SessionPatch, {
+        sessionId,
+        patch: { players: viewFor(state, viewer).players },
+      } satisfies SessionPatch);
+    });
   };
 
   /** Whoever is host holds the table's host key (to reopen it later, and
@@ -410,11 +477,19 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     for (const table of archive.readAll()) {
       if (table.state.players?.length) {
         const state = sessions.restore(table);
-        state.players.forEach((player) => scheduleRemoval(table.sessionId, player.id));
+        state.players.forEach((player) => {
+          // A profile image whose file didn't survive isn't shared any more.
+          if (player.profileImage && !profiles.has(player.profileImage)) {
+            player.profileImage = null;
+          }
+          scheduleRemoval(table.sessionId, player.id);
+        });
       }
     }
     archive.sweep(Date.now(), (sessionId) => sessions.get(sessionId) !== undefined);
   }
+  // Only now, with the tables back, can it tell which images are unused.
+  profiles.sweep(sessions.referencedProfileImages(), profilePolicy.minAgeMs);
   const saveLoop = archive
     ? setInterval(flushTables, options.saveIntervalMs ?? DEFAULT_SAVE_INTERVAL_MS)
     : null;
@@ -1691,7 +1766,7 @@ function serveClient(app: express.Express, clientDist: string): void {
     }),
   );
   // Any other page path (the app has one page) gets the app itself.
-  app.get(/^\/(?!uploads\/|socket\.io\/|health$).*/, (_req, res) => {
+  app.get(/^\/(?!uploads\/|api\/|socket\.io\/|health$).*/, (_req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(path.join(root, 'index.html'));
   });

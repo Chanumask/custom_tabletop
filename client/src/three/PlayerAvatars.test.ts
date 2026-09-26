@@ -47,6 +47,7 @@ function player(id: string, overrides: Partial<Player> = {}): Player {
     carrying: null,
     connected: true,
     flashlightOn: false,
+    profileImage: null,
     ...overrides,
   };
 }

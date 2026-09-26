@@ -67,6 +67,8 @@ Earlier this day:
 - **Books** the host writes at a lectern and everyone reads, with a guide to the room always there.
 - **Moods.** Story time, break and storm set the room in one click for the host.
 
+**Player profiles** (the same day): each player can share an image, a character sheet say, on joining or later. Only they and the current host can see it, and the browser keeps a copy for the next table.
+
 Nothing on the roadmap is left. What's next is whatever playtesting turns up, plus the "later" list in [roadmap.md](roadmap.md): map presets, wall drawing, fog of war, an initiative tracker.
 
 ### Earlier on 2026-09-25

@@ -845,4 +845,71 @@ describe('SessionStore walkie-talkies (gadgets phase 4)', () => {
       visibleTo: ['p1', 'p2'],
     });
   });
+
+  describe('profile images', () => {
+    const image = {
+      id: '0b6f3c1e-8f0a-4c5e-9d2b-3a1f7e6c5d4b',
+      type: 'png' as const,
+      width: 10,
+      height: 10,
+      bytes: 100,
+      at: 1,
+    };
+
+    it('vouches only for a present player with their own credential', () => {
+      const store = new SessionStore();
+      store.join('abc', 'p1', 'Alice', 'alice-token');
+      store.join('abc', 'p2', 'Bob'); // no credential on record
+      expect(store.verifyPlayer('abc', 'p1', 'alice-token')).toBe(true);
+      expect(store.verifyPlayer('abc', 'p1', 'wrong')).toBe(false);
+      expect(store.verifyPlayer('abc', 'p2', 'anything')).toBe(false);
+      expect(store.verifyPlayer('abc', 'p3', 'alice-token')).toBe(false);
+      expect(store.verifyPlayer('xyz', 'p1', 'alice-token')).toBe(false);
+      store.leave('abc', 'p1');
+      expect(store.verifyPlayer('abc', 'p1', 'alice-token')).toBe(false);
+    });
+
+    it('shares, replaces and withdraws, handing back the one it replaced', () => {
+      const store = new SessionStore();
+      store.join('abc', 'p1', 'Alice');
+      const first = store.setProfileImage('abc', 'p1', image);
+      expect(first).toMatchObject({ ok: true, previous: null });
+      const second = store.setProfileImage('abc', 'p1', { ...image, id: 'x' });
+      expect(second).toMatchObject({ ok: true, previous: image });
+      expect(store.referencedProfileImages()).toEqual(new Set(['x']));
+      expect(store.setProfileImage('abc', 'p1', null)).toMatchObject({ ok: true });
+      expect(store.profileImageOf('abc', 'p1')).toBeNull();
+      expect(store.setProfileImage('abc', 'nobody', image)).toMatchObject({ ok: false });
+    });
+
+    it('tells whoever is listening when a player leaves for good, with their image', () => {
+      const left: [string, string | undefined][] = [];
+      const store = new SessionStore({
+        onPlayerLeft: (sessionId, player) => left.push([sessionId, player.profileImage?.id]),
+      });
+      store.join('abc', 'host', 'Hana');
+      store.join('abc', 'p1', 'Alice');
+      store.join('abc', 'p2', 'Bob');
+      store.setProfileImage('abc', 'p1', image);
+      store.leave('abc', 'p1');
+      store.removePlayer('abc', 'host', 'p2');
+      expect(left).toEqual([
+        ['abc', image.id],
+        ['abc', undefined],
+      ]);
+    });
+
+    it('drops an invalid profile image from a saved table', () => {
+      const store = new SessionStore();
+      const state = store.join('abc', 'p1', 'Alice');
+      state.players[0]!.profileImage = { ...image, id: '../escape' };
+      const restored = store.restore({
+        sessionId: 'abc',
+        hostKey: 'k',
+        credentialHashes: {},
+        state: JSON.parse(JSON.stringify(state)),
+      });
+      expect(restored.players[0]!.profileImage).toBeNull();
+    });
+  });
 });

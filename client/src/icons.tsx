@@ -266,3 +266,27 @@ export function MugIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+/** A sheet of paper with lines — a player's profile (their character
+ * sheet, usually). */
+export function SheetIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={SIZE} height={SIZE} className={className} aria-hidden="true">
+      <path
+        d="M6 3h8.5L19 7.5V21H6Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 3v5h5M9 12h7M9 15.5h7M9 19h4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

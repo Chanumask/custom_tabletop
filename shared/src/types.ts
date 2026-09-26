@@ -16,6 +16,7 @@ import type { RoomTheme, TablePermissions } from './host.js';
 import type { LoungeSeat, RoomState } from './room.js';
 import type { Drink } from './refreshments.js';
 import type { Book } from './books.js';
+import type { ProfileImage } from './profileImage.js';
 
 export interface Vector3 {
   x: number;
@@ -186,6 +187,12 @@ export interface Player {
    * everyone else, same as `seated`, so the light cone shows on the right
    * player's avatar. */
   flashlightOn: boolean;
+
+  /** The image this player shares with the host — usually their character
+   * sheet (profileImage.ts) — or null. Only the player themselves and the
+   * current host ever see it here: everyone else gets null
+   * (server/src/privacy.ts). */
+  profileImage: ProfileImage | null;
 }
 
 export interface Scene {

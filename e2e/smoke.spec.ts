@@ -34,7 +34,9 @@ async function join(page: Page, name: string, code: string) {
 
 /** Waits until the room's model has loaded and the room is showing. */
 async function roomLoaded(page: Page) {
-  await expect(page.locator('.room-view canvas')).toBeVisible();
+  // The room's code arrives first: slow in a busy browser (WebKit, late in
+  // a full run), so it gets as long as the model itself.
+  await expect(page.locator('.room-view canvas')).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('.room-loading')).toHaveCount(0, { timeout: 60_000 });
 }
 
@@ -107,6 +109,8 @@ test('two players see each other and can chat', async ({ browser, browserName })
 });
 
 test('a roll lands for everyone, with sound, without errors', async ({ browser, browserName }) => {
+  // Two rooms rendered in software: WebKit needs longer, late in a full run.
+  test.slow(browserName === 'webkit');
   const code = codeFor(browserName, 'D');
   const alice = await (await browser.newContext()).newPage();
   const bob = await (await browser.newContext()).newPage();

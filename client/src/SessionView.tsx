@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -29,7 +30,14 @@ import {
   type GameState,
   type Player,
   type PlayerColorId,
+  PROFILE_IMAGE_ACCEPT,
+  PROFILE_IMAGE_FORMATS,
+  formatBytes,
+  type ProfileImage,
 } from '@custom-tabletop/shared';
+import { ProfileViewer } from './ProfileViewer.js';
+import type { ProfileSharing } from './useProfileSharing.js';
+import { hasProfileImageUrl } from './profileImages.js';
 import { ColorPicker } from './ColorPicker.js';
 import type { ToastKind } from './useToasts.js';
 import { uploadImage } from './uploads.js';
@@ -54,6 +62,7 @@ import {
   PlayersIcon,
   SettingsIcon,
   HostIcon,
+  SheetIcon,
 } from './icons.js';
 import { SOUND_CATEGORIES, type CategoryMix, type SoundCategory } from './audioMix.js';
 
@@ -92,6 +101,8 @@ export interface SessionViewProps {
   /** The host's controls (host.ts). */
   onHostAction: (action: HostAction) => void;
   onLockClip: (locked: boolean) => void;
+  /** Your profile image, and (as host) everyone's. */
+  profile: ProfileSharing;
 }
 
 type TabId = 'players' | 'map' | 'dice' | 'soundboard' | 'host' | 'settings';
@@ -132,6 +143,7 @@ export function SessionView({
   onMoveMini,
   onHostAction,
   onLockClip,
+  profile,
 }: SessionViewProps) {
   const isHost = playerId === state.hostId;
   const [chosenTab, setActiveTab] = useState<TabId>('players');
@@ -218,6 +230,7 @@ export function SessionView({
                 onRemovePlayer={(targetPlayerId) =>
                   onHostAction({ action: 'remove', targetPlayerId })
                 }
+                profile={profile}
               />
             )}
             {activeTab === 'players' && isHost && hostKey && (
@@ -311,6 +324,7 @@ function PlayersTab({
   onTransferHost,
   onUpdateProfile,
   onRemovePlayer,
+  profile,
 }: {
   state: GameState;
   playerId: string;
@@ -320,8 +334,28 @@ function PlayersTab({
   onTransferHost: (targetPlayerId: string) => void;
   onUpdateProfile: (patch: { name?: string; color?: PlayerColorId }) => void;
   onRemovePlayer: (targetPlayerId: string) => void;
+  profile: ProfileSharing;
 }) {
   const self = state.players.find((player) => player.id === playerId);
+  // Whose profile image is open full screen. The server only sends this
+  // player the ones they may see (their own; everyone's as host), so a
+  // player whose image disappears (withdrawn, gone, or no longer theirs to
+  // see) closes it.
+  const [viewing, setViewing] = useState<string | null>(null);
+  const viewed = viewing ? state.players.find((player) => player.id === viewing) : undefined;
+  const viewedImageId = viewed?.profileImage?.id ?? null;
+  const viewedRef = useRef(viewed);
+  viewedRef.current = viewed;
+  useEffect(() => {
+    if (viewing && !viewedImageId) setViewing(null);
+  }, [viewing, viewedImageId]);
+  const { imageUrl } = profile;
+  const loadViewed = useCallback(() => {
+    const player = viewedRef.current;
+    return player && viewedImageId
+      ? imageUrl(player)
+      : Promise.reject(new Error('There’s no profile shared.'));
+  }, [imageUrl, viewedImageId]);
   const { settings, updateSettings } = useSettings();
   const toggleHearing = (target: Player) =>
     updateSettings({
@@ -332,6 +366,28 @@ function PlayersTab({
   return (
     <>
       {self && <ProfileEditor state={state} self={self} onUpdateProfile={onUpdateProfile} />}
+      {self && (
+        <ProfileImageSection
+          self={self}
+          isHost={isHost}
+          profile={profile}
+          onView={() => setViewing(self.id)}
+        />
+      )}
+      {viewed && viewedImageId && (
+        <ProfileViewer
+          title={viewed.id === playerId ? 'Your profile' : `${viewed.name}’s profile`}
+          note={
+            viewed.id !== playerId
+              ? `Only you (the host) and ${viewed.name} can see it.`
+              : isHost
+                ? 'Only you can see it — you’re the host.'
+                : 'Only you and the host can see it.'
+          }
+          load={loadViewed}
+          onClose={() => setViewing(null)}
+        />
+      )}
       <ul className="player-list">
         {state.players.map((player) => {
           const isSelf = player.id === playerId;
@@ -358,6 +414,17 @@ function PlayersTab({
                 )}
               </span>
               <span className="player-actions">
+                {player.profileImage && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    title={isSelf ? 'View your profile' : `View ${player.name}’s profile`}
+                    aria-label={isSelf ? 'View your profile' : `View ${player.name}’s profile`}
+                    onClick={() => setViewing(player.id)}
+                  >
+                    <SheetIcon />
+                  </button>
+                )}
                 {!isSelf && (
                   <button
                     type="button"
@@ -474,6 +541,148 @@ function ProfileEditor({
         label="Your color"
       />
     </div>
+  );
+}
+
+/** "PNG · 2480 × 3508 · 3.1 MB" */
+function describeImage(image: ProfileImage): string {
+  return `${PROFILE_IMAGE_FORMATS[image.type].label} · ${image.width} × ${image.height} · ${formatBytes(image.bytes)}`;
+}
+
+/** Your profile image (docs/decisions.md, "Player profiles"): share one
+ * (a character sheet, say), replace it, look at it, withdraw it. Only you
+ * and the host ever see it. */
+function ProfileImageSection({
+  self,
+  isHost,
+  profile,
+  onView,
+}: {
+  self: Player;
+  isHost: boolean;
+  profile: ProfileSharing;
+  onView: () => void;
+}) {
+  const own = profile.own;
+  const uploading = profile.progress !== null;
+
+  function handleFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) profile.share(file);
+  }
+
+  return (
+    <div className="profile-image-section">
+      <p className="tab-section-label">Your profile</p>
+      {own ? (
+        <div className="profile-image-card">
+          <ProfileThumb player={self} image={own} profile={profile} onClick={onView} />
+          <span className="profile-image-meta">
+            <strong>{isHost ? 'Shared (you’re the host)' : 'Shared with the host'}</strong>
+            <span>{describeImage(own)}</span>
+          </span>
+        </div>
+      ) : (
+        <p className="profile-image-hint">
+          {isHost
+            ? 'An image only the host sees, and you’re the host: nobody else can see it.'
+            : 'An image only you and the host can see: your character sheet, say.'}{' '}
+          PNG, JPG or WebP, up to 10 MB.
+        </p>
+      )}
+      {uploading ? (
+        <div className="profile-image-progress" role="status">
+          <progress max={1} value={profile.progress ?? 0} aria-label="Sharing your profile" />
+          <span>{Math.round((profile.progress ?? 0) * 100)}%</span>
+          <button type="button" onClick={profile.cancel}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div className="profile-image-actions">
+          {own && (
+            <button type="button" onClick={onView}>
+              View
+            </button>
+          )}
+          <label className={own ? 'file-button' : 'file-button primary'}>
+            {own ? 'Replace…' : 'Choose an image…'}
+            <input type="file" accept={PROFILE_IMAGE_ACCEPT} onChange={handleFile} />
+          </label>
+          {!own && profile.deviceCopy && (
+            <button type="button" onClick={() => profile.share(profile.deviceCopy!)}>
+              Share your saved one
+            </button>
+          )}
+          {own && (
+            <ConfirmButton
+              className="danger-text"
+              label="Remove"
+              armedLabel="Remove it?"
+              title="Stop sharing it with the host"
+              onConfirm={profile.remove}
+            />
+          )}
+        </div>
+      )}
+      {profile.error && (
+        <p className="profile-image-error" role="alert">
+          {profile.error}
+        </p>
+      )}
+      <label className="settings-row">
+        <span>
+          Keep a copy on this device
+          <span className="row-hint">offered when you join a table</span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="switch"
+          checked={profile.keepCopy}
+          onChange={(event) => profile.setKeepCopy(event.target.checked)}
+        />
+      </label>
+    </div>
+  );
+}
+
+/** A small preview of your own image, when this tab already has it (it
+ * was shared from here, or opened); otherwise a sheet icon, rather than
+ * downloading up to 10 MB for a thumbnail. */
+function ProfileThumb({
+  player,
+  image,
+  profile,
+  onClick,
+}: {
+  player: Player;
+  image: ProfileImage;
+  profile: ProfileSharing;
+  onClick: () => void;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  const local = hasProfileImageUrl(image.id);
+  const { imageUrl } = profile;
+  const playerRef = useRef(player);
+  playerRef.current = player;
+  useEffect(() => {
+    setSrc(null);
+    if (!local) return;
+    let cancelled = false;
+    imageUrl(playerRef.current).then(
+      (url) => !cancelled && setSrc(url),
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [image.id, local, imageUrl]);
+  return (
+    <button type="button" className="profile-thumb" title="View your profile" onClick={onClick}>
+      {src ? <img src={src} alt="" /> : <SheetIcon />}
+    </button>
   );
 }
 
