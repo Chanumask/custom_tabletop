@@ -5,6 +5,7 @@ import {
   type EmoteId,
   type InventoryItem,
   type ItemKind,
+  type LoungeSeat,
   type Player,
   type PlayerColorId,
   type Vector3,
@@ -29,6 +30,7 @@ import {
   type ArmRig,
   type HeldItemParts,
 } from './heldItems.js';
+import { LOUNGE_SPOTS, type LoungeSpot } from './loungeSeats.js';
 import { NameTag } from './nameTag.js';
 import { flashingAllowed } from '../audioMix.js';
 import { SpeechBubble, speechSeconds } from './speechBubble.js';
@@ -77,6 +79,47 @@ interface LegBones {
   upperR: THREE.Object3D | null;
   lowerL: THREE.Object3D | null;
   lowerR: THREE.Object3D | null;
+  /** Leaning back into a sofa: the lower back, and the neck to keep the
+   * head up. */
+  abdomen: THREE.Object3D | null;
+  neck: THREE.Object3D | null;
+}
+
+/**
+ * Bends bones on top of the clip, and puts the clip's own values back
+ * before the next mixer update: the mixer only writes a value when it
+ * changes, so a bend left in place would pile up, frame on frame, whenever
+ * the clip holds still.
+ */
+class BonePoser {
+  private readonly saved: { bone: THREE.Object3D; value: THREE.Quaternion }[] = [];
+  private count = 0;
+
+  bend(model: THREE.Object3D, bone: THREE.Object3D | null, angle: number): void {
+    if (!bone || angle === 0) return;
+    let slot = this.saved[this.count];
+    if (!slot) {
+      slot = { bone, value: new THREE.Quaternion() };
+      this.saved.push(slot);
+    }
+    slot.bone = bone;
+    slot.value.copy(bone.quaternion);
+    this.count += 1;
+    bendAboutModelAxis(model, bone, angle);
+  }
+
+  /** Undoes every bend, newest first. */
+  restore(): void {
+    for (let i = this.count - 1; i >= 0; i--) {
+      const slot = this.saved[i]!;
+      slot.bone.quaternion.copy(slot.value);
+    }
+    this.count = 0;
+  }
+
+  forget(): void {
+    this.count = 0;
+  }
 }
 
 interface Avatar {
@@ -98,6 +141,12 @@ interface Avatar {
   speed: number;
   seated: boolean;
   seat: Seat | null;
+  /** Sitting on the sofa, the armchair or the rocking chair instead of at
+   * the table (`seated` is true then too, and `seat` is this spot). */
+  lounge: LoungeSeat | null;
+  loungeSpot: LoungeSpot | null;
+  /** The sitting pose's bends, undone before each mixer update. */
+  poser: BonePoser;
   connected: boolean;
   nameTag: NameTag;
   /** What they just said in chat, until `until` (on the avatars' clock). */
@@ -158,6 +207,9 @@ export class PlayerAvatars {
   private readonly group = new THREE.Group();
   private readonly avatars = new Map<string, Avatar>();
   private clock = 0;
+  /** The rocking chair's tilt now (RockingChair) — whoever sits in it rocks
+   * with it. */
+  rockingChairAngle = 0;
 
   constructor(
     scene: THREE.Scene,
@@ -190,9 +242,14 @@ export class PlayerAvatars {
       this.setHeldItem(avatar, heldKindOf(player.id));
       avatar.flashlightOn = player.flashlightOn;
       lightLens(avatar);
-      avatar.seated = player.seated;
+      avatar.lounge = player.lounge ?? null;
+      avatar.loungeSpot = avatar.lounge ? LOUNGE_SPOTS[avatar.lounge] : null;
+      avatar.seated = player.seated || avatar.loungeSpot !== null;
       avatar.seat =
-        player.seated && player.seatIndex !== null ? (this.seats[player.seatIndex] ?? null) : null;
+        avatar.loungeSpot ??
+        (player.seated && player.seatIndex !== null
+          ? (this.seats[player.seatIndex] ?? null)
+          : null);
       if (avatar.connected !== player.connected) {
         avatar.connected = player.connected;
         applyPresence(avatar);
@@ -343,6 +400,9 @@ export class PlayerAvatars {
   private createAvatar(player: Player): Avatar {
     const group = new THREE.Group();
     group.name = `avatar-${player.id}`;
+    // Turned to face its way first, then tipped (the rocking chair) about
+    // its own left-right axis.
+    group.rotation.order = 'YXZ';
     const nameTag = new NameTag();
     group.add(nameTag.sprite);
 
@@ -366,6 +426,9 @@ export class PlayerAvatars {
       speed: 0,
       seated: player.seated,
       seat: null,
+      lounge: null,
+      loungeSpot: null,
+      poser: new BonePoser(),
       connected: player.connected,
       nameTag,
       speech: null,
@@ -440,7 +503,10 @@ export class PlayerAvatars {
           upperR: bone(model, 'UpperLeg.R'),
           lowerL: bone(model, 'LowerLeg.L'),
           lowerR: bone(model, 'LowerLeg.R'),
+          abdomen: bone(model, 'Abdomen'),
+          neck: bone(model, 'Neck'),
         };
+        avatar.poser.forget();
         avatar.arm = findArmRig((name) => bone(model, name), asset.animations);
         avatar.holdWeight = 0;
         avatar.gripWeight = 0;
@@ -534,9 +600,11 @@ export class PlayerAvatars {
     const previous = { x: avatar.current.x, z: avatar.current.z };
     if (avatar.seated && avatar.seat) {
       const { x, z, yaw } = avatar.seat;
+      // A lounge spot is where the hips go already; a chair is its middle.
+      const forward = avatar.loungeSpot ? 0 : SIT_FORWARD;
       avatar.current = {
-        x: x + Math.sin(yaw) * SIT_FORWARD,
-        z: z + Math.cos(yaw) * SIT_FORWARD,
+        x: x + Math.sin(yaw) * forward,
+        z: z + Math.cos(yaw) * forward,
         yaw,
       };
     } else {
@@ -564,6 +632,7 @@ export class PlayerAvatars {
 
     avatar.group.position.set(avatar.current.x, 0, avatar.current.z);
     avatar.group.rotation.y = avatar.current.yaw;
+    avatar.group.rotation.x = avatar.lounge === 'rocking-chair' ? this.rockingChairAngle : 0;
     avatar.nameTag.sprite.position.y = avatar.seated ? SEATED_NAME_TAG_HEIGHT : NAME_TAG_HEIGHT;
     this.updateSpeech(avatar);
 
@@ -604,17 +673,23 @@ export class PlayerAvatars {
     if (avatar.arm) {
       releaseHold(avatar.arm);
     }
+    avatar.poser.restore();
     avatar.mixer.update(dt);
 
     // Sitting is posed *after* the mixer, so it overrides the idle clip's legs.
-    avatar.model.position.y = avatar.seated ? -SIT_DROP : 0;
+    avatar.model.position.y = avatar.seated ? -(avatar.loungeSpot?.drop ?? SIT_DROP) : 0;
     if (avatar.seated && avatar.legs) {
+      const { model, poser, legs } = avatar;
       // Thighs first: each knee's bend is applied in its (already bent)
       // thigh's space.
-      bendAboutModelAxis(avatar.model, avatar.legs.upperL, SIT_THIGH);
-      bendAboutModelAxis(avatar.model, avatar.legs.upperR, SIT_THIGH);
-      bendAboutModelAxis(avatar.model, avatar.legs.lowerL, SIT_KNEE);
-      bendAboutModelAxis(avatar.model, avatar.legs.lowerR, SIT_KNEE);
+      poser.bend(model, legs.upperL, SIT_THIGH);
+      poser.bend(model, legs.upperR, SIT_THIGH);
+      poser.bend(model, legs.lowerL, SIT_KNEE);
+      poser.bend(model, legs.lowerR, SIT_KNEE);
+      // Sunk back into a sofa, the head still up to see the room.
+      const recline = avatar.loungeSpot?.recline ?? 0;
+      poser.bend(model, legs.abdomen, -recline);
+      poser.bend(model, legs.neck, recline * 0.7);
     }
 
     this.updateHold(avatar, dt);

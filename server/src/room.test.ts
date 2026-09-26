@@ -230,3 +230,89 @@ describe('the weather', () => {
     expect(store.get('ROOM')!.log.at(-1)).toMatchObject({ text: 'Alice let it snow' });
   });
 });
+
+describe('the sofa and the chairs away from the table', () => {
+  function room() {
+    const store = new SessionStore();
+    store.join('ROOM', 'alice', 'Alice');
+    store.join('ROOM', 'bob', 'Bob');
+    return store;
+  }
+  const lounge = (store: SessionStore, id: string) =>
+    store.get('ROOM')!.players.find((player) => player.id === id)!.lounge;
+
+  it('seat one player each', () => {
+    const store = room();
+    expect(store.setLounge('ROOM', 'alice', 'sofa-middle').ok).toBe(true);
+    expect(store.setLounge('ROOM', 'bob', 'sofa-middle')).toEqual({
+      ok: false,
+      error: 'Alice is already sitting there.',
+    });
+    expect(store.setLounge('ROOM', 'bob', 'sofa-east').ok).toBe(true);
+    // Moving over to another free seat is fine, and frees the old one.
+    expect(store.setLounge('ROOM', 'alice', 'rocking-chair').ok).toBe(true);
+    expect(lounge(store, 'alice')).toBe('rocking-chair');
+    expect(store.setLounge('ROOM', 'bob', 'sofa-middle').ok).toBe(true);
+    store.setLounge('ROOM', 'alice', undefined, false);
+    expect(lounge(store, 'alice')).toBeNull();
+    expect(store.setLounge('ROOM', 'alice', 'hammock').ok).toBe(false);
+  });
+
+  it('and the table are one or the other', () => {
+    const store = room();
+    store.setLounge('ROOM', 'alice', 'armchair');
+    store.setSeated('ROOM', 'alice', true, 0);
+    expect(lounge(store, 'alice')).toBeNull();
+    store.setLounge('ROOM', 'alice', 'armchair');
+    const alice = store.get('ROOM')!.players.find((player) => player.id === 'alice')!;
+    expect(alice).toMatchObject({ seated: false, seatIndex: null, lounge: 'armchair' });
+  });
+
+  it('free up when someone leaves, and come back sensibly with a saved table', () => {
+    const store = room();
+    store.setLounge('ROOM', 'alice', 'armchair');
+    store.leave('ROOM', 'alice');
+    expect(store.setLounge('ROOM', 'bob', 'armchair').ok).toBe(true);
+    const saved = structuredClone(store.get('ROOM')!);
+    const restored = store.restore({
+      sessionId: 'SAVED',
+      hostKey: 'key',
+      credentialHashes: {},
+      state: saved,
+    });
+    expect(restored.players[0]!.lounge).toBe('armchair');
+    const odd = structuredClone(saved);
+    odd.players[0]!.lounge = 'hammock' as never;
+    delete (odd.players[1] as Partial<(typeof odd.players)[number]> | undefined)?.lounge;
+    const fromOdd = store.restore({
+      sessionId: 'ODD',
+      hostKey: 'key',
+      credentialHashes: {},
+      state: odd,
+    });
+    expect(fromOdd.players.map((player) => player.lounge)).toEqual(odd.players.map(() => null));
+  });
+
+  it('reach everyone over the socket', async () => {
+    const alice = await connect();
+    const bob = await connect();
+    await join(alice, 'alice');
+    await join(bob, 'bob');
+    let bobSees = {} as GameState;
+    onStateUpdates(bob, (state) => {
+      bobSees = state;
+    });
+    const sat = await interact(alice, 'alice', { objectId: 'lounge', target: 'rocking-chair' });
+    expect(sat.ok).toBe(true);
+    const taken = await interact(bob, 'bob', { objectId: 'lounge', target: 'rocking-chair' });
+    expect(taken).toMatchObject({ ok: false, error: 'alice is already sitting there.' });
+    await settle();
+    expect(bobSees.players.find((player) => player.id === 'alice')?.lounge).toBe('rocking-chair');
+    const up = await interact(alice, 'alice', {
+      objectId: 'lounge',
+      target: 'rocking-chair',
+      on: false,
+    });
+    expect(up.state?.players.find((player) => player.id === 'alice')?.lounge).toBeNull();
+  });
+});

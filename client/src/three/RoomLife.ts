@@ -1,9 +1,11 @@
 import * as THREE from 'three';
-import type { Player } from '@custom-tabletop/shared';
+import type { LoungeSeat, Player } from '@custom-tabletop/shared';
 import { isPlayerMuted } from '../audioMix.js';
 import { StepCounter, surfaceAt, type FloorArea } from '../footsteps.js';
 import {
+  playChairCreak,
   playChimeStrike,
+  playCushion,
   playDoorClose,
   playDoorCreak,
   playFootstep,
@@ -14,8 +16,10 @@ import {
 import { placeSound, type Listener } from '../spatialAudio.js';
 import { GrandfatherClock } from './GrandfatherClock.js';
 import { LightSwitch, LIGHT_SWITCH_POSITION } from './LightSwitch.js';
+import { LOUNGE_SPOTS } from './loungeSeats.js';
 import type { PlayerAvatars } from './PlayerAvatars.js';
 import { LAMP_POSITION } from './RoomLamp.js';
+import { RockingChair } from './RockingChair.js';
 import { RoomDoor } from './RoomDoor.js';
 import type { RoomAsset } from './RoomLoader.js';
 
@@ -33,8 +37,9 @@ const STRIKE_GAP = 2.2;
  * The room's small signs of life (docs/decisions.md, "The cozy room"):
  * footsteps on the boards (your own and everyone else's), the grandfather
  * clock keeping time, a knock at the door when someone arrives — who then
- * walks in — and the light switch by the door. RoomView makes one when the
- * room has loaded and drives it every frame.
+ * walks in — the light switch by the door, and the seats away from the
+ * table: the cushions sighing as someone sits, the rocking chair rocking.
+ * RoomView makes one when the room has loaded and drives it every frame.
  */
 export class RoomLife {
   private readonly door: RoomDoor | null;
@@ -44,6 +49,9 @@ export class RoomLife {
   private readonly ownSteps = new StepCounter();
   private readonly othersSteps = new Map<string, StepCounter>();
   private known: Set<string> | null = null;
+  /** Who sits where away from the table, as of the last sync. */
+  private lounging = new Map<string, LoungeSeat>();
+  readonly rockingChair: RockingChair;
   private time = 0;
   private readonly timers: { at: number; run: () => void }[] = [];
   private listener: Listener = { x: 0, z: 0, yaw: 0 };
@@ -57,6 +65,13 @@ export class RoomLife {
     this.door = RoomDoor.fromRoom(room.object3D);
     this.rugs = room.rugs;
     this.lightSwitch = new LightSwitch(scene);
+    const rocking = LOUNGE_SPOTS['rocking-chair'];
+    this.rockingChair = new RockingChair(room.object3D, rocking, (amount) =>
+      playChairCreak(
+        placeSound(this.listener, rocking, 0.8, 7),
+        0.9 + Math.random() * 0.2 * amount,
+      ),
+    );
     this.clock = GrandfatherClock.fromRoom(room.object3D, {
       tick: (tock) => {
         if (this.clock) playTick(placeSound(this.listener, this.clock.spot, 0.6, 5.5), tock);
@@ -71,11 +86,27 @@ export class RoomLife {
     });
   }
 
-  /** Who's at the table: anyone new since last time knocks and comes in. */
+  /** Who's at the table: anyone new since last time knocks and comes in;
+   * anyone who just sat down on the sofa or a chair is heard doing it. */
   syncPlayers(players: readonly Player[]): void {
     const ids = new Set(players.map((player) => player.id));
     const known = this.known;
     this.known = ids;
+    const lounging = new Map<string, LoungeSeat>();
+    for (const player of players) {
+      if (player.lounge) lounging.set(player.id, player.lounge);
+    }
+    const before = this.lounging;
+    this.lounging = lounging;
+    if (known) {
+      for (const [id, seat] of lounging) {
+        if (before.get(id) === seat || isPlayerMuted(id)) continue;
+        const spot = LOUNGE_SPOTS[seat];
+        const place = placeSound(this.listener, spot, 1, 8);
+        if (spot.soft) playCushion(place);
+        else playChairCreak(place, 0.8);
+      }
+    }
     // The first look is just who's already here — nobody is arriving.
     if (!known) return;
     for (const player of players) {
@@ -112,6 +143,7 @@ export class RoomLife {
     }
     this.clock?.update();
     this.door?.update(dt);
+    this.rockingChair.update(dt, [...this.lounging.values()].includes('rocking-chair'));
 
     // Your own feet: only while walking about (not sitting, not warping).
     let own = null;

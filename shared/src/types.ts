@@ -13,7 +13,7 @@ import type { WhiteboardLine } from './whiteboard.js';
 import type { DieKind } from './dice.js';
 import type { LogEntry } from './log.js';
 import type { RoomTheme, TablePermissions } from './host.js';
-import type { RoomState } from './room.js';
+import type { LoungeSeat, RoomState } from './room.js';
 
 export interface Vector3 {
   x: number;
@@ -163,6 +163,10 @@ export interface Player {
    * unless their chair goes away when the table gets smaller, when the
    * server moves them to a free one (`settleSeats`). */
   seatIndex: number | null;
+  /** Sitting away from the table instead — on the sofa, the armchair or the
+   * rocking chair — or null. One player per seat (the server keeps it so);
+   * sitting at the table gets them up from it, and the other way round. */
+  lounge: LoungeSeat | null;
 
   /** Live presence: false while this player's connection is dropped but
    * still inside the server's reconnect grace period (a reload, a network

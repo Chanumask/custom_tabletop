@@ -37,6 +37,8 @@ import {
   SOUNDS_OFF_ERROR,
   PHOTO_MIN_INTERVAL_MS,
   chairCount,
+  LOUNGE_SEATS,
+  type LoungeSeat,
 } from '@custom-tabletop/shared';
 import { loadRoom } from './RoomLoader.js';
 import { FirstPersonController, type SeatedView } from './FirstPersonController.js';
@@ -102,6 +104,7 @@ import { createPinboard, syncPinboard, disposePinboard, type Pinboard } from './
 import { uploadImage } from '../uploads.js';
 import { aimFlashlightBeam } from './flashlightBeam.js';
 import { RoomLife } from './RoomLife.js';
+import { LOUNGE_SPOTS, loungeEye, sitterOn } from './loungeSeats.js';
 import { RoomWindows } from './RoomWindows.js';
 import { WinterDecor } from './WinterDecor.js';
 import { WeatherAudio } from '../weatherAudio.js';
@@ -113,7 +116,7 @@ import {
   playCurtains,
   playLogOnFire,
   playMatchStrike,
-  playWindowSwing,
+  playWindowSash,
 } from '../roomSounds.js';
 import { placeSound } from '../spatialAudio.js';
 import { LIGHT_SWITCH_RANGE, LIGHT_SWITCH_SPOT } from './LightSwitch.js';
@@ -332,6 +335,9 @@ function promptFor(
   }
   if (nearestId === 'table') {
     return `Press ${keyLabel} to sit at the table`;
+  }
+  if (nearestId === 'lounge') {
+    return `Press ${keyLabel} to get up`;
   }
   if (nearestId === 'chest') {
     return `Press ${keyLabel} to open the chest`;
@@ -818,7 +824,7 @@ export function RoomView({
         const next = room.windows[window.id];
         if (!old || !next) continue;
         const place = placeSound(listener, window.center, 1, 9);
-        if (old.open !== next.open) playWindowSwing(place, next.open);
+        if (old.open !== next.open) playWindowSash(place, next.open);
         if (old.drawn !== next.drawn) playCurtains(place);
       }
     }
@@ -1299,6 +1305,69 @@ export function RoomView({
         if (winter.wreath) roomLife.hangOnDoor(winter.wreath);
         roomLifeRef.current = roomLife;
 
+        // The sofa, the armchair and the rocking chair: look at one and press
+        // E to sit (one player per seat); E again, or walking off, gets up.
+        // Like the table, the camera sits at once and the server can refuse.
+        let myLounge: LoungeSeat | null = null;
+        const sendLounge = (seat: LoungeSeat, on: boolean) => {
+          socket.emit(
+            SocketEvent.ObjectInteract,
+            {
+              sessionId,
+              playerId,
+              objectId: 'lounge',
+              target: seat,
+              on,
+            } satisfies ObjectInteractRequest,
+            (response: ObjectInteractResponse) => {
+              if (response.ok) return;
+              if (on && myLounge === seat) {
+                controller.getUp();
+                myLounge = null;
+              }
+              onNotifyRef.current(response.error);
+            },
+          );
+        };
+        const sitOn = (seat: LoungeSeat) => {
+          const spot = LOUNGE_SPOTS[seat];
+          controller.lounge(loungeEye(spot), spot.yaw);
+          myLounge = seat;
+          sendLounge(seat, true);
+        };
+        const getUp = () => {
+          const seat = myLounge;
+          controller.getUp();
+          myLounge = null;
+          if (seat) sendLounge(seat, false);
+        };
+        const loungeTargets: AimTarget[] = LOUNGE_SEATS.map((seat) => {
+          const spot = LOUNGE_SPOTS[seat];
+          const someoneElse = () => {
+            const sitter = sitterOn(seat, playersRef.current);
+            return sitter && sitter.id !== playerId ? sitter : null;
+          };
+          return {
+            id: `seat:${seat}`,
+            center: spot.cushion,
+            radius: seat.startsWith('sofa') ? 0.27 : 0.32,
+            reach: 2.4,
+            prompt: () => {
+              if (myLounge === seat) return `Press ${keyLabel()} to get up`;
+              const sitter = someoneElse();
+              if (sitter) return `${sitter.name} is sitting there`;
+              return `Press ${keyLabel()} to sit ${seat.startsWith('sofa') ? 'on' : 'in'} ${spot.name}`;
+            },
+            act: () => {
+              if (myLounge === seat) getUp();
+              else if (!someoneElse()) sitOn(seat);
+            },
+          };
+        });
+        aimTargetsRef.current = [...aimTargetsRef.current, ...loungeTargets];
+        const rockingSpot = LOUNGE_SPOTS['rocking-chair'];
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
         const diceManager = new DiceManager(scene, (count) =>
           playDiceClatter(count, TUMBLE_SECONDS),
         );
@@ -1351,7 +1420,12 @@ export function RoomView({
           controller.sit(
             selfAtStart.seatIndex !== null ? (room.seats[selfAtStart.seatIndex] ?? null) : null,
           );
+        } else if (selfAtStart?.lounge) {
+          const spot = LOUNGE_SPOTS[selfAtStart.lounge];
+          controller.lounge(loungeEye(spot), spot.yaw);
+          myLounge = selfAtStart.lounge;
         }
+        controller.onWalkOff = getUp;
         applySeatedView();
 
         // Sitting and standing are explicit (not a toggle) and acknowledged:
@@ -1736,6 +1810,10 @@ export function RoomView({
             aimTargetRef.current.act(event.shiftKey);
             return;
           }
+          if (controller.isLounging) {
+            getUp();
+            return;
+          }
           const nearestId = nearestInteractableIdRef.current;
           if (nearestId === 'light' || nearestId === 'lamp') {
             onObjectInteractRef.current(nearestId);
@@ -1884,12 +1962,18 @@ export function RoomView({
           updateFireAudio?.(delta);
           updateNight?.(delta);
           avatarsRef.current?.update(delta);
-          roomLifeRef.current?.update(
+          roomLife.update(
             delta,
             camera,
             controller.getYaw(),
-            !controller.isSeated && controller.controls.isLocked,
+            !controller.isSeated && !controller.isLounging && controller.controls.isLocked,
           );
+          // The rocking chair rocks whoever's in it — and your view, if it's
+          // you (unless you've asked your system for less motion).
+          avatars.rockingChairAngle = roomLife.rockingChair.angle;
+          if (myLounge === 'rocking-chair' && !reducedMotion) {
+            controller.setLoungeEye(loungeEye(rockingSpot, roomLife.rockingChair.angle));
+          }
           if (flashlightRef.current) {
             aimFlashlightBeam(flashlightRef.current, playersRef.current, playerId, camera, {
               lensOf: (id) => avatarsRef.current?.flashlightLensOf(id),
@@ -1917,13 +2001,18 @@ export function RoomView({
             seatedViewRef.current !== 'table',
           );
 
-          const nearest = controller.isSeated
-            ? null
-            : nearestInteractable(
-                { x: camera.position.x, z: camera.position.z },
-                interactablesRef.current,
-              );
-          const nearestId = controller.isSeated ? 'table' : (nearest?.id ?? null);
+          const nearest =
+            controller.isSeated || controller.isLounging
+              ? null
+              : nearestInteractable(
+                  { x: camera.position.x, z: camera.position.z },
+                  interactablesRef.current,
+                );
+          const nearestId = controller.isSeated
+            ? 'table'
+            : controller.isLounging
+              ? 'lounge'
+              : (nearest?.id ?? null);
           nearestInteractableIdRef.current = nearestId;
 
           // Aim-based, not proximity-based (see the class doc comment) — only
@@ -2022,8 +2111,9 @@ export function RoomView({
 
           // No position to sync while seated — the camera is locked to a
           // fixed top-down view above the table, not the player's real
-          // position (FirstPersonController.sit()).
-          if (controller.isSeated) {
+          // position (FirstPersonController.sit()) — or on the sofa or a
+          // chair, where everyone sees them by their seat (Player.lounge).
+          if (controller.isSeated || controller.isLounging) {
             return;
           }
 

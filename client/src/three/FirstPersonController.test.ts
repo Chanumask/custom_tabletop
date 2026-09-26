@@ -81,3 +81,30 @@ describe('FirstPersonController seated views', () => {
     expect(camera.position.toArray()).toEqual(seatedAt.toArray());
   });
 });
+
+describe('FirstPersonController on the sofa and the chairs', () => {
+  it('sits with mouse-look still on, and gets up where it stood', () => {
+    const { camera, controller } = standingController();
+    const standing = camera.position.clone();
+    controller.lounge({ x: 2, y: 1.15, z: -3.4 }, 0);
+    expect(controller.isLounging).toBe(true);
+    expect(controller.isSeated).toBe(false);
+    expect(camera.position.toArray()).toEqual([2, 1.15, -3.4]);
+    const look = forward(camera);
+    expect(look.z).toBeGreaterThan(0.9); // the seat's way...
+    expect(look.y).toBeLessThan(0); // ...a little down
+    controller.setLoungeEye({ x: 2, y: 1.14, z: -3.3 });
+    expect(camera.position.z).toBeCloseTo(-3.3);
+    controller.getUp();
+    expect(controller.isLounging).toBe(false);
+    expect(camera.position.distanceTo(standing)).toBeCloseTo(0);
+  });
+
+  it('never walks while sitting there', () => {
+    const { camera, controller } = standingController();
+    controller.lounge({ x: 2, y: 1.15, z: -3.4 }, 0);
+    Object.defineProperty(controller.controls, 'isLocked', { get: () => true });
+    controller.update(0.5);
+    expect(camera.position.toArray()).toEqual([2, 1.15, -3.4]);
+  });
+});

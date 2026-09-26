@@ -297,19 +297,21 @@ export function playMatchStrike(place: Placement): void {
   burst(ctx, out, at + 0.1, 'bandpass', 900, 0.9, 0.12, 0.35);
 }
 
-/** A window swinging open (a wooden scrape and the latch) or shut (a knock
- * into the frame). */
-export function playWindowSwing(place: Placement, opening: boolean): void {
+/** A sash window sliding up in its frame (the latch, then wood running in
+ * its channel) or down again (the run, and a soft knock on the sill). */
+export function playWindowSash(place: Placement, opening: boolean): void {
   const v = voice('room', place);
   if (!v) return;
   const { ctx, out } = v;
   const at = ctx.currentTime + 0.01;
-  burst(ctx, out, at, 'bandpass', 3000, 5, 0.08, 0.03); // the latch
   if (opening) {
-    burst(ctx, out, at + 0.05, 'bandpass', 700, 1.2, 0.07, 0.45);
+    burst(ctx, out, at, 'bandpass', 3000, 5, 0.08, 0.03); // the latch
+    burst(ctx, out, at + 0.06, 'bandpass', 520, 1.4, 0.08, 0.75);
   } else {
-    burst(ctx, out, at + 0.6, 'lowpass', 900, 0.8, 0.14, 0.1);
-    thump(ctx, out, at + 0.6, 140, 80, 0.12, 0.12);
+    burst(ctx, out, at, 'bandpass', 480, 1.4, 0.07, 0.7);
+    burst(ctx, out, at + 0.72, 'lowpass', 900, 0.8, 0.14, 0.1);
+    thump(ctx, out, at + 0.72, 140, 80, 0.12, 0.12);
+    burst(ctx, out, at + 0.8, 'bandpass', 3000, 5, 0.06, 0.03); // the latch
   }
 }
 
@@ -322,5 +324,49 @@ export function playCurtains(place: Placement): void {
   burst(ctx, out, at, 'bandpass', 2400, 0.6, 0.06, 0.9);
   for (let i = 0; i < 6; i++) {
     burst(ctx, out, at + i * 0.12 + Math.random() * 0.04, 'bandpass', 4200, 8, 0.03, 0.03);
+  }
+}
+
+/** Sitting down into soft cushions (the sofa, the armchair): a muffled
+ * whump of fabric and a breath of air out of the cushion. */
+export function playCushion(place: Placement): void {
+  const v = voice('room', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.01;
+  thump(ctx, out, at, 90, 50, 0.22, 0.25);
+  burst(ctx, out, at, 'lowpass', 420, 0.7, 0.2, 0.3);
+  burst(ctx, out, at + 0.05, 'bandpass', 1800, 0.8, 0.025, 0.45);
+}
+
+/** An old wooden chair taking a little weight: a short dry creak. `pitch`
+ * shifts it (each rock of the rocking chair sounds a little different). */
+export function playChairCreak(place: Placement, pitch = 1): void {
+  const v = voice('room', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.01;
+  const length = 0.32;
+  const creak = ctx.createOscillator();
+  creak.type = 'sawtooth';
+  creak.frequency.setValueAtTime(140 * pitch, at);
+  creak.frequency.linearRampToValueAtTime(175 * pitch, at + length);
+  const wobble = ctx.createOscillator();
+  wobble.frequency.value = 31 * pitch;
+  const depth = ctx.createGain();
+  depth.gain.value = 22;
+  wobble.connect(depth).connect(creak.frequency);
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.value = 1300;
+  band.Q.value = 5;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, at);
+  gain.gain.linearRampToValueAtTime(0.03, at + 0.06);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + length);
+  creak.connect(band).connect(gain).connect(out);
+  for (const osc of [creak, wobble]) {
+    osc.start(at);
+    osc.stop(at + length + 0.05);
   }
 }

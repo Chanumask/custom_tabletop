@@ -1385,6 +1385,14 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           case 'curtains':
             result = sessions.setCurtains(request.sessionId, request.target, request.on);
             break;
+          case 'lounge':
+            result = sessions.setLounge(
+              request.sessionId,
+              request.playerId,
+              request.target,
+              request.on,
+            );
+            break;
           case 'table':
             result =
               request.seated === undefined

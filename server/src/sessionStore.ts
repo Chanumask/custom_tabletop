@@ -14,6 +14,7 @@ import {
   PINBOARD_SLOT_COUNT,
   emptyWhiteboard,
   isCandleGroup,
+  isLoungeSeat,
   isWindowId,
   normalizeRoomState,
   type Weather,
@@ -930,6 +931,41 @@ export class SessionStore {
     }
     player.seated = true;
     player.seatIndex = seatIndex ?? null;
+    player.lounge = null;
+    return { ok: true, state };
+  }
+
+  /** Sits a player on a seat away from the table (`on`, the default), if
+   * it's free, or gets them up from it. Only ever changes the requesting
+   * player's own record. */
+  setLounge(
+    sessionId: string,
+    playerId: string,
+    seat: string | undefined,
+    on = true,
+  ): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const player = state.players.find((candidate) => candidate.id === playerId);
+    if (!player) {
+      return { ok: false, error: 'Player not found.' };
+    }
+    if (!on) {
+      player.lounge = null;
+      return { ok: true, state };
+    }
+    if (!isLoungeSeat(seat)) {
+      return { ok: false, error: 'There is no seat there.' };
+    }
+    const sitter = state.players.find((other) => other.id !== playerId && other.lounge === seat);
+    if (sitter) {
+      return { ok: false, error: `${sitter.name} is already sitting there.` };
+    }
+    player.lounge = seat;
+    player.seated = false;
+    player.seatIndex = null;
     return { ok: true, state };
   }
 
@@ -1477,6 +1513,7 @@ function normalizeRestoredState(sessionId: string, saved: GameState): GameState 
     ...player,
     connected: false,
     flashlightOn: player.flashlightOn ?? false,
+    lounge: isLoungeSeat(player.lounge) ? player.lounge : null,
   }));
   // Seat numbers from an older save may point at chairs this table
   // doesn't have (or were numbered differently): settle them.
@@ -1573,6 +1610,7 @@ function createPlayer(id: string, name: string, color: PlayerColorId): Player {
     muted: false,
     seated: false,
     seatIndex: null,
+    lounge: null,
     connected: true,
     flashlightOn: false,
   };

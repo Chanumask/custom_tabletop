@@ -37,6 +37,22 @@ export function isWindowId(value: unknown): value is WindowId {
   return WINDOWS.some((id) => id === value);
 }
 
+/** The room's comfy seats away from the table — three on the sofa, the
+ * armchair by the reading lamp, the rocking chair — each for one player at
+ * a time (`Player.lounge`). */
+export const LOUNGE_SEATS = [
+  'sofa-west',
+  'sofa-middle',
+  'sofa-east',
+  'armchair',
+  'rocking-chair',
+] as const;
+export type LoungeSeat = (typeof LOUNGE_SEATS)[number];
+
+export function isLoungeSeat(value: unknown): value is LoungeSeat {
+  return LOUNGE_SEATS.some((seat) => seat === value);
+}
+
 /** A window: open or shut, and its curtains drawn or not. */
 export interface WindowState {
   open: boolean;

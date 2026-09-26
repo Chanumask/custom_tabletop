@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import type { InventoryItem, ItemKind, Player, PlayerColorId } from '@custom-tabletop/shared';
 import { PlayerAvatars } from './PlayerAvatars.js';
+import { LOUNGE_SPOTS } from './loungeSeats.js';
 import type { CharacterAsset, CharacterSource } from './characters.js';
 import type { GadgetSource } from './gadgetMeshes.js';
 import { armSkeleton, fakeGadget, punchClip } from './testRig.js';
@@ -41,6 +42,7 @@ function player(id: string, overrides: Partial<Player> = {}): Player {
     muted: false,
     seated: false,
     seatIndex: null,
+    lounge: null,
     connected: true,
     flashlightOn: false,
     ...overrides,
@@ -150,6 +152,34 @@ describe('PlayerAvatars', () => {
     expect(object.position.z).toBeGreaterThan(1.4);
     expect(object.position.z).toBeLessThan(1.56);
     expect(object.rotation.y).toBeCloseTo(Math.PI);
+  });
+
+  it('sits someone on the sofa or in the rocking chair, rocking with it', async () => {
+    const avatars = new PlayerAvatars(new THREE.Scene(), fakeCharacters());
+    avatars.sync(
+      [
+        player('a', { lounge: 'sofa-middle', position: { x: 0, y: 1.7, z: 0 } }),
+        player('b', { lounge: 'rocking-chair' }),
+      ],
+      'me',
+    );
+    await flush();
+    avatars.rockingChairAngle = 0.05;
+    avatars.update(1 / 60);
+
+    const sofa = avatars.objectFor('a')!;
+    expect(sofa.position.x).toBeCloseTo(LOUNGE_SPOTS['sofa-middle'].x);
+    expect(sofa.position.z).toBeCloseTo(LOUNGE_SPOTS['sofa-middle'].z);
+    expect(sofa.rotation.x).toBe(0);
+    const rocking = avatars.objectFor('b')!;
+    expect(rocking.rotation.y).toBeCloseTo(LOUNGE_SPOTS['rocking-chair'].yaw);
+    expect(rocking.rotation.x).toBeCloseTo(0.05);
+    // Sitting down: no footsteps for them.
+    expect(avatars.walkers().every((walker) => walker.seated)).toBe(true);
+
+    avatars.sync([player('a'), player('b')], 'me');
+    avatars.update(1 / 60);
+    expect(rocking.rotation.x).toBe(0);
   });
 
   it('turns a reconnecting player into a translucent ghost and back', async () => {

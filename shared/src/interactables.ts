@@ -31,7 +31,8 @@ export interface ObjectInteractRequest {
    * group lit — rather than a toggle, for the same reason as `seated`.
    * Absent = toggle. */
   on?: boolean;
-  /** Which one, where there are several: the candle group (room.ts). */
+  /** Which one, where there are several (room.ts): the candle group, the
+   * window, the seat (`lounge`: sit down on it, or with `on: false` get up). */
   target?: string;
 }
 

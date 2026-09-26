@@ -74,10 +74,26 @@ export class FirstPersonController {
   private standingState: { position: THREE.Vector3; quaternion: THREE.Quaternion } | null = null;
   private chair: ChairPose | null = null;
   private view: SeatedView = 'table';
+  /** Sitting on the sofa, the armchair or the rocking chair: where they
+   * stood before, to get up there again. */
+  private loungeState: { position: THREE.Vector3 } | null = null;
+  /** Called when a movement key is pressed while lounging — walking off
+   * gets you up (RoomView tells the server). */
+  onWalkOff: (() => void) | null = null;
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     if (isTypingTarget(event.target)) {
       return; // typing "w" into a text field must not queue up a walk
+    }
+    // A fresh press (not one still held from walking up to the seat).
+    if (
+      this.loungeState &&
+      this.controls.isLocked &&
+      MOVEMENT_KEYS.has(event.code) &&
+      !event.repeat &&
+      !this.pressedKeys.has(event.code)
+    ) {
+      this.onWalkOff?.();
     }
     this.pressedKeys.add(event.code);
   };
@@ -125,7 +141,7 @@ export class FirstPersonController {
    * against walls/table. No-op while pointer lock isn't active. */
   update(deltaSeconds: number): void {
     // Seated, mouse-look still works (from the chair) but WASD doesn't.
-    if (!this.controls.isLocked || this.isSeated || deltaSeconds <= 0) {
+    if (!this.controls.isLocked || this.isSeated || this.loungeState || deltaSeconds <= 0) {
       return;
     }
 
@@ -254,6 +270,40 @@ export class FirstPersonController {
 
   get isSeated(): boolean {
     return this.standingState !== null;
+  }
+
+  /** Sits down on a seat away from the table (the sofa, the armchair, the
+   * rocking chair), eyes at `eye`, looking the seat's way (`yaw`). Unlike
+   * the table, mouse-look carries on (pointer lock stays), and WASD is off
+   * — a fresh press of one gets up (`onWalkOff`). Sitting on another seat
+   * while already on one just moves over. */
+  lounge(eye: { x: number; y: number; z: number }, yaw: number): void {
+    if (this.standingState) return;
+    const object = this.controls.object;
+    if (!this.loungeState) this.loungeState = { position: object.position.clone() };
+    object.position.set(eye.x, eye.y, eye.z);
+    // Looking out the seat's way, a little down.
+    object.lookAt(eye.x + Math.sin(yaw), eye.y - 0.15, eye.z + Math.cos(yaw));
+  }
+
+  /** Moves the eyes while lounging, keeping where they look (the rocking
+   * chair swinging). */
+  setLoungeEye(eye: { x: number; y: number; z: number }): void {
+    if (this.loungeState) this.controls.object.position.set(eye.x, eye.y, eye.z);
+  }
+
+  /** Gets up from a seat away from the table, back where they stood before
+   * sitting (always a spot they could stand on), facing the way they're
+   * looking now. A no-op when not lounging. */
+  getUp(): void {
+    if (!this.loungeState) return;
+    const object = this.controls.object;
+    object.position.copy(this.loungeState.position);
+    this.loungeState = null;
+  }
+
+  get isLounging(): boolean {
+    return this.loungeState !== null;
   }
 
   /** Current facing direction (yaw only, radians) — derived from the
