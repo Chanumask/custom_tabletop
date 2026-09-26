@@ -3033,6 +3033,45 @@ button.primary {
   box-shadow: inset 0 0 0 1px rgba(240, 196, 106, 0.45);
 }
 
+/* The host's mood presets: three buttons, each saying what it does. */
+.mood-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.mood-button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.5rem 0.45rem;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--field);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+.mood-button span {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.mood-button small {
+  color: var(--ink-muted);
+  font-size: 0.66rem;
+  line-height: 1.25;
+}
+
+.mood-button:hover {
+  border-color: rgba(240, 196, 106, 0.45);
+  background: linear-gradient(180deg, rgba(240, 196, 106, 0.14), rgba(217, 164, 65, 0.06));
+}
+
 .row-hint {
   display: block;
   color: var(--ink-muted);

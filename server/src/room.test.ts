@@ -366,6 +366,9 @@ describe('the record player', () => {
     });
     const put = await interact(bob, 'bob', { objectId: 'record', target: 'lofi' });
     expect(put.ok).toBe(true);
+    // Not a flood of records (each one is logged).
+    const again = await interact(bob, 'bob', { objectId: 'record', target: 'tavern' });
+    expect(again.ok).toBe(false);
     await settle();
     expect(bobSees.room.record?.record).toBe('lofi');
     expect(bobSees.log.at(-1)).toMatchObject({ text: 'bob put on Lo-fi Evening' });
@@ -569,5 +572,93 @@ describe('the books on the lectern', () => {
       cover: 0,
     });
     expect(empty.ok).toBe(false);
+  });
+});
+
+describe('the mood presets', () => {
+  function room() {
+    const store = new SessionStore();
+    store.join('ROOM', 'alice', 'Alice');
+    store.join('ROOM', 'bob', 'Bob');
+    return store;
+  }
+
+  it('story time: lights down, candles and fire, soft music', () => {
+    const store = room();
+    store.setCandles('ROOM', 'oil-lamp', false);
+    store.setReadingLamp('ROOM', false);
+    const done = store.setMood('ROOM', 'alice', 'story', 50_000);
+    expect(done.ok).toBe(true);
+    const state = store.get('ROOM')!;
+    expect(state.lightOn).toBe(false);
+    expect(state.room).toMatchObject({
+      readingLampOn: true,
+      candlesOut: [],
+      fireStokedAt: 50_000,
+      record: { record: 'lofi', startedAt: 50_000 },
+    });
+    expect(state.log.at(-1)).toMatchObject({ text: 'Alice set the mood: story time' });
+  });
+
+  it('break: lights up and a tavern tune (the same one keeps playing)', () => {
+    const store = room();
+    store.setRecord('ROOM', 'alice', 'tavern', true, 1000);
+    store.setMood('ROOM', 'alice', 'break', 90_000);
+    const state = store.get('ROOM')!;
+    expect(state.lightOn).toBe(true);
+    expect(state.room.record).toEqual({ record: 'tavern', startedAt: 1000 });
+  });
+
+  it('storm: the storm rolls in, windows shut, curtains open, music off', () => {
+    const store = room();
+    store.setWindow('ROOM', 'north', true);
+    store.setCurtains('ROOM', 'east-1', true);
+    store.setRecord('ROOM', 'alice', 'lofi', true, 1000);
+    store.setMood('ROOM', 'alice', 'storm', 90_000);
+    const state = store.get('ROOM')!;
+    expect(state.lightOn).toBe(false);
+    expect(state.room.weather).toBe('storm');
+    expect(state.room.record).toBeNull();
+    expect(Object.values(state.room.windows).every((w) => !w.open && !w.drawn)).toBe(true);
+  });
+
+  it('is the host’s, and everything stays changeable by hand', async () => {
+    const store = room();
+    expect(store.setMood('ROOM', 'bob', 'storm').ok).toBe(false);
+    store.setMood('ROOM', 'alice', 'story', 10_000);
+    // A log only just went on: the preset doesn't pile another on.
+    store.setMood('ROOM', 'alice', 'break', 10_000 + STOKE_MIN_INTERVAL_MS - 1);
+    expect(store.get('ROOM')!.room.fireStokedAt).toBe(10_000);
+    store.toggleLight('ROOM');
+    store.setCandles('ROOM', 'mantel-north', false);
+    expect(store.get('ROOM')!.lightOn).toBe(false);
+    expect(store.get('ROOM')!.room.candlesOut).toEqual(['mantel-north']);
+
+    const alice = await connect();
+    const bob = await connect();
+    await join(alice, 'alice');
+    await join(bob, 'bob');
+    let bobSees = {} as GameState;
+    onStateUpdates(bob, (state) => {
+      bobSees = state;
+    });
+    const refused = await emitAck(bob, SocketEvent.HostAction, {
+      sessionId: 'ROOM',
+      playerId: 'bob',
+      action: 'mood',
+      mood: 'storm',
+    });
+    expect(refused.ok).toBe(false);
+    const storm = await emitAck(alice, SocketEvent.HostAction, {
+      sessionId: 'ROOM',
+      playerId: 'alice',
+      action: 'mood',
+      mood: 'storm',
+    });
+    expect(storm.ok).toBe(true);
+    await settle();
+    expect(bobSees.room.weather).toBe('storm');
+    expect(bobSees.lightOn).toBe(false);
+    expect(bobSees.log.at(-1)).toMatchObject({ text: 'alice set the mood: storm' });
   });
 });

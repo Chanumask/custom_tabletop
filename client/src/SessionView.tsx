@@ -7,6 +7,7 @@ import {
   type FormEvent,
 } from 'react';
 import {
+  MOODS,
   type RoomTheme,
   type Weather,
   EMOTES,
@@ -1191,6 +1192,25 @@ function HostTab({
               onClick={() => onHostAction({ action: 'weather', weather: id })}
             >
               {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="host-choice">
+        <span>
+          Set the mood
+          <span className="row-hint">a few things at once — each still yours to change after</span>
+        </span>
+        <div className="mood-row">
+          {MOODS.map(({ id, label, hint }) => (
+            <button
+              key={id}
+              type="button"
+              className="mood-button"
+              onClick={() => onHostAction({ action: 'mood', mood: id })}
+            >
+              <span>{label}</span>
+              <small>{hint}</small>
             </button>
           ))}
         </div>

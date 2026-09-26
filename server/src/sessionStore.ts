@@ -17,6 +17,9 @@ import {
   isDrink,
   MAX_BOOKS,
   normalizeBooks,
+  MOODS,
+  type Mood,
+  WINDOWS,
   isLoungeSeat,
   isRecordId,
   RECORDS,
@@ -1380,6 +1383,45 @@ export class SessionStore {
       return { ok: false, error: 'That book is gone.' };
     }
     state.books = state.books.filter((book) => book.id !== bookId);
+    return { ok: true, state };
+  }
+
+  /** Host only: sets the mood (host.ts `MOODS`) — several of the room's
+   * switches at once, each still anyone's to change afterwards. */
+  setMood(
+    sessionId: string,
+    actorId: string,
+    mood: Mood,
+    now = Date.now(),
+  ): GameStateMutationResult {
+    const table = this.asHost(sessionId, actorId);
+    if (!table.ok) return table;
+    const { state, host } = table;
+    const room = { ...state.room, candlesOut: [], readingLampOn: true };
+    // Another log on — unless one's only just gone on.
+    if (room.fireStokedAt === null || now - room.fireStokedAt >= STOKE_MIN_INTERVAL_MS) {
+      room.fireStokedAt = now;
+    }
+    const play = (record: string) =>
+      room.record?.record === record ? room.record : { record, startedAt: now };
+    if (mood === 'story') {
+      state.lightOn = false;
+      room.record = play('lofi');
+    } else if (mood === 'break') {
+      state.lightOn = true;
+      room.record = play('tavern');
+    } else {
+      state.lightOn = false;
+      room.weather = 'storm';
+      room.record = null;
+      // Shut against the rain; curtains open, to watch the lightning.
+      room.windows = Object.fromEntries(
+        WINDOWS.map((id) => [id, { open: false, drawn: false }]),
+      ) as typeof room.windows;
+    }
+    state.room = room;
+    const label = MOODS.find((candidate) => candidate.id === mood)!.label.toLowerCase();
+    addSystemEntry(state, `${host.name} set the mood: ${label}`);
     return { ok: true, state };
   }
 

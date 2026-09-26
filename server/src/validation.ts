@@ -5,6 +5,7 @@ import {
   ROOM_THEMES,
   WEATHERS,
   cleanBook,
+  MOODS,
   type HostActionRequest,
   type DiceMoveRequest,
   type MiniMoveRequest,
@@ -899,6 +900,10 @@ export function parseHostActionRequest(payload: unknown): HostActionRequest | nu
   }
   if (action === 'removeBook' && isNonEmptyString(fields.bookId)) {
     return { ...base, action, bookId: fields.bookId };
+  }
+  const mood = MOODS.find((candidate) => candidate.id === fields.mood)?.id;
+  if (action === 'mood' && mood) {
+    return { ...base, action, mood };
   }
   return null;
 }

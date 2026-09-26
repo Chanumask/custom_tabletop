@@ -162,6 +162,8 @@ type PatchKey = keyof SessionPatch['patch'];
 const PRESENCE_KEYS: PatchKey[] = ['players', 'hostId', 'log', 'inventory'];
 /** Pings are for pointing, not strobing: at most one per socket this often. */
 const PING_MIN_INTERVAL_MS = 300;
+/** Records change at most this often per player (each one is logged). */
+const RECORD_MIN_INTERVAL_MS = 1000;
 /** Chat flood guard, per socket: at most this many lines per window. */
 const CHAT_WINDOW_MS = 5000;
 const CHAT_MAX_PER_WINDOW = 6;
@@ -698,7 +700,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
                     ? sessions.writeBook(sessionId, playerId, request)
                     : request.action === 'removeBook'
                       ? sessions.removeBook(sessionId, playerId, request.bookId)
-                      : sessions.clearTable(sessionId, playerId, request.target);
+                      : request.action === 'mood'
+                        ? sessions.setMood(sessionId, playerId, request.mood)
+                        : sessions.clearTable(sessionId, playerId, request.target);
         ack?.(own(result));
         if (!result.ok) return;
         const changed: PatchKey | 'drawings' =
@@ -712,10 +716,14 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
                   ? 'room'
                   : request.action === 'writeBook' || request.action === 'removeBook'
                     ? 'books'
-                    : request.target;
+                    : request.action === 'mood'
+                      ? 'room'
+                      : request.target;
         if (changed === 'drawings') {
           // Drawings only travel in full snapshots (SessionPatch).
           broadcastState(sessionId, result.state);
+        } else if (request.action === 'mood') {
+          broadcastPatch(sessionId, result.state, ['lightOn', 'room', 'log']);
         } else {
           broadcastPatch(sessionId, result.state, [changed, 'log']);
         }
@@ -765,6 +773,8 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     // player sees and hears their own at once). A sip or a toast needs a
     // drink in hand.
     let lastGestureAt = 0;
+    // Putting a record on says so in the log: not faster than this.
+    let lastRecordAt = 0;
     socket.on(SocketEvent.PlayerGesture, (payload: unknown) => {
       const request = parsePlayerGestureRequest(payload);
       if (!request || !actsAs(request.sessionId, request.playerId)) {
@@ -1416,11 +1426,23 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           case 'curtains':
             result = sessions.setCurtains(request.sessionId, request.target, request.on);
             break;
-          case 'record':
-            result = allowed(request.sessionId, request.playerId, 'sounds')
-              ? sessions.setRecord(request.sessionId, request.playerId, request.target, request.on)
-              : { ok: false, error: SOUNDS_OFF_ERROR };
+          case 'record': {
+            const now = Date.now();
+            if (!allowed(request.sessionId, request.playerId, 'sounds')) {
+              result = { ok: false, error: SOUNDS_OFF_ERROR };
+            } else if (now - lastRecordAt < RECORD_MIN_INTERVAL_MS) {
+              result = { ok: false, error: 'One record at a time — give it a moment.' };
+            } else {
+              lastRecordAt = now;
+              result = sessions.setRecord(
+                request.sessionId,
+                request.playerId,
+                request.target,
+                request.on,
+              );
+            }
             break;
+          }
           case 'teaset':
             result = sessions.setDrink(
               request.sessionId,

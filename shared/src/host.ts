@@ -28,6 +28,16 @@ export type RoomTheme = (typeof ROOM_THEMES)[number];
 export const CLEAR_TARGETS = ['drawings', 'whiteboard', 'dice', 'minis', 'photos'] as const;
 export type ClearTarget = (typeof CLEAR_TARGETS)[number];
 
+/** The host's mood presets (docs/decisions.md, "The cozy room"): each sets
+ * a few of the room's own switches at once — the lights, the candles, the
+ * fire, the weather, the record — which all stay theirs to change by hand. */
+export const MOODS = [
+  { id: 'story', label: 'Story time', hint: 'lights down, candles and the fire, soft music' },
+  { id: 'break', label: 'Break', hint: 'lights up, a tavern tune — time for tea' },
+  { id: 'storm', label: 'Storm', hint: 'lights down, the storm rolls in, candles lit' },
+] as const;
+export type Mood = (typeof MOODS)[number]['id'];
+
 export type HostAction =
   | { action: 'lock'; locked: boolean }
   | { action: 'permission'; permission: TablePermission; allowed: boolean }
@@ -37,7 +47,8 @@ export type HostAction =
   | { action: 'weather'; weather: Weather }
   /** A new book (no `bookId`) or a rewrite of one (books.ts). */
   | { action: 'writeBook'; bookId?: string; title: string; text: string; cover: number }
-  | { action: 'removeBook'; bookId: string };
+  | { action: 'removeBook'; bookId: string }
+  | { action: 'mood'; mood: Mood };
 
 export type HostActionRequest = { sessionId: string; playerId: string } & HostAction;
 
