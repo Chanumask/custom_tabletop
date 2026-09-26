@@ -51,6 +51,14 @@ Each part was built on its own branch and squash-merged into `main`:
 - **Sanity pass:** 826 tests (63 shared, 404 server, 359 client), lint, format and build clean.
 - **One flaky test:** `gadgetGuards.test.ts` failed once under the full parallel run and passed in seven reruns. This batch didn't touch it; it looks like a timing flake under load.
 
+### Pushed and deployed
+
+- Pushed `a0d687a..3ebb04e` to `main`.
+- `npm run deploy` put `3ebb04e` on the VPS, and the container came up healthy. Only the `tabletop` project was touched. The live RoomView bundle is byte-for-byte the tested build (same hash).
+- Against `https://tabletop.murri.me`:
+  - the smoke tests pass 9/9 in Chromium, Firefox and WebKit;
+  - the moods, winter, snow, storm and music, driven through the menus, raised no errors in any of the three.
+
 ---
 
 ## 2026-09-26 — Real gadget models, held properly
