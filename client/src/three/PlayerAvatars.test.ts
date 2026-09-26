@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { InventoryItem, ItemKind, Player, PlayerColorId } from '@custom-tabletop/shared';
 import { PlayerAvatars } from './PlayerAvatars.js';
 import { LOUNGE_SPOTS } from './loungeSeats.js';
+import { buildMug } from './refreshmentMeshes.js';
 import type { CharacterAsset, CharacterSource } from './characters.js';
 import type { GadgetSource } from './gadgetMeshes.js';
 import { armSkeleton, fakeGadget, punchClip } from './testRig.js';
@@ -43,6 +44,7 @@ function player(id: string, overrides: Partial<Player> = {}): Player {
     seated: false,
     seatIndex: null,
     lounge: null,
+    carrying: null,
     connected: true,
     flashlightOn: false,
     ...overrides,
@@ -367,5 +369,54 @@ describe('wrapSpeech', () => {
   it('cuts off with an ellipsis past the last line, and splits very long words', () => {
     expect(wrapSpeech('one two three four five six', 7, 2)).toEqual(['one two', 'three…']);
     expect(wrapSpeech('aaaaaaaaaaaa', 5)).toEqual(['aaaaa', 'aaaaa', 'aa']);
+  });
+});
+
+describe('PlayerAvatars with a drink', () => {
+  const mugs: GadgetSource = {
+    load: async (kind) => (kind === 'tea' || kind === 'cocoa' ? buildMug(kind) : fakeGadget()),
+  };
+  const mugIn = (avatars: PlayerAvatars, id: string) =>
+    avatars
+      .objectFor(id)!
+      .getObjectByName('WristR')!
+      .children.find((child) => child.name.startsWith('Mug-'));
+
+  it('holds the drink in the hand — the one thing in it, over any gadget', async () => {
+    const avatars = new PlayerAvatars(new THREE.Scene(), riggedCharacters(), [], mugs);
+    avatars.sync([player('a', { carrying: 'cocoa' })], 'me', holding('camera'));
+    await flush();
+    await flush();
+    expect(mugIn(avatars, 'a')?.name).toBe('Mug-cocoa');
+    expect(gadgetIn(avatars, 'a')).toBeUndefined();
+  });
+
+  it('lifts it to the lips for a sip, and back down', async () => {
+    const avatars = new PlayerAvatars(new THREE.Scene(), riggedCharacters(), [], mugs);
+    avatars.sync([player('a', { carrying: 'tea' })], 'me');
+    await flush();
+    await flush();
+    for (let i = 0; i < 30; i += 1) avatars.update(1 / 30);
+    const holdingIt = handOf(avatars, 'a');
+    avatars.gesture('a', 'sip');
+    for (let i = 0; i < 18; i += 1) avatars.update(1 / 30);
+    const sipping = handOf(avatars, 'a');
+    expect(sipping.y - holdingIt.y).toBeGreaterThan(0.1);
+    for (let i = 0; i < 60; i += 1) avatars.update(1 / 30);
+    expect(handOf(avatars, 'a').distanceTo(holdingIt)).toBeLessThan(0.02);
+  });
+
+  it('dips into the popcorn with an empty hand', async () => {
+    const avatars = new PlayerAvatars(new THREE.Scene(), riggedCharacters(), [], mugs);
+    avatars.sync([player('a')], 'me');
+    await flush();
+    await flush();
+    avatars.update(1 / 30);
+    const hanging = handOf(avatars, 'a');
+    avatars.gesture('a', 'snack');
+    for (let i = 0; i < 12; i += 1) avatars.update(1 / 30);
+    expect(handOf(avatars, 'a').y - hanging.y).toBeGreaterThan(0.2);
+    for (let i = 0; i < 60; i += 1) avatars.update(1 / 30);
+    expect(handOf(avatars, 'a').distanceTo(hanging)).toBeLessThan(0.01);
   });
 });

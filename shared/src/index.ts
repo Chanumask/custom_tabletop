@@ -22,3 +22,4 @@ export * from './minis.js';
 export * from './host.js';
 export * from './seats.js';
 export * from './room.js';
+export * from './refreshments.js';

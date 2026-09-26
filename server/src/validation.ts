@@ -26,10 +26,12 @@ import {
   WHITEBOARD_LINE_COUNT,
   WHITEBOARD_MAX_LINE_LENGTH,
   isEmoteId,
+  isGesture,
   type WhiteboardWriteRequest,
   isHttpUrl,
   isPlayerColorId,
   type PlayerEmoteRequest,
+  type PlayerGestureRequest,
   type SoundboardAssignRequest,
   type SoundRemoveRequest,
   type PlayerUpdateRequest,
@@ -719,6 +721,17 @@ export function parsePlayerUnmuteRequest(payload: unknown): PlayerUnmuteRequest 
     playerId: playerId.trim(),
     targetPlayerId: targetPlayerId.trim(),
   };
+}
+
+export function parsePlayerGestureRequest(payload: unknown): PlayerGestureRequest | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null;
+  }
+  const { sessionId, playerId, gesture } = payload as Record<string, unknown>;
+  if (!isNonEmptyString(sessionId) || !isNonEmptyString(playerId) || !isGesture(gesture)) {
+    return null;
+  }
+  return { sessionId: sessionId.trim(), playerId: playerId.trim(), gesture };
 }
 
 export function parsePlayerEmoteRequest(payload: unknown): PlayerEmoteRequest | null {

@@ -239,3 +239,30 @@ export function CalculatorIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function MugIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={SIZE} height={SIZE} className={className} aria-hidden="true">
+      <path
+        d="M5 9h11v6.5a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M16 11h1.5a2.5 2.5 0 0 1 0 5H16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+      />
+      <path
+        d="M8.5 6.5c0-1 1-1.2 1-2.2M12 6.5c0-1 1-1.2 1-2.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}

@@ -19,7 +19,6 @@ import {
   type ObjectInteractRequest,
   type ObjectInteractResponse,
   type InventoryItem,
-  type ItemKind,
   type Photo,
   type Point2D,
   type TablePingRequest,
@@ -39,6 +38,9 @@ import {
   chairCount,
   LOUNGE_SEATS,
   type LoungeSeat,
+  type Drink,
+  type Gesture,
+  type PlayerGestureRequest,
 } from '@custom-tabletop/shared';
 import { loadRoom } from './RoomLoader.js';
 import { FirstPersonController, type SeatedView } from './FirstPersonController.js';
@@ -65,7 +67,7 @@ import { TableDrawing } from './TableDrawing.js';
 import { remapTableTopUV } from './tableTopUV.js';
 import { DiceManager, TUMBLE_SECONDS } from './DiceManager.js';
 import { playDiceClatter, playPingSound, playShutterSound } from '../sounds.js';
-import { flashingAllowed } from '../audioMix.js';
+import { flashingAllowed, isPlayerMuted } from '../audioMix.js';
 import { TablePings } from './TablePings.js';
 import { Ambience } from './Ambience.js';
 import { OutsideWorld } from './outside/OutsideWorld.js';
@@ -102,6 +104,9 @@ import { CalculatorDialog } from '../CalculatorDialog.js';
 import { RecordDialog } from '../RecordDialog.js';
 import { MusicPlayer } from '../music/MusicPlayer.js';
 import { RecordPlayer } from './RecordPlayer.js';
+import { HeldMugView } from './HeldMugView.js';
+import type { HeldKind } from './heldItems.js';
+import { buildSnackBowl, SNACK_BOWL, TEA_SET } from './refreshmentMeshes.js';
 import { HeldItems } from '../HeldItems.js';
 import { createPinboard, syncPinboard, disposePinboard, type Pinboard } from './Pinboard.js';
 import { uploadImage } from '../uploads.js';
@@ -119,6 +124,9 @@ import {
   playCurtains,
   playNeedleDrop,
   playNeedleLift,
+  playClink,
+  playCrunch,
+  playSip,
   playLogOnFire,
   playMatchStrike,
   playWindowSash,
@@ -312,7 +320,7 @@ function promptFor(
   boardTarget: { slotIndex: number; soundName: string | null } | null,
   whiteboardTargeted: boolean,
   targetedDie: DieKind | null = null,
-  heldItemKind: ItemKind | null = null,
+  heldItemKind: HeldKind | null = null,
 ): string | null {
   const keyLabel = formatKeyCode(interactKey);
   if (seatedView) {
@@ -348,6 +356,9 @@ function promptFor(
     return `Press ${keyLabel} to open the chest`;
   }
   switch (heldItemKind) {
+    case 'tea':
+    case 'cocoa':
+      return 'Press R to sip · 7 to raise your mug';
     case 'camera':
       return 'Press R to take a photo';
     case 'flashlight':
@@ -466,6 +477,7 @@ export function RoomView({
   const weatherAudioRef = useRef<WeatherAudio | null>(null);
   const recordPlayerRef = useRef<RecordPlayer | null>(null);
   const musicRef = useRef<MusicPlayer | null>(null);
+  const heldMugRef = useRef<HeldMugView | null>(null);
   // The room's obstacles (the controller walks against these): the winter
   // tree joins them while it's up.
   const obstaclesRef = useRef<import('./collision.js').Obstacle[] | null>(null);
@@ -628,6 +640,9 @@ export function RoomView({
     avatarsRef.current?.sync(players, playerId, inventory);
     // After the avatars: someone new knocks and walks in through the door.
     roomLifeRef.current?.syncPlayers(players);
+    heldMugRef.current?.setDrink(
+      players.find((player) => player.id === playerId)?.carrying ?? null,
+    );
   }, [players, playerId, inventory]);
 
   useEffect(() => {
@@ -1071,6 +1086,7 @@ export function RoomView({
     };
     let handleInteractKey: ((event: KeyboardEvent) => void) | null = null;
     let handleEmoteKey: ((event: KeyboardEvent) => void) | null = null;
+    let handleRemoteGesture: ((request: PlayerGestureRequest) => void) | null = null;
     let handleViewKey: ((event: KeyboardEvent) => void) | null = null;
     let handleUseItemKey: ((event: KeyboardEvent) => void) | null = null;
     let fireAudioRef: FireAmbience | null = null;
@@ -1429,6 +1445,94 @@ export function RoomView({
           };
         });
         aimTargetsRef.current = [...aimTargetsRef.current, ...loungeTargets];
+        // Tea and cocoa from the tea set by the sofa; popcorn from the bowl on
+        // the table's corner (refreshments.ts). Your own mug in first person.
+        const snackBowl = buildSnackBowl(darkWood);
+        scene.add(snackBowl);
+        const heldMug = new HeldMugView(camera, scene);
+        heldMugRef.current = heldMug;
+        const selfDrink = (): Drink | null =>
+          playersRef.current.find((player) => player.id === playerId)?.carrying ?? null;
+        heldMug.setDrink(selfDrink());
+        const sendGesture = (gesture: Gesture) =>
+          socket.emit(SocketEvent.PlayerGesture, {
+            sessionId,
+            playerId,
+            gesture,
+          } satisfies PlayerGestureRequest);
+        const whereIs = (id: string): { x: number; z: number } | null =>
+          id === playerId ? camera.position : (avatarsRef.current?.objectFor(id)?.position ?? null);
+        const hearing = () => ({
+          x: camera.position.x,
+          z: camera.position.z,
+          yaw: controller.getYaw(),
+        });
+        // A toast clinks when someone else with a drink is close enough to
+        // meet mugs.
+        const clinkIfToasting = (toasterId: string) => {
+          const at = whereIs(toasterId);
+          if (!at) return;
+          const company = playersRef.current.some((player) => {
+            if (player.id === toasterId || !player.carrying) return false;
+            const there = whereIs(player.id);
+            return there !== null && Math.hypot(there.x - at.x, there.z - at.z) < 2.2;
+          });
+          if (company) playClink(placeSound(hearing(), at, 1.5, 10));
+        };
+        const sip = () => {
+          heldMug.play('sip');
+          playSip({ volume: 0.55, pan: 0 });
+          sendGesture('sip');
+        };
+        const raiseMug = () => {
+          heldMug.play('cheers');
+          sendGesture('cheers');
+          clinkIfToasting(playerId);
+        };
+        let lastSnackAt = -Infinity;
+        handleRemoteGesture = (request: PlayerGestureRequest) => {
+          avatarsRef.current?.gesture(request.playerId, request.gesture);
+          if (isPlayerMuted(request.playerId)) return;
+          const at = whereIs(request.playerId);
+          if (request.gesture === 'snack' && at) playCrunch(placeSound(hearing(), at, 0.8, 6));
+          if (request.gesture === 'cheers') {
+            avatarsRef.current?.say(request.playerId, 'Cheers!');
+            clinkIfToasting(request.playerId);
+          }
+        };
+        socket.on(SocketEvent.PlayerGesture, handleRemoteGesture);
+        aimTargetsRef.current = [
+          ...aimTargetsRef.current,
+          {
+            id: 'tea-set',
+            center: TEA_SET,
+            radius: 0.24,
+            reach: 2.3,
+            prompt: () => {
+              const drink = selfDrink();
+              return drink
+                ? `Press ${keyLabel()} to set your ${drink} down`
+                : `Press ${keyLabel()} to pour a cup of tea · Shift+${keyLabel()} for hot cocoa`;
+            },
+            act: (shift) =>
+              selfDrink()
+                ? onRoomActionRef.current('teaset', { on: false })
+                : onRoomActionRef.current('teaset', { target: shift ? 'cocoa' : 'tea', on: true }),
+          },
+          {
+            id: 'snack-bowl',
+            center: { x: SNACK_BOWL.x, y: SNACK_BOWL.y + 0.05, z: SNACK_BOWL.z },
+            radius: 0.13,
+            reach: 2.2,
+            prompt: () => `Press ${keyLabel()} to grab some popcorn`,
+            act: () => {
+              if (performance.now() - lastSnackAt < 900) return;
+              lastSnackAt = performance.now();
+              playCrunch({ volume: 0.7, pan: 0 });
+              sendGesture('snack');
+            },
+          },
+        ];
         const rockingSpot = LOUNGE_SPOTS['rocking-chair'];
         const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -1939,6 +2043,10 @@ export function RoomView({
           ) {
             return;
           }
+          if (selfDrink()) {
+            sip();
+            return;
+          }
           const heldKind = inventoryRef.current.find((item) => item.heldBy === playerId)?.kind;
           if (!heldKind) {
             return;
@@ -1983,12 +2091,15 @@ export function RoomView({
         // character perform it (the local player gets a short confirmation,
         // since they can't see their own avatar from first person).
         handleEmoteKey = (event: KeyboardEvent) => {
-          if (
-            event.repeat ||
-            isTypingTarget(event.target) ||
-            controller.isSeated ||
-            aDialogIsOpen()
-          ) {
+          if (event.repeat || isTypingTarget(event.target) || aDialogIsOpen()) {
+            return;
+          }
+          // 7: raise your mug to everyone — seated at the table too.
+          if (event.code === 'Digit7') {
+            if (selfDrink()) raiseMug();
+            return;
+          }
+          if (controller.isSeated) {
             return;
           }
           const emote = EMOTES.find((candidate) => candidate.key === event.code);
@@ -2053,6 +2164,7 @@ export function RoomView({
           winterRef.current?.update(delta, timer.getElapsed());
           windowsRef.current?.update(delta);
           recordPlayer.update(delta);
+          heldMug.update(delta, controller.seatedView !== 'table');
           {
             const place = placeSound(
               { x: camera.position.x, z: camera.position.z, yaw: controller.getYaw() },
@@ -2168,8 +2280,10 @@ export function RoomView({
                 }
               : null;
 
-          const heldItemKind =
-            inventoryRef.current.find((item) => item.heldBy === playerId)?.kind ?? null;
+          const heldItemKind: HeldKind | null =
+            selfDrink() ??
+            inventoryRef.current.find((item) => item.heldBy === playerId)?.kind ??
+            null;
           const promptKey = `${nearestId}|${controller.seatedView}|${interactKeyRef.current}|${targetedSlot}|${boardTarget?.soundName}|${whiteboardTargeted}|${targetedDie}|${heldItemKind}|${aimPrompt}`;
           if (promptKey !== lastPromptKeyRef.current) {
             lastPromptKeyRef.current = promptKey;
@@ -2248,6 +2362,11 @@ export function RoomView({
       if (handleInteractKey) {
         document.removeEventListener('keydown', handleInteractKey);
       }
+      if (handleRemoteGesture) {
+        socket.off(SocketEvent.PlayerGesture, handleRemoteGesture);
+      }
+      heldMugRef.current?.dispose();
+      heldMugRef.current = null;
       if (handleEmoteKey) {
         document.removeEventListener('keydown', handleEmoteKey);
       }
@@ -2302,6 +2421,7 @@ export function RoomView({
       weatherAudioRef.current = null;
       recordPlayerRef.current?.dispose();
       recordPlayerRef.current = null;
+      scene.getObjectByName('snack-bowl')?.removeFromParent();
       musicRef.current?.dispose();
       musicRef.current = null;
       whiteboardCanvasRef.current?.dispose();
@@ -2382,7 +2502,10 @@ export function RoomView({
         !calculatorOpen &&
         !recordOpen && <div className="crosshair" />}
       {cameraFlash && <div className="camera-flash" />}
-      <HeldItems items={inventory.filter((item) => item.heldBy === playerId)} />
+      <HeldItems
+        items={inventory.filter((item) => item.heldBy === playerId)}
+        drink={players.find((player) => player.id === playerId)?.carrying ?? null}
+      />
       {/* One bottom-center stack, so the prompt always sits above the hint
           instead of the two overlapping when the hint wraps. */}
       <div className="room-bottom-stack">

@@ -3,6 +3,9 @@ import * as THREE from 'three';
 import {
   findArmRig,
   HOLDS,
+  GESTURE_POSES,
+  blendPose,
+  gestureWeight,
   instantiateHeldItem,
   placeInHand,
   poseHold,
@@ -137,6 +140,37 @@ describe('held gadgets', () => {
         expect(pose.grip).toBeGreaterThanOrEqual(0);
         expect(pose.grip).toBeLessThanOrEqual(1);
       }
+    }
+  });
+});
+
+describe('gestures', () => {
+  it('ease up, hold and ease back down, then are over', () => {
+    expect(gestureWeight('sip', 0)).toBe(0);
+    expect(gestureWeight('sip', 0.2)).toBeGreaterThan(0);
+    expect(gestureWeight('sip', 0.2)).toBeLessThan(1);
+    expect(gestureWeight('sip', 0.7)).toBe(1);
+    expect(gestureWeight('sip', 1.4)).toBeLessThan(1);
+    expect(gestureWeight('sip', 5)).toBeNull();
+    expect(gestureWeight('snack', 1.2)).toBeNull();
+  });
+
+  it('bend the arm toward the gesture and leave the item where it is in the hand', () => {
+    const base = HOLDS.tea.standing;
+    expect(blendPose(base, GESTURE_POSES.sip, 0)).toBe(base);
+    const full = blendPose(base, GESTURE_POSES.sip, 1);
+    const unit = (v: number[]) => v.map((x) => x / Math.hypot(...v));
+    full.forearm.forEach((x, i) => expect(x).toBeCloseTo(unit(GESTURE_POSES.sip.forearm)[i]!));
+    expect(full.position).toEqual(base.position);
+    expect(full.rotation).toEqual(base.rotation);
+    const half = blendPose(base, GESTURE_POSES.cheers, 0.5);
+    expect(Math.hypot(...half.upperArm)).toBeCloseTo(1);
+  });
+
+  it('has a way to hold every drink and gadget', () => {
+    for (const kind of ['tea', 'cocoa', 'camera', 'flashlight', 'walkie', 'calculator'] as const) {
+      expect(HOLDS[kind].standing).toBeDefined();
+      expect(HOLDS[kind].seated).toBeDefined();
     }
   });
 });

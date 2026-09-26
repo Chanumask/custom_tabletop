@@ -60,6 +60,8 @@ export const SocketEvent = {
   PlayerUpdate: 'player:update',
   /** A short character animation everyone else sees (emote.ts). */
   PlayerEmote: 'player:emote',
+  /** A sip, a toast, a snack (refreshments.ts) — relayed like an emote. */
+  PlayerGesture: 'player:gesture',
 
   DiceSpawn: 'dice:spawn',
   DiceRoll: 'dice:roll',

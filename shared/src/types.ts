@@ -14,6 +14,7 @@ import type { DieKind } from './dice.js';
 import type { LogEntry } from './log.js';
 import type { RoomTheme, TablePermissions } from './host.js';
 import type { LoungeSeat, RoomState } from './room.js';
+import type { Drink } from './refreshments.js';
 
 export interface Vector3 {
   x: number;
@@ -167,6 +168,9 @@ export interface Player {
    * rocking chair — or null. One player per seat (the server keeps it so);
    * sitting at the table gets them up from it, and the other way round. */
   lounge: LoungeSeat | null;
+  /** A cup of tea or cocoa in hand (refreshments.ts), or null. The same
+   * single slot as a gadget: never both. */
+  carrying: Drink | null;
 
   /** Live presence: false while this player's connection is dropped but
    * still inside the server's reconnect grace period (a reload, a network

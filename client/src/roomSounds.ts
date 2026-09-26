@@ -390,3 +390,108 @@ export function playNeedleLift(place: Placement): void {
   const at = ctx.currentTime + 0.02;
   burst(ctx, out, at, 'bandpass', 3400, 4, 0.05, 0.025);
 }
+
+/** Pouring from the teapot: the lid's little rattle, then the stream
+ * filling the cup, rising in pitch as it fills. */
+export function playPour(place: Placement): void {
+  const v = voice('room', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.02;
+  burst(ctx, out, at, 'bandpass', 4200, 6, 0.03, 0.04);
+  const source = ctx.createBufferSource();
+  source.buffer = noise(ctx);
+  source.loop = true;
+  const stream = ctx.createBiquadFilter();
+  stream.type = 'bandpass';
+  stream.Q.value = 5;
+  stream.frequency.setValueAtTime(700, at + 0.1);
+  stream.frequency.exponentialRampToValueAtTime(1500, at + 1.3);
+  // The glug of it: the level wobbling a few times a second.
+  const gurgle = ctx.createOscillator();
+  gurgle.frequency.value = 9;
+  const depth = ctx.createGain();
+  depth.gain.value = 0.02;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.0001, at + 0.1);
+  gain.gain.linearRampToValueAtTime(0.05, at + 0.25);
+  gain.gain.setValueAtTime(0.05, at + 1.15);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + 1.45);
+  gurgle.connect(depth).connect(gain.gain);
+  source.connect(stream).connect(gain).connect(out);
+  source.start(at + 0.1);
+  gurgle.start(at + 0.1);
+  source.stop(at + 1.5);
+  gurgle.stop(at + 1.5);
+}
+
+/** A mug set down on its saucer: a small ceramic knock. */
+export function playMugDown(place: Placement): void {
+  const v = voice('room', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.02;
+  ceramic(ctx, out, at, 1400, 0.05);
+  thump(ctx, out, at, 220, 120, 0.05, 0.06);
+}
+
+/** Two mugs meeting in a toast: a bright ceramic clink. */
+export function playClink(place: Placement): void {
+  const v = voice('room', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.25;
+  ceramic(ctx, out, at, 2300, 0.12);
+  ceramic(ctx, out, at + 0.012, 2750, 0.06);
+}
+
+/** A sip of something hot — quiet, only for the one sipping. */
+export function playSip(place: Placement): void {
+  const v = voice('room', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.35;
+  burst(ctx, out, at, 'bandpass', 1500, 1.5, 0.035, 0.35);
+  burst(ctx, out, at + 0.45, 'lowpass', 500, 1, 0.05, 0.08);
+}
+
+/** A mouthful of popcorn: a few soft crunches. */
+export function playCrunch(place: Placement): void {
+  const v = voice('room', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.3;
+  for (let i = 0; i < 5; i++) {
+    const when = at + i * 0.13 + Math.random() * 0.05;
+    burst(
+      ctx,
+      out,
+      when,
+      'bandpass',
+      2400 + Math.random() * 1600,
+      1.2,
+      0.07 * (1 - i * 0.12),
+      0.05,
+    );
+    burst(ctx, out, when, 'lowpass', 600, 0.7, 0.04, 0.04);
+  }
+}
+
+/** A ring of ceramic: a few inharmonic partials dying away fast. */
+function ceramic(ctx: AudioContext, out: AudioNode, at: number, base: number, peak: number): void {
+  for (const [ratio, level] of [
+    [1, 1],
+    [1.52, 0.5],
+    [2.37, 0.3],
+  ] as const) {
+    const osc = ctx.createOscillator();
+    osc.frequency.value = base * ratio;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(peak * level, at + 0.003);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.35 / ratio);
+    osc.connect(gain).connect(out);
+    osc.start(at);
+    osc.stop(at + 0.4);
+  }
+}

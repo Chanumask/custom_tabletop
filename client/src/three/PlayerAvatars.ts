@@ -3,8 +3,8 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import {
   playerColorHex,
   type EmoteId,
+  type Gesture,
   type InventoryItem,
-  type ItemKind,
   type LoungeSeat,
   type Player,
   type PlayerColorId,
@@ -21,7 +21,11 @@ import {
 import { EMOTE_CLIPS, type CharacterSource } from './characters.js';
 import { GadgetLibrary, type GadgetSource } from './gadgetMeshes.js';
 import {
+  blendPose,
+  EMPTY_HAND_SNACK,
   findArmRig,
+  GESTURE_POSES,
+  gestureWeight,
   HOLDS,
   instantiateHeldItem,
   placeInHand,
@@ -29,8 +33,10 @@ import {
   releaseHold,
   type ArmRig,
   type HeldItemParts,
+  type HeldKind,
 } from './heldItems.js';
 import { LOUNGE_SPOTS, type LoungeSpot } from './loungeSeats.js';
+import { steamWisp } from './refreshmentMeshes.js';
 import { NameTag } from './nameTag.js';
 import { flashingAllowed } from '../audioMix.js';
 import { SpeechBubble, speechSeconds } from './speechBubble.js';
@@ -163,7 +169,9 @@ interface Avatar {
   gripWeight: number;
   /** The gadget the arm is posed for — still set while it eases back down
    * after the gadget went back in the chest. */
-  holdKind: ItemKind | null;
+  holdKind: HeldKind | null;
+  /** A sip, a toast or a snack in progress (on the avatars' clock). */
+  gesture: { kind: Gesture; at: number } | null;
   flashlightOn: boolean;
   /** When the camera flash last popped (on the avatars' clock). */
   flashAt: number;
@@ -177,7 +185,7 @@ interface Avatar {
   } | null;
   /** Which gadget this player currently holds (from `GameState.inventory`,
    * `sync`'s third argument), and the loaded mesh for it, once it resolves. */
-  heldItemKind: ItemKind | null;
+  heldItemKind: HeldKind | null;
   heldItemMesh: THREE.Object3D | null;
   heldItemParts: HeldItemParts | null;
   /** Cancels a stale gadget-mesh load if the held kind changes again (or
@@ -226,8 +234,9 @@ export class PlayerAvatars {
    * it; a player with no entry there just shows empty-handed. */
   sync(players: Player[], selfId: string, inventory: InventoryItem[] = []): void {
     const others = players.filter((player) => player.id !== selfId);
-    const heldKindOf = (playerId: string): ItemKind | null =>
-      inventory.find((item) => item.heldBy === playerId)?.kind ?? null;
+    // A drink or a gadget: one hand, one thing.
+    const heldKindOf = (player: Player): HeldKind | null =>
+      player.carrying ?? inventory.find((item) => item.heldBy === player.id)?.kind ?? null;
 
     for (const player of others) {
       let avatar = this.avatars.get(player.id);
@@ -239,7 +248,7 @@ export class PlayerAvatars {
       }
 
       avatar.target = { x: player.position.x, z: player.position.z, yaw: player.rotationY };
-      this.setHeldItem(avatar, heldKindOf(player.id));
+      this.setHeldItem(avatar, heldKindOf(player));
       avatar.flashlightOn = player.flashlightOn;
       lightLens(avatar);
       avatar.lounge = player.lounge ?? null;
@@ -328,6 +337,13 @@ export class PlayerAvatars {
     action.clampWhenFinished = true;
     action.fadeIn(CROSSFADE_SECONDS).play();
     avatar.emote = { action, holdUntil: null };
+  }
+
+  /** A sip of their drink, a toast, a handful of popcorn: the arm does it
+   * over whatever else it's doing (not in the middle of an emote). */
+  gesture(playerId: string, gesture: Gesture): void {
+    const avatar = this.avatars.get(playerId);
+    if (avatar) avatar.gesture = { kind: gesture, at: this.clock };
   }
 
   /** Shows a chat line in a bubble over a player's character for a few
@@ -437,6 +453,7 @@ export class PlayerAvatars {
       holdWeight: 0,
       gripWeight: 0,
       holdKind: null,
+      gesture: null,
       flashlightOn: player.flashlightOn,
       flashAt: -Infinity,
       entrance: null,
@@ -528,7 +545,7 @@ export class PlayerAvatars {
    * gadgets phase 6) — `null` empties the hand. A stale load (the kind
    * changed again, or the avatar was removed, before the previous one
    * resolved) is dropped via `heldItemLoadToken`. */
-  private setHeldItem(avatar: Avatar, kind: ItemKind | null): void {
+  private setHeldItem(avatar: Avatar, kind: HeldKind | null): void {
     if (avatar.heldItemKind === kind) {
       return;
     }
@@ -702,14 +719,34 @@ export class PlayerAvatars {
     const k = smoothingFactor(dt, HOLD_HALF_LIFE);
     avatar.holdWeight = ease(avatar.holdWeight, holding && !avatar.emote ? 1 : 0, k);
     avatar.gripWeight = ease(avatar.gripWeight, holding ? 1 : 0, k);
+    // A gesture: how far into it, or gone once it's over. An emote wins.
+    let gesture = 0;
+    if (avatar.gesture) {
+      const weight = gestureWeight(avatar.gesture.kind, this.clock - avatar.gesture.at);
+      if (weight === null || avatar.emote) avatar.gesture = null;
+      else gesture = weight;
+    }
     const kind = avatar.heldItemKind ?? avatar.holdKind;
     if (avatar.arm && avatar.model && kind && (avatar.holdWeight > 0 || avatar.gripWeight > 0)) {
       const hold = HOLDS[kind];
-      const pose = avatar.seated ? hold.seated : hold.standing;
+      let pose = avatar.seated ? hold.seated : hold.standing;
+      // The hand that holds something can't also dip into the popcorn.
+      if (avatar.gesture && avatar.gesture.kind !== 'snack') {
+        pose = blendPose(pose, GESTURE_POSES[avatar.gesture.kind], gesture);
+      }
       poseHold(avatar.model, avatar.arm, pose, avatar.holdWeight, avatar.gripWeight);
       if (avatar.heldItemMesh) {
         placeInHand(avatar.heldItemMesh, hold, pose);
       }
+    } else if (avatar.arm && avatar.model && avatar.gesture?.kind === 'snack' && gesture > 0) {
+      poseHold(avatar.model, avatar.arm, EMPTY_HAND_SNACK, gesture, gesture);
+    }
+    // A hot drink steams.
+    for (const wisp of avatar.heldItemParts?.steam ?? []) {
+      const { rise, size, opacity } = steamWisp(this.clock, wisp.userData.phase as number);
+      wisp.position.y = 0.065 + rise;
+      wisp.scale.setScalar(size);
+      (wisp.material as THREE.SpriteMaterial).opacity = opacity * avatarOpacity(avatar);
     }
     const flash = avatar.heldItemParts?.flash;
     if (flash) {
@@ -801,6 +838,11 @@ function lightLens(avatar: Avatar): void {
   if (lens) {
     lens.emissiveIntensity = avatar.flashlightOn ? LENS_GLOW : 0;
   }
+}
+
+/** How solid the avatar is: a player still reconnecting is a ghost. */
+function avatarOpacity(avatar: Avatar): number {
+  return avatar.connected ? 1 : AWAY_OPACITY;
 }
 
 function applyPresence(avatar: Avatar): void {

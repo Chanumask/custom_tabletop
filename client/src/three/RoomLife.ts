@@ -1,11 +1,13 @@
 import * as THREE from 'three';
-import type { LoungeSeat, Player } from '@custom-tabletop/shared';
+import type { Drink, LoungeSeat, Player } from '@custom-tabletop/shared';
 import { isPlayerMuted } from '../audioMix.js';
 import { StepCounter, surfaceAt, type FloorArea } from '../footsteps.js';
 import {
   playChairCreak,
   playChimeStrike,
   playCushion,
+  playMugDown,
+  playPour,
   playDoorClose,
   playDoorCreak,
   playFootstep,
@@ -19,6 +21,7 @@ import { LightSwitch, LIGHT_SWITCH_POSITION } from './LightSwitch.js';
 import { LOUNGE_SPOTS } from './loungeSeats.js';
 import type { PlayerAvatars } from './PlayerAvatars.js';
 import { LAMP_POSITION } from './RoomLamp.js';
+import { TEA_SET } from './refreshmentMeshes.js';
 import { RockingChair } from './RockingChair.js';
 import { RoomDoor } from './RoomDoor.js';
 import type { RoomAsset } from './RoomLoader.js';
@@ -51,6 +54,8 @@ export class RoomLife {
   private known: Set<string> | null = null;
   /** Who sits where away from the table, as of the last sync. */
   private lounging = new Map<string, LoungeSeat>();
+  /** Who has a drink in hand, as of the last sync. */
+  private drinks = new Map<string, Drink>();
   readonly rockingChair: RockingChair;
   private time = 0;
   private readonly timers: { at: number; run: () => void }[] = [];
@@ -98,7 +103,27 @@ export class RoomLife {
     }
     const before = this.lounging;
     this.lounging = lounging;
+    const drinks = new Map<string, Drink>();
+    for (const player of players) {
+      if (player.carrying) drinks.set(player.id, player.carrying);
+    }
+    const hadDrinks = this.drinks;
+    this.drinks = drinks;
     if (known) {
+      // A cup poured at the tea set; a mug set down (where they are).
+      for (const [id, drink] of drinks) {
+        if (hadDrinks.get(id) !== drink && !isPlayerMuted(id)) {
+          playPour(placeSound(this.listener, TEA_SET, 1, 8));
+        }
+      }
+      for (const id of hadDrinks.keys()) {
+        if (drinks.has(id) || !ids.has(id) || isPlayerMuted(id)) continue;
+        const where =
+          id === this.selfId
+            ? this.listener
+            : (this.avatars.walkers().find((walker) => walker.id === id) ?? this.listener);
+        playMugDown(placeSound(this.listener, where, 1, 7));
+      }
       for (const [id, seat] of lounging) {
         if (before.get(id) === seat || isPlayerMuted(id)) continue;
         const spot = LOUNGE_SPOTS[seat];

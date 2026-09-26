@@ -1,5 +1,8 @@
 import * as THREE from 'three';
-import type { ItemKind } from '@custom-tabletop/shared';
+import type { Drink, Gesture, ItemKind } from '@custom-tabletop/shared';
+
+/** Anything held in the hand: a gadget from the chest, or a drink. */
+export type HeldKind = ItemKind | Drink;
 
 type Vec3 = [number, number, number];
 
@@ -52,15 +55,55 @@ function turns(...steps: [axis: 'x' | 'y' | 'z', degrees: number][]): Vec3 {
   return [euler.x, euler.y, euler.z];
 }
 
+/** The item's orientation in the hand from where its own +X and +Y end up
+ * (hand space); its +Z follows. */
+function axes(x: Vec3, y: Vec3): Vec3 {
+  const ax = new THREE.Vector3(...x).normalize();
+  const ay = new THREE.Vector3(...y).normalize();
+  const az = new THREE.Vector3().crossVectors(ax, ay);
+  const euler = new THREE.Euler().setFromRotationMatrix(new THREE.Matrix4().makeBasis(ax, ay, az));
+  return [euler.x, euler.y, euler.z];
+}
+
 /** A fist around a handle: the gadget runs through it, out past the thumb. */
 const FIST = { grip: 0.8, thumb: 0.8, position: [0.01, 0.12, -0.035] as Vec3 };
 
 /** An open hand, palm up, the gadget resting on it. */
 const OPEN = { palm: [0, 1, 0] as Vec3, grip: 0.25, thumb: 0.1 };
 
+/** A mug by its handle: the fingers through it, the thumb on top, the mug
+ * upright on the palm's side (its handle toward the back of the hand). */
+const MUG_GRIP = {
+  grip: 0.85,
+  thumb: 0.65,
+  position: [0.004, 0.085, -0.028] as Vec3,
+  rotation: axes([0, 0, 1], [-1, 0, 0]),
+};
+
+/** A drink held in front, to sip from and raise to the others. */
+const MUG_HOLD: Hold = {
+  standing: {
+    ...MUG_GRIP,
+    upperArm: [-0.2, -0.88, 0.32],
+    forearm: [0.3, 0.5, 0.95],
+    fingers: [0.2, 0.05, 1],
+    palm: [1, 0, 0],
+  },
+  seated: {
+    ...MUG_GRIP,
+    upperArm: [-0.14, -0.62, 0.78],
+    forearm: [0.25, 0.42, 1],
+    fingers: [0.2, 0.25, 1],
+    palm: [1, 0, 0],
+  },
+  scale: 1,
+};
+
 // Tuned by eye in the running room against the blue and red characters
 // (one of each rig), standing, walking and sitting at the table.
-export const HOLDS: Record<ItemKind, Hold> = {
+export const HOLDS: Record<HeldKind, Hold> = {
+  tea: MUG_HOLD,
+  cocoa: MUG_HOLD,
   // Carried low at the side, lighting the floor ahead; at the table, the
   // fist rests at the edge and lights the map.
   flashlight: {
@@ -150,6 +193,93 @@ export const HOLDS: Record<ItemKind, Hold> = {
     },
     scale: 0.92,
   },
+};
+
+/** What the arm does for a gesture (refreshments.ts), from whatever it was
+ * doing: the mug up to the lips, raised to the others, a hand to the mouth
+ * with a bit of popcorn. The item stays where it is in the hand. */
+type ArmPose = Pick<HoldPose, 'upperArm' | 'forearm' | 'fingers' | 'palm' | 'grip' | 'thumb'>;
+
+export const GESTURE_POSES: Record<Gesture, ArmPose> = {
+  // The thumb (the mug's top) tips back toward the face.
+  sip: {
+    upperArm: [-0.12, -0.55, 0.5],
+    forearm: [0.3, 0.85, 0.3],
+    fingers: [0, 0.6, 0.8],
+    palm: [1, 0, 0],
+    grip: 0.85,
+    thumb: 0.65,
+  },
+  // Up and out toward everyone, the arm nearly straight, the mug tipped a
+  // little forward.
+  cheers: {
+    upperArm: [-0.08, 0.32, 1],
+    forearm: [-0.02, 0.5, 1],
+    fingers: [0, -0.3, 0.9],
+    palm: [1, 0, 0],
+    grip: 0.85,
+    thumb: 0.65,
+  },
+  // Up to the mouth, palm in, fingers loosely closed round the popcorn.
+  snack: {
+    upperArm: [-0.05, -0.5, 0.45],
+    forearm: [0.4, 0.85, 0.15],
+    fingers: [0.35, 0.9, 0.1],
+    palm: [0, 0, -1],
+    grip: 0.45,
+    thumb: 0.3,
+  },
+};
+
+/** How long each gesture takes (seconds): up, held, back down. */
+const GESTURE_TIMES: Record<Gesture, [up: number, hold: number, down: number]> = {
+  sip: [0.35, 0.8, 0.4],
+  cheers: [0.3, 1, 0.4],
+  snack: [0.3, 0.35, 0.35],
+};
+
+/** How far into its pose a gesture is, `elapsed` seconds in (0..1), or
+ * null once it's over. Pure. */
+export function gestureWeight(gesture: Gesture, elapsed: number): number | null {
+  const [up, hold, down] = GESTURE_TIMES[gesture];
+  if (elapsed < 0) return 0;
+  const ease = (t: number) => t * t * (3 - 2 * t);
+  if (elapsed < up) return ease(elapsed / up);
+  if (elapsed < up + hold) return 1;
+  if (elapsed < up + hold + down) return ease(1 - (elapsed - up - hold) / down);
+  return null;
+}
+
+const blendA = new THREE.Vector3();
+const blendB = new THREE.Vector3();
+function blendDirection(a: Vec3, b: Vec3, t: number): Vec3 {
+  blendA.set(...a).normalize();
+  blendB.set(...b).normalize();
+  blendA.lerp(blendB, t);
+  if (blendA.lengthSq() < 1e-6) blendA.set(...b);
+  blendA.normalize();
+  return [blendA.x, blendA.y, blendA.z];
+}
+
+/** `pose`, `t` of the way to the gesture's arm (the item stays in hand). */
+export function blendPose(pose: HoldPose, gesture: ArmPose, t: number): HoldPose {
+  if (t <= 0) return pose;
+  return {
+    ...pose,
+    upperArm: blendDirection(pose.upperArm, gesture.upperArm, t),
+    forearm: blendDirection(pose.forearm, gesture.forearm, t),
+    fingers: blendDirection(pose.fingers, gesture.fingers, t),
+    palm: blendDirection(pose.palm, gesture.palm, t),
+    grip: pose.grip + (gesture.grip - pose.grip) * t,
+    thumb: pose.thumb + (gesture.thumb - pose.thumb) * t,
+  };
+}
+
+/** The snack gesture with nothing in hand: the arm alone. */
+export const EMPTY_HAND_SNACK: HoldPose = {
+  ...GESTURE_POSES.snack,
+  position: [0, 0, 0],
+  rotation: [0, 0, 0],
 };
 
 /** A finger or thumb bone and how it sits in the characters' own fist. */
@@ -348,6 +478,8 @@ export interface HeldItemParts {
   flash: THREE.MeshStandardMaterial | null;
   /** Where the flashlight's beam starts (its +Z is the way it points). */
   beamOrigin: THREE.Object3D | null;
+  /** A drink's wisps of steam (refreshmentMeshes.ts). */
+  steam: THREE.Sprite[];
 }
 
 /** A per-avatar copy of a loaded gadget: its own materials, so fading a
@@ -357,10 +489,22 @@ export function instantiateHeldItem(source: THREE.Object3D): {
   parts: HeldItemParts;
 } {
   const item = source.clone(true);
-  const parts: HeldItemParts = { materials: [], lens: null, flash: null, beamOrigin: null };
+  const parts: HeldItemParts = {
+    materials: [],
+    lens: null,
+    flash: null,
+    beamOrigin: null,
+    steam: [],
+  };
   item.traverse((node) => {
     if (node.name === 'Lens') {
       parts.beamOrigin = node;
+    }
+    if (node instanceof THREE.Sprite) {
+      // Each wisp fades on its own.
+      node.material = node.material.clone();
+      parts.steam.push(node);
+      return;
     }
     if (!(node instanceof THREE.Mesh)) {
       return;

@@ -33,7 +33,8 @@ export interface ObjectInteractRequest {
   on?: boolean;
   /** Which one, where there are several (room.ts): the candle group, the
    * window, the seat (`lounge`: sit down on it, or with `on: false` get up),
-   * the record (`record`: put it on, or with `on: false` take it off). */
+   * the record (`record`: put it on, or with `on: false` take it off), the
+   * drink (`teaset`: pour one, or with `on: false` set it down). */
   target?: string;
 }
 

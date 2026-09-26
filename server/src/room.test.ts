@@ -382,3 +382,75 @@ describe('the record player', () => {
     expect(off.state?.room.record).toBeNull();
   });
 });
+
+describe('tea, cocoa and popcorn', () => {
+  function room() {
+    const store = new SessionStore();
+    store.join('ROOM', 'alice', 'Alice');
+    return store;
+  }
+  const alice = (store: SessionStore) =>
+    store.get('ROOM')!.players.find((player) => player.id === 'alice')!;
+
+  it('pours a drink into a free hand — a gadget goes back in the chest', () => {
+    const store = room();
+    store.takeItem('ROOM', 'alice', 'flashlight-1');
+    store.toggleFlashlight?.('ROOM', 'alice');
+    expect(store.setDrink('ROOM', 'alice', 'cocoa').ok).toBe(true);
+    expect(alice(store).carrying).toBe('cocoa');
+    expect(store.get('ROOM')!.inventory.every((item) => item.heldBy === null)).toBe(true);
+    expect(alice(store).flashlightOn).toBe(false);
+    // Taking a gadget sets the drink down again.
+    store.takeItem('ROOM', 'alice', 'camera-1');
+    expect(alice(store).carrying).toBeNull();
+    store.setDrink('ROOM', 'alice', 'tea');
+    store.setDrink('ROOM', 'alice', undefined, false);
+    expect(alice(store).carrying).toBeNull();
+    expect(store.setDrink('ROOM', 'alice', 'coffee').ok).toBe(false);
+  });
+
+  it('come back sensibly with a saved table', () => {
+    const store = room();
+    store.setDrink('ROOM', 'alice', 'tea');
+    const saved = structuredClone(store.get('ROOM')!);
+    expect(
+      store.restore({ sessionId: 'S1', hostKey: 'k', credentialHashes: {}, state: saved })
+        .players[0]!.carrying,
+    ).toBe('tea');
+    const odd = structuredClone(saved);
+    odd.players[0]!.carrying = 'grog' as never;
+    expect(
+      store.restore({ sessionId: 'S2', hostKey: 'k', credentialHashes: {}, state: odd }).players[0]!
+        .carrying,
+    ).toBeNull();
+  });
+
+  it('relays sips and toasts (with a drink in hand) and snacks to everyone else', async () => {
+    const aliceSocket = await connect();
+    const bobSocket = await connect();
+    await join(aliceSocket, 'alice');
+    await join(bobSocket, 'bob');
+    const seen: unknown[] = [];
+    bobSocket.on(SocketEvent.PlayerGesture, (request) => seen.push(request));
+    const gesture = (name: string) =>
+      aliceSocket.emit(SocketEvent.PlayerGesture, {
+        sessionId: 'ROOM',
+        playerId: 'alice',
+        gesture: name,
+      });
+    gesture('cheers'); // no drink yet: nothing
+    await settle();
+    expect(seen).toEqual([]);
+    await interact(aliceSocket, 'alice', { objectId: 'teaset', target: 'tea' });
+    gesture('cheers');
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    gesture('snack');
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    gesture('juggle');
+    await settle();
+    expect(seen).toEqual([
+      { sessionId: 'ROOM', playerId: 'alice', gesture: 'cheers' },
+      { sessionId: 'ROOM', playerId: 'alice', gesture: 'snack' },
+    ]);
+  });
+});

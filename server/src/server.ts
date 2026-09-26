@@ -50,6 +50,7 @@ import {
   WHITEBOARD_LINE_COUNT,
   WHITEBOARD_MAX_LINE_LENGTH,
   mayUse,
+  gestureNeedsDrink,
   SOUNDS_OFF_ERROR,
   PHOTO_MIN_INTERVAL_MS,
   type HostActionResponse,
@@ -70,6 +71,7 @@ import {
   parsePlayerUpdateRequest,
   parsePlayerMoveRequest,
   parsePlayerEmoteRequest,
+  parsePlayerGestureRequest,
   parseSceneCreateRequest,
   parseSceneChangeRequest,
   parseSceneDeleteRequest,
@@ -753,6 +755,29 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
       socket.to(request.sessionId).emit(SocketEvent.PlayerEmote, request);
     });
 
+    // A sip, a toast, a snack: relayed to everyone else, like an emote (the
+    // player sees and hears their own at once). A sip or a toast needs a
+    // drink in hand.
+    let lastGestureAt = 0;
+    socket.on(SocketEvent.PlayerGesture, (payload: unknown) => {
+      const request = parsePlayerGestureRequest(payload);
+      if (!request || !actsAs(request.sessionId, request.playerId)) {
+        return;
+      }
+      if (
+        gestureNeedsDrink(request.gesture) &&
+        !sessions.isCarrying(request.sessionId, request.playerId)
+      ) {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastGestureAt < EMOTE_MIN_INTERVAL_MS) {
+        return;
+      }
+      lastGestureAt = now;
+      socket.to(request.sessionId).emit(SocketEvent.PlayerGesture, request);
+    });
+
     // "Look here!" on the table: relayed to everyone else (the pinger shows
     // their own at once), never stored — like an emote, but on the map.
     let lastPingAt = 0;
@@ -1389,6 +1414,14 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
             result = allowed(request.sessionId, request.playerId, 'sounds')
               ? sessions.setRecord(request.sessionId, request.playerId, request.target, request.on)
               : { ok: false, error: SOUNDS_OFF_ERROR };
+            break;
+          case 'teaset':
+            result = sessions.setDrink(
+              request.sessionId,
+              request.playerId,
+              request.target,
+              request.on,
+            );
             break;
           case 'lounge':
             result = sessions.setLounge(

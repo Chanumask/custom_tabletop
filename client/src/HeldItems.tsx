@@ -1,5 +1,7 @@
-import type { InventoryItem, ItemKind } from '@custom-tabletop/shared';
-import { CalculatorIcon, CameraIcon, FlashlightIcon, WalkieIcon } from './icons.js';
+import type { Drink, InventoryItem, ItemKind } from '@custom-tabletop/shared';
+import { CalculatorIcon, CameraIcon, FlashlightIcon, MugIcon, WalkieIcon } from './icons.js';
+
+const DRINK_LABELS: Record<Drink, string> = { tea: 'Tea', cocoa: 'Hot cocoa' };
 
 const KIND_LABELS: Record<ItemKind, string> = {
   camera: 'Camera',
@@ -22,11 +24,13 @@ const KIND_ICONS: Record<ItemKind, typeof CameraIcon> = {
  * Only one item can ever be held at a time (enforced server-side by
  * `SessionStore.takeItem`), so this never needs to show more than one.
  */
-export function HeldItems({ items }: { items: InventoryItem[] }) {
+export function HeldItems({ items, drink }: { items: InventoryItem[]; drink: Drink | null }) {
   const kind = items[0]?.kind ?? null;
-  const Icon = kind ? KIND_ICONS[kind] : null;
+  // A drink takes the same single slot as a gadget (refreshments.ts).
+  const Icon = drink ? MugIcon : kind ? KIND_ICONS[kind] : null;
+  const label = drink ? DRINK_LABELS[drink] : kind ? KIND_LABELS[kind] : null;
   return (
-    <div className="held-item-slot" aria-label={kind ? `Holding: ${KIND_LABELS[kind]}` : 'Empty'}>
+    <div className="held-item-slot" aria-label={label ? `Holding: ${label}` : 'Empty'}>
       {Icon ? (
         <Icon className="held-item-icon" />
       ) : (

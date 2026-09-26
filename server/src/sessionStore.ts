@@ -14,6 +14,7 @@ import {
   PINBOARD_SLOT_COUNT,
   emptyWhiteboard,
   isCandleGroup,
+  isDrink,
   isLoungeSeat,
   isRecordId,
   RECORDS,
@@ -1130,7 +1131,48 @@ export class SessionStore {
       this.releaseItem(state, current);
     }
     item.heldBy = playerId;
+    // One hand: a drink is set down for the gadget.
+    const player = state.players.find((candidate) => candidate.id === playerId);
+    if (player) player.carrying = null;
     return { ok: true, state };
+  }
+
+  /** Pours a player a cup of tea or cocoa at the tea set (`on`, the
+   * default) — a gadget in their hand goes back in the chest — or sets
+   * their drink down. Only ever changes the player's own record. */
+  setDrink(
+    sessionId: string,
+    playerId: string,
+    drink: string | undefined,
+    on = true,
+  ): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    const player = state.players.find((candidate) => candidate.id === playerId);
+    if (!player) {
+      return { ok: false, error: 'Player not found.' };
+    }
+    if (!on) {
+      player.carrying = null;
+      return { ok: true, state };
+    }
+    if (!isDrink(drink)) {
+      return { ok: false, error: 'The tea set has tea and cocoa.' };
+    }
+    for (const item of state.inventory) {
+      if (item.heldBy === playerId) this.releaseItem(state, item);
+    }
+    player.carrying = drink;
+    return { ok: true, state };
+  }
+
+  /** Whether a player has a drink in hand (a sip or a toast needs one). */
+  isCarrying(sessionId: string, playerId: string): boolean {
+    return Boolean(
+      this.sessions.get(sessionId)?.players.find((player) => player.id === playerId)?.carrying,
+    );
   }
 
   /** Puts an item back in the chest — refused unless the requester is the
@@ -1564,6 +1606,7 @@ function normalizeRestoredState(sessionId: string, saved: GameState): GameState 
     connected: false,
     flashlightOn: player.flashlightOn ?? false,
     lounge: isLoungeSeat(player.lounge) ? player.lounge : null,
+    carrying: isDrink(player.carrying) ? player.carrying : null,
   }));
   // Seat numbers from an older save may point at chairs this table
   // doesn't have (or were numbered differently): settle them.
@@ -1661,6 +1704,7 @@ function createPlayer(id: string, name: string, color: PlayerColorId): Player {
     seated: false,
     seatIndex: null,
     lounge: null,
+    carrying: null,
     connected: true,
     flashlightOn: false,
   };
