@@ -21,3 +21,4 @@ export * from './clip.js';
 export * from './minis.js';
 export * from './host.js';
 export * from './seats.js';
+export * from './room.js';

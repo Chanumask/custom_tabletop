@@ -13,6 +13,7 @@ import {
   STARTING_INVENTORY,
   PINBOARD_SLOT_COUNT,
   emptyWhiteboard,
+  normalizeRoomState,
   spawnPointFor,
   parseYouTubeUrl,
   clampToTable,
@@ -823,6 +824,17 @@ export class SessionStore {
     return { ok: true, state };
   }
 
+  /** The reading lamp by the armchair: on, off, or (no `on`) the other way
+   * round. Anyone may, like the room light. */
+  setReadingLamp(sessionId: string, on?: boolean): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    state.room = { ...state.room, readingLampOn: on ?? !state.room.readingLampOn };
+    return { ok: true, state };
+  }
+
   /** Not host-gated — a player can only ever toggle their *own* seated
    * status (`playerId` always comes from the requester, never a target),
    * so there's no way to sit another player down (Milestone 8). */
@@ -1371,6 +1383,7 @@ function normalizeRestoredState(sessionId: string, saved: GameState): GameState 
   // `seated`).
   state.inventory = saved.inventory ?? base.inventory;
   state.photos = saved.photos ?? base.photos;
+  state.room = normalizeRoomState(saved.room);
   return state;
 }
 
@@ -1398,6 +1411,7 @@ function createEmptySession(sessionId: string, hostId: string): GameState {
     inventory: STARTING_INVENTORY.map((item) => ({ ...item })),
     photos: [],
     lightOn: true,
+    room: normalizeRoomState(undefined),
     whiteboard: emptyWhiteboard(),
     log: [],
     clip: null,

@@ -13,6 +13,7 @@ import type { WhiteboardLine } from './whiteboard.js';
 import type { DieKind } from './dice.js';
 import type { LogEntry } from './log.js';
 import type { RoomTheme, TablePermissions } from './host.js';
+import type { RoomState } from './room.js';
 
 export interface Vector3 {
   x: number;
@@ -221,8 +222,12 @@ export interface GameState {
 
   /** The room's light switch (Milestone 8, `object:interact` with objectId
    * "light") — a session-wide flag, not per-player: whoever flips it changes
-   * the room for everyone, the same way a real light switch would. */
+   * the room for everyone, the same way a real light switch would. It's on
+   * the wall by the door; the reading lamp has its own (`room`). */
   lightOn: boolean;
+
+  /** The room's other shared switches and states (room.ts). */
+  room: RoomState;
 
   /** The YouTube clip everyone is watching, if any (clip.ts). */
   clip: SharedClip | null;

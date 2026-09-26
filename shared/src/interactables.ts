@@ -27,6 +27,9 @@ export interface ObjectInteractRequest {
   /** Table only, when sitting down: the chair wanted (see
    * `Player.seatIndex`). Refused if someone else is already on it. */
   seatIndex?: number;
+  /** A switch's wanted state — the reading lamp on (true) or off — rather
+   * than a toggle, for the same reason as `seated`. Absent = toggle. */
+  on?: boolean;
 }
 
 /** The highest chair index a request may name (the room has far fewer). */

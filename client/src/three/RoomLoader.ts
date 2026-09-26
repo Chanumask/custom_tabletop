@@ -7,6 +7,7 @@ import type { Seat } from './avatarMotion.js';
 import { PLACEHOLDER_ROOM_LAYOUT, type RoomLayout, type TableSurface } from './RoomLayout.js';
 import { TableChairs } from './tableChairs.js';
 import { MIN_CHAIRS } from '@custom-tabletop/shared';
+import type { FloorArea } from '../footsteps.js';
 
 export interface RoomAsset {
   object3D: THREE.Object3D;
@@ -42,6 +43,8 @@ export interface RoomAsset {
    * inventory (phase 1) reuses the room's existing chest prop as its
    * interactable spot rather than building a duplicate one. */
   chestSpot: THREE.Vector3 | null;
+  /** The rugs (`Rug`, `Rug_Fireside`) — footsteps are softer on them. */
+  rugs: FloorArea[];
 }
 
 /** Blender objects named `COL_*` are invisible collision footprints. */
@@ -149,6 +152,15 @@ export function describeRoom(
     if (node instanceof THREE.Mesh && node.name.startsWith('Window_View')) windowViews.push(node);
   });
 
+  const rugs: FloorArea[] = [];
+  for (const name of ['Rug', 'Rug_Fireside']) {
+    const rug = root.getObjectByName(name);
+    if (rug) {
+      const box = boxOf(rug);
+      rugs.push({ minX: box.min.x, maxX: box.max.x, minZ: box.min.z, maxZ: box.max.z });
+    }
+  }
+
   const whiteboard = root.getObjectByName('Whiteboard_Surface');
   const chestCollider = root.getObjectByName('COL_Chest');
   const chestSpot = chestCollider ? boxOf(chestCollider).getCenter(new THREE.Vector3()) : null;
@@ -175,6 +187,7 @@ export function describeRoom(
     glowSpots,
     beams,
     chestSpot,
+    rugs,
   };
 }
 

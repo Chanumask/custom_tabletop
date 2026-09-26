@@ -63,6 +63,8 @@ const SIT_THIGH = -Math.PI / 2;
 const SIT_KNEE = Math.PI / 2;
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 
+/** Walking pace coming in through the door (m/s). */
+const ENTRANCE_SPEED = 1.3;
 /** How quickly the arm comes up to hold a gadget (and drops again). */
 const HOLD_HALF_LIFE = 0.08;
 /** The flashlight's glass while it's on, and the camera flash's pop. */
@@ -116,6 +118,14 @@ interface Avatar {
   flashlightOn: boolean;
   /** When the camera flash last popped (on the avatars' clock). */
   flashAt: number;
+  /** Coming in through the door (a new arrival): hidden until `startAt`
+   * (on the avatars' clock), then walking from `from` to `to`. */
+  entrance: {
+    from: { x: number; z: number };
+    to: { x: number; z: number };
+    startAt: number;
+    duration: number;
+  } | null;
   /** Which gadget this player currently holds (from `GameState.inventory`,
    * `sync`'s third argument), and the loaded mesh for it, once it resolves. */
   heldItemKind: ItemKind | null;
@@ -203,12 +213,44 @@ export class PlayerAvatars {
     }
   }
 
-  /** A live `player:move` for someone — becomes the interpolation target. */
+  /** A live `player:move` for someone — becomes the interpolation target
+   * (and ends a walk in through the door: they're moving themselves now). */
   updateOne(playerId: string, position: Vector3, rotationY: number): void {
     const avatar = this.avatars.get(playerId);
     if (avatar) {
+      if (avatar.entrance) {
+        avatar.entrance = null;
+        avatar.group.visible = true;
+      }
       avatar.target = { x: position.x, z: position.z, yaw: rotationY };
     }
+  }
+
+  /** Someone just arrived: after `delay` seconds (the knock, the door
+   * opening) they appear in the doorway at `from` and walk to where they
+   * stand. */
+  enter(playerId: string, from: { x: number; z: number }, delay: number): void {
+    const avatar = this.avatars.get(playerId);
+    if (!avatar || avatar.seated) return;
+    const to = { x: avatar.target.x, z: avatar.target.z };
+    avatar.entrance = {
+      from,
+      to,
+      startAt: this.clock + delay,
+      duration: Math.max(0.8, Math.hypot(to.x - from.x, to.z - from.z) / ENTRANCE_SPEED),
+    };
+    avatar.group.visible = false;
+  }
+
+  /** Where everyone is right now (interpolated) — for their footsteps. */
+  walkers(): { id: string; x: number; z: number; seated: boolean; visible: boolean }[] {
+    return [...this.avatars.values()].map((avatar) => ({
+      id: avatar.id,
+      x: avatar.current.x,
+      z: avatar.current.z,
+      seated: avatar.seated,
+      visible: avatar.group.visible && avatar.connected,
+    }));
   }
 
   playEmote(playerId: string, emote: EmoteId): void {
@@ -334,6 +376,7 @@ export class PlayerAvatars {
       holdKind: null,
       flashlightOn: player.flashlightOn,
       flashAt: -Infinity,
+      entrance: null,
       heldItemKind: null,
       heldItemMesh: null,
       heldItemParts: null,
@@ -471,6 +514,23 @@ export class PlayerAvatars {
   }
 
   private updateAvatar(avatar: Avatar, dt: number): void {
+    const entrance = avatar.entrance;
+    if (entrance && this.clock >= entrance.startAt) {
+      const t = Math.min(1, (this.clock - entrance.startAt) / entrance.duration);
+      if (!avatar.group.visible) {
+        // Stepping through the doorway, facing into the room.
+        avatar.group.visible = true;
+        const yaw = Math.atan2(entrance.to.x - entrance.from.x, entrance.to.z - entrance.from.z);
+        avatar.current = { ...entrance.from, yaw };
+      }
+      const yaw = Math.atan2(entrance.to.x - entrance.from.x, entrance.to.z - entrance.from.z);
+      avatar.target = {
+        x: entrance.from.x + (entrance.to.x - entrance.from.x) * t,
+        z: entrance.from.z + (entrance.to.z - entrance.from.z) * t,
+        yaw: t < 1 ? yaw : avatar.target.yaw,
+      };
+      if (t >= 1) avatar.entrance = null;
+    }
     const previous = { x: avatar.current.x, z: avatar.current.z };
     if (avatar.seated && avatar.seat) {
       const { x, z, yaw } = avatar.seat;

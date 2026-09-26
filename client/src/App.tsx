@@ -654,6 +654,7 @@ export function App() {
             onMoveMini={handleMoveMini}
             onMoveDie={handleMoveDie}
             lightOn={gameState.lightOn}
+            readingLampOn={gameState.room?.readingLampOn ?? true}
             soundboard={gameState.soundboard}
             soundboardSlots={gameState.soundboardSlots}
             interactKey={settings.interactKey}

@@ -1366,6 +1366,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           case 'light':
             result = sessions.toggleLight(request.sessionId);
             break;
+          case 'lamp':
+            result = sessions.setReadingLamp(request.sessionId, request.on);
+            break;
           case 'table':
             result =
               request.seated === undefined
@@ -1383,7 +1386,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
 
         ack?.(own(result));
         if (result.ok) {
-          broadcastPatch(request.sessionId, result.state, ['lightOn', 'players']);
+          broadcastPatch(request.sessionId, result.state, ['lightOn', 'players', 'room']);
         }
       },
     );

@@ -98,6 +98,8 @@ import { HeldItems } from '../HeldItems.js';
 import { createPinboard, syncPinboard, disposePinboard, type Pinboard } from './Pinboard.js';
 import { uploadImage } from '../uploads.js';
 import { aimFlashlightBeam } from './flashlightBeam.js';
+import { RoomLife } from './RoomLife.js';
+import { LIGHT_SWITCH_RANGE, LIGHT_SWITCH_SPOT } from './LightSwitch.js';
 import { GadgetLibrary } from './gadgetMeshes.js';
 import { HOLDS } from './heldItems.js';
 
@@ -215,6 +217,8 @@ export interface RoomViewProps {
   /** Drag a die to a new resting position. */
   onMoveDie: (diceId: string, position: Vector3) => void;
   lightOn: boolean;
+  /** The reading lamp by the armchair — its own switch (GameState.room). */
+  readingLampOn: boolean;
   soundboard: SoundState[];
   /** Slot index -> assigned sound id or null (Milestone 8 follow-up's wall
    * board — see shared/src/types.ts). */
@@ -297,7 +301,10 @@ function promptFor(
     return `Press ${keyLabel} to write on the whiteboard`;
   }
   if (nearestId === 'light') {
-    return `Press ${keyLabel} to switch the light on/off`;
+    return `Press ${keyLabel} to switch the room light on/off`;
+  }
+  if (nearestId === 'lamp') {
+    return `Press ${keyLabel} to switch the reading lamp on/off`;
   }
   if (nearestId === 'table') {
     return `Press ${keyLabel} to sit at the table`;
@@ -365,6 +372,7 @@ export function RoomView({
   onMoveMini,
   onMoveDie,
   lightOn,
+  readingLampOn,
   soundboard,
   soundboardSlots,
   interactKey,
@@ -429,6 +437,9 @@ export function RoomView({
   const tableChairsRef = useRef<TableChairs | null>(null);
   const seatsRef = useRef<Seat[]>([]);
   const lightOnRef = useRef<boolean>(lightOn);
+  const readingLampOnRef = useRef<boolean>(readingLampOn);
+  // Footsteps, the clock, the door, the light switch (RoomLife.ts).
+  const roomLifeRef = useRef<RoomLife | null>(null);
   const tableMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
   const soundboardRef = useRef<SoundState[]>(soundboard);
   const soundboardSlotsRef = useRef<(string | null)[]>(soundboardSlots);
@@ -540,6 +551,8 @@ export function RoomView({
       self?.seated && self.seatIndex !== null ? (seatsRef.current[self.seatIndex] ?? null) : null;
     if (seat) controllerRef.current?.moveChair(seat);
     avatarsRef.current?.sync(players, playerId, inventory);
+    // After the avatars: someone new knocks and walks in through the door.
+    roomLifeRef.current?.syncPlayers(players);
   }, [players, playerId, inventory]);
 
   useEffect(() => {
@@ -712,16 +725,23 @@ export function RoomView({
   // material (RoomLamp.ts) so the toggle reads clearly even before the
   // player's eyes adjust to the overall brightness change.
   useEffect(() => {
+    if (lightOnRef.current !== lightOn) roomLifeRef.current?.setLightOn(lightOn);
     lightOnRef.current = lightOn;
     ambienceRef.current?.setRoomLightsOn(lightOn);
     if (roomLightsRef.current) {
       setRoomLightsOn(roomLightsRef.current, lightOn);
     }
-    if (lampRef.current) {
-      setLampOn(lampRef.current, lightOn);
-    }
     tableMaterialRef.current?.color.setScalar(lightOn ? 1 : TABLE_DIMMED_BRIGHTNESS);
   }, [lightOn]);
+
+  // The reading lamp by the armchair has its own switch now.
+  useEffect(() => {
+    if (readingLampOnRef.current !== readingLampOn) roomLifeRef.current?.readingLampSwitched();
+    readingLampOnRef.current = readingLampOn;
+    if (lampRef.current) {
+      setLampOn(lampRef.current, readingLampOn);
+    }
+  }, [readingLampOn]);
 
   // The wall board (Milestone 8 follow-up) is presentation only — it just
   // mirrors GameState.soundboard/soundboardSlots the same way the 2D panel
@@ -942,7 +962,7 @@ export function RoomView({
         roomLightsRef.current = lights;
 
         const lamp = createLamp(scene, 0);
-        setLampOn(lamp, lightOnRef.current);
+        setLampOn(lamp, readingLampOnRef.current);
         lampRef.current = lamp;
 
         const ambience = new Ambience(
@@ -1065,7 +1085,8 @@ export function RoomView({
         whiteboardRaycaster.far = WHITEBOARD_RANGE;
 
         interactablesRef.current = [
-          { id: 'light', position: LAMP_POSITION, range: LAMP_RANGE },
+          { id: 'light', position: LIGHT_SWITCH_SPOT, range: LIGHT_SWITCH_RANGE },
+          { id: 'lamp', position: LAMP_POSITION, range: LAMP_RANGE },
           {
             id: 'table',
             position: { x: room.layout.table.center.x, z: room.layout.table.center.z },
@@ -1091,6 +1112,10 @@ export function RoomView({
         const avatars = new PlayerAvatars(scene, characterLibrary, room.seats, gadgetLibrary);
         avatars.sync(playersRef.current, playerId, inventoryRef.current);
         avatarsRef.current = avatars;
+        const roomLife = new RoomLife(scene, room, avatars, playerId);
+        roomLife.syncPlayers(playersRef.current);
+        roomLife.setLightOn(lightOnRef.current, true);
+        roomLifeRef.current = roomLife;
 
         const diceManager = new DiceManager(scene, (count) =>
           playDiceClatter(count, TUMBLE_SECONDS),
@@ -1526,8 +1551,8 @@ export function RoomView({
             return;
           }
           const nearestId = nearestInteractableIdRef.current;
-          if (nearestId === 'light') {
-            onObjectInteractRef.current('light');
+          if (nearestId === 'light' || nearestId === 'lamp') {
+            onObjectInteractRef.current(nearestId);
           } else if (nearestId === 'table') {
             sitDown();
           } else if (nearestId === 'chest') {
@@ -1666,6 +1691,12 @@ export function RoomView({
           updateFireAudio?.(delta);
           updateNight?.(delta);
           avatarsRef.current?.update(delta);
+          roomLifeRef.current?.update(
+            delta,
+            camera,
+            controller.getYaw(),
+            !controller.isSeated && controller.controls.isLocked,
+          );
           if (flashlightRef.current) {
             aimFlashlightBeam(flashlightRef.current, playersRef.current, playerId, camera, {
               lensOf: (id) => avatarsRef.current?.flashlightLensOf(id),
@@ -1842,6 +1873,8 @@ export function RoomView({
       controllerRef.current = null;
       avatarsRef.current?.dispose();
       avatarsRef.current = null;
+      roomLifeRef.current?.dispose();
+      roomLifeRef.current = null;
       diceManagerRef.current?.dispose();
       diceManagerRef.current = null;
       miniManagerRef.current?.dispose();
