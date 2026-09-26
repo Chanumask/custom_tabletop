@@ -30,6 +30,7 @@ import {
   type HeldItemParts,
 } from './heldItems.js';
 import { NameTag } from './nameTag.js';
+import { flashingAllowed } from '../audioMix.js';
 import { SpeechBubble, speechSeconds } from './speechBubble.js';
 
 // Smoothing between the ~10 Hz player:move updates (see avatarMotion.ts).
@@ -281,10 +282,11 @@ export class PlayerAvatars {
     return avatar.heldItemParts?.beamOrigin ?? undefined;
   }
 
-  /** The camera in a player's hand flashes (they just took a photo). */
+  /** The camera in a player's hand flashes (they just took a photo) —
+   * unless this player turned flashing effects off (audioMix.ts). */
   flashCamera(playerId: string): void {
     const avatar = this.avatars.get(playerId);
-    if (avatar) {
+    if (avatar && flashingAllowed()) {
       avatar.flashAt = this.clock;
     }
   }

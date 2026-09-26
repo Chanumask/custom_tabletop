@@ -1,6 +1,7 @@
-import { getAudioContext, getMasterVolume } from './sounds.js';
+import { categoryOutput, categoryVolume } from './audioMix.js';
+import { getAudioContext } from './sounds.js';
 
-/** Loudest the fire gets (at master volume 1), right in front of it. */
+/** Loudest the fire gets (at full volume), right in front of it. */
 const PEAK_GAIN = 0.22;
 /** Past this distance (metres) the fire is at its room-filling floor. */
 const FALLOFF_RANGE = 7;
@@ -21,8 +22,8 @@ export function fireLoudness(distance: number): number {
  * The fireplace's sound: a low, soft roar (filtered noise, looped) with
  * little crackles and pops on top, louder the closer you are. Synthesized
  * — no audio asset to ship. Starts on the first user gesture (browsers
- * don't allow audio before one) and follows the master volume and the
- * "Fireplace sound" setting.
+ * don't allow audio before one) and plays in the player's "Fire" sound
+ * category (audioMix.ts).
  */
 export class FireAmbience {
   private ctx: AudioContext | null = null;
@@ -61,7 +62,7 @@ export class FireAmbience {
     lowpass.frequency.value = 520;
     this.roar = ctx.createGain();
     this.roar.gain.value = 0;
-    this.source.connect(lowpass).connect(this.roar).connect(ctx.destination);
+    this.source.connect(lowpass).connect(this.roar).connect(categoryOutput(ctx, 'fire'));
     this.source.start();
 
     const crackle = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.02), ctx.sampleRate);
@@ -70,12 +71,11 @@ export class FireAmbience {
     this.crackleBuffer = crackle;
   }
 
-  /** Per frame: how far the listener is from the fire, and whether the
-   * player wants to hear it. */
-  update(dt: number, distance: number, enabled: boolean): void {
+  /** Per frame: how far the listener is from the fire. */
+  update(dt: number, distance: number): void {
     const ctx = this.ctx;
     if (!ctx || !this.roar) return;
-    const target = enabled ? fireLoudness(distance) * getMasterVolume() : 0;
+    const target = categoryVolume('fire') > 0 ? fireLoudness(distance) : 0;
     // Smooth it, so walking past doesn't step the volume.
     this.loudness += (target - this.loudness) * Math.min(1, dt * 3);
     this.roar.gain.setTargetAtTime(this.loudness * PEAK_GAIN * 0.55, ctx.currentTime, 0.1);
@@ -94,7 +94,7 @@ export class FireAmbience {
       const peak = this.loudness * PEAK_GAIN * (Math.random() < 0.15 ? 1.4 : 0.55);
       gain.gain.setValueAtTime(peak, at);
       gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.03 + Math.random() * 0.05);
-      source.connect(band).connect(gain).connect(ctx.destination);
+      source.connect(band).connect(gain).connect(categoryOutput(ctx, 'fire'));
       source.start(at);
       source.stop(at + 0.12);
     }

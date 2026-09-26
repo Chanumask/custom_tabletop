@@ -2349,6 +2349,57 @@ button.primary {
   font-size: 0.75rem;
 }
 
+/* A label with a small explanation under it. */
+.settings-row-label,
+.sound-mix-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.settings-row-label small,
+.sound-mix-label small {
+  color: var(--ink-muted);
+  font-size: 0.7rem;
+}
+
+/* Your own sound: one row per kind of sound — its switch, what it is, how loud. */
+.sound-mix {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sound-mix-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 4.25rem;
+  align-items: center;
+  gap: 0.55rem;
+  text-align: left;
+}
+
+.sound-mix-row input[type='range'] {
+  width: 100%;
+  margin: 0;
+}
+
+.sound-mix-row.off .sound-mix-label {
+  opacity: 0.55;
+}
+
+.sound-mix-row.off input[type='range'] {
+  opacity: 0.35;
+}
+
+/* Someone whose sounds you've silenced (only for you). */
+.player-actions .icon-button.hearing-off {
+  color: var(--danger);
+}
+
 /* A switch rather than a bare checkbox. */
 .switch {
   appearance: none;

@@ -60,6 +60,7 @@ import { TableDrawing } from './TableDrawing.js';
 import { remapTableTopUV } from './tableTopUV.js';
 import { DiceManager, TUMBLE_SECONDS } from './DiceManager.js';
 import { playDiceClatter, playPingSound, playShutterSound } from '../sounds.js';
+import { flashingAllowed } from '../audioMix.js';
 import { TablePings } from './TablePings.js';
 import { Ambience } from './Ambience.js';
 import { OutsideWorld } from './outside/OutsideWorld.js';
@@ -260,10 +261,6 @@ export interface RoomViewProps {
   onWriteWhiteboard: (lines: (string | null)[]) => void;
   /** Rolls dice on the table (aim + interact, or a click while seated). */
   onRollDice: (diceIds: string[]) => void;
-  /** Whether to play the fireplace's crackle (a client setting). */
-  fireSound: boolean;
-  /** Whether this player hears the night through the windows. */
-  nightSounds: boolean;
   /** The YouTube clip everyone is watching (on the room's TV), if any. */
   clipView: ClipView | null;
   /** The session log: new chat lines and typed rolls pop up as speech
@@ -390,8 +387,6 @@ export function RoomView({
   onWriteWhiteboard,
   onRollDice,
   log,
-  fireSound,
-  nightSounds,
   clipView,
 }: RoomViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -461,10 +456,6 @@ export function RoomView({
   const onRollDiceRef = useRef(onRollDice);
   // The fire, candles, fairy lights, night sky and dust (Ambience.ts).
   const ambienceRef = useRef<Ambience | null>(null);
-  const fireSoundRef = useRef(fireSound);
-  fireSoundRef.current = fireSound;
-  const nightSoundsRef = useRef(nightSounds);
-  nightSoundsRef.current = nightSounds;
   const nightRef = useRef<NightAmbience | null>(null);
   // The console TV (TvScreen.ts): where shared YouTube clips play, unless a
   // player pops the clip out into the corner card.
@@ -998,7 +989,7 @@ export function RoomView({
               Math.hypot(camera.position.x - spot.x, camera.position.z - spot.z),
             );
           }
-          night.update(dt, nearest, nightSoundsRef.current);
+          night.update(dt, nearest);
         };
 
         const fireSpot = room.fireSpot;
@@ -1014,7 +1005,6 @@ export function RoomView({
             fireAudio.update(
               dt,
               Math.hypot(camera.position.x - fireSpot.x, camera.position.z - fireSpot.z),
-              fireSoundRef.current,
             );
         }
 
@@ -1215,7 +1205,8 @@ export function RoomView({
           }
           lastPhotoAt = performance.now();
           capturingPhotoRef.current = true;
-          setCameraFlash(true);
+          // (A player who turned flashing effects off gets no white flash.)
+          setCameraFlash(flashingAllowed());
           playShutterSound();
           window.setTimeout(() => setCameraFlash(false), 180);
           // The renderer isn't created with preserveDrawingBuffer (a

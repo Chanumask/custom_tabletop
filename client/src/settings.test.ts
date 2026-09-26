@@ -6,6 +6,7 @@ import {
   saveSettings,
   type SettingsStorage,
 } from './settings.js';
+import { DEFAULT_SOUND_MIX } from './audioMix.js';
 
 function fakeStorage(initial: Record<string, string> = {}): SettingsStorage {
   const data = new Map(Object.entries(initial));
@@ -22,20 +23,48 @@ describe('loadSettings', () => {
 
   it('round-trips whatever was saved', () => {
     const storage = fakeStorage();
-    saveSettings(storage, {
+    const saved = {
       masterVolume: 0.4,
       interactKey: 'KeyF',
-      fireSound: false,
-      nightSounds: false,
+      sound: {
+        ...DEFAULT_SOUND_MIX,
+        fire: { on: false, volume: 1 },
+        music: { on: true, volume: 0.3 },
+      },
+      mutedPlayers: ['bob'],
+      noFlashing: true,
       menuCollapsed: true,
+    };
+    saveSettings(storage, saved);
+    expect(loadSettings(storage)).toEqual(saved);
+  });
+
+  it('carries the old fireplace/night switches into the sound mix', () => {
+    const storage = fakeStorage({
+      'customTabletop.settings': JSON.stringify({ fireSound: false, nightSounds: true }),
     });
-    expect(loadSettings(storage)).toEqual({
-      masterVolume: 0.4,
-      interactKey: 'KeyF',
-      fireSound: false,
-      nightSounds: false,
-      menuCollapsed: true,
+    const settings = loadSettings(storage);
+    expect(settings.sound.fire).toEqual({ on: false, volume: 1 });
+    expect(settings.sound.night).toEqual({ on: true, volume: 1 });
+    expect(settings).not.toHaveProperty('fireSound');
+    expect(settings).not.toHaveProperty('nightSounds');
+  });
+
+  it('keeps every sound on at full volume unless the player chose otherwise', () => {
+    const storage = fakeStorage({
+      'customTabletop.settings': JSON.stringify({
+        sound: { tv: { on: false, volume: 0.5 }, footsteps: { volume: 7 }, bogus: {} },
+        mutedPlayers: ['bob', 3, null],
+        noFlashing: 'yes',
+      }),
     });
+    const settings = loadSettings(storage);
+    expect(settings.sound.tv).toEqual({ on: false, volume: 0.5 });
+    expect(settings.sound.footsteps).toEqual({ on: true, volume: 1 });
+    expect(settings.sound.weather).toEqual({ on: true, volume: 1 });
+    expect(settings.sound).not.toHaveProperty('bogus');
+    expect(settings.mutedPlayers).toEqual(['bob']);
+    expect(settings.noFlashing).toBe(false);
   });
 
   it('fills in defaults for fields missing from an older/partial saved shape', () => {

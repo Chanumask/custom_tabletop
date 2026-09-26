@@ -56,7 +56,8 @@ import { RoomLoading } from './RoomLoading.js';
 import { preloadRoom } from './roomAssets.js';
 import { PLACEHOLDER_ROOM_LAYOUT } from './three/RoomLayout.js';
 import { randomDiceSpawnPosition } from './diceSpawn.js';
-import { playSound, setMasterVolume } from './sounds.js';
+import { playSound } from './sounds.js';
+import { isPlayerMuted, mixedVolume, setAudioPreferences } from './audioMix.js';
 import { useSettings } from './useSettings.js';
 // Type only: the session menu itself stays in its own lazy chunk.
 import type { MapActions } from './SessionView.js';
@@ -166,12 +167,12 @@ export function App() {
     gameStateRef.current = gameState;
   }, [gameState]);
 
-  // Keeps sounds.ts's module-level volume in sync with the player's own
-  // setting — sounds.ts isn't a React component, so it can't read
+  // Keeps the audio mix (audioMix.ts) in step with the player's own sound
+  // settings — it isn't a React component, so it can't read
   // SettingsContext itself.
   useEffect(() => {
-    setMasterVolume(settings.masterVolume);
-  }, [settings.masterVolume]);
+    setAudioPreferences(settings);
+  }, [settings]);
 
   const forgetSession = useCallback((error: string | null) => {
     lastJoinRef.current = null;
@@ -310,6 +311,10 @@ export function App() {
     // alone, since an uploaded sound's url isn't known to this listener
     // otherwise.
     socket.on(SocketEvent.SoundPlay, (request: SoundPlayRequest) => {
+      // Someone this player chose not to hear (Players tab, only for them).
+      if (isPlayerMuted(request.playerId)) {
+        return;
+      }
       const state = gameStateRef.current;
       const entry = state?.soundboard.find((sound) => sound.id === request.soundId);
       if (!entry) {
@@ -586,7 +591,7 @@ export function App() {
       ? {
           clip: sharedClip,
           serverOffset,
-          volume: settings.masterVolume,
+          volume: mixedVolume(settings, 'tv'),
           canControl: !gameState.clipLocked || gameState.hostId === playerId,
           isHost: gameState.hostId === playerId,
           locked: gameState.clipLocked,
@@ -671,8 +676,6 @@ export function App() {
             onWriteWhiteboard={handleWriteWhiteboard}
             onRollDice={handleRollDice}
             log={gameState.log}
-            fireSound={settings.fireSound}
-            nightSounds={settings.nightSounds}
             clipView={clipView}
           />
           <SessionView

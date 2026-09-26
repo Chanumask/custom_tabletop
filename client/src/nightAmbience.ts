@@ -1,16 +1,17 @@
 import type { RoomTheme } from '@custom-tabletop/shared';
-import { getAudioContext, getMasterVolume } from './sounds.js';
+import { categoryOutput, categoryVolume } from './audioMix.js';
+import { getAudioContext } from './sounds.js';
 
 /**
  * The night outside, heard through the windows (docs/decisions.md, "Night
  * sounds"): wind in the trees, crickets, an owl now and then — and on
  * Halloween, an eerier wind and a wolf howling far off. Synthesized like
- * the fire (no audio assets), started on the first user gesture, following
- * the master volume and the "Night sounds" setting. Loudest by a window,
- * faint anywhere else in the room.
+ * the fire (no audio assets), started on the first user gesture, in the
+ * player's "Night outside" sound category (audioMix.ts). Loudest by a
+ * window, faint anywhere else in the room.
  */
 
-/** Loudest the night gets (at master volume 1), right by a window. */
+/** Loudest the night gets (at full volume), right by a window. */
 const PEAK_GAIN = 0.16;
 /** Past this distance (metres) from the nearest window, the night is at its floor. */
 const FALLOFF_RANGE = 5;
@@ -77,7 +78,7 @@ export class NightAmbience {
 
     this.master = ctx.createGain();
     this.master.gain.value = 0;
-    this.master.connect(ctx.destination);
+    this.master.connect(categoryOutput(ctx, 'night'));
 
     // Wind: four seconds of pink-ish noise, looped, through a band-pass
     // whose level the gusts move.
@@ -124,12 +125,11 @@ export class NightAmbience {
     }));
   }
 
-  /** Per frame: how far the listener is from the nearest window, and
-   * whether the player wants to hear the night. */
-  update(dt: number, windowDistance: number, enabled: boolean): void {
+  /** Per frame: how far the listener is from the nearest window. */
+  update(dt: number, windowDistance: number): void {
     const ctx = this.ctx;
     if (!ctx || !this.master || !this.wind) return;
-    const target = enabled ? nightLoudness(windowDistance) * getMasterVolume() : 0;
+    const target = categoryVolume('night') > 0 ? nightLoudness(windowDistance) : 0;
     this.loudness += (target - this.loudness) * Math.min(1, dt * 2);
     this.master.gain.setTargetAtTime(this.loudness * PEAK_GAIN, ctx.currentTime, 0.1);
     if (this.loudness < 0.01) return;

@@ -43,7 +43,16 @@ import { SOUNDBOARD_JEWELS } from './three/soundboardLayout.js';
 /** A wall button's enamel color as CSS (the Sound tab's little board). */
 const jewelHex = (index: number) =>
   `#${(SOUNDBOARD_JEWELS[index] ?? 0x6a5a48).toString(16).padStart(6, '0')}`;
-import { MapIcon, DiceIcon, SoundIcon, PlayersIcon, SettingsIcon, HostIcon } from './icons.js';
+import {
+  MapIcon,
+  DiceIcon,
+  SoundIcon,
+  SoundOffIcon,
+  PlayersIcon,
+  SettingsIcon,
+  HostIcon,
+} from './icons.js';
+import { SOUND_CATEGORIES, type CategoryMix, type SoundCategory } from './audioMix.js';
 
 /** What the host can do with the table's maps (App.tsx sends them). */
 export interface MapActions {
@@ -310,6 +319,13 @@ function PlayersTab({
   onRemovePlayer: (targetPlayerId: string) => void;
 }) {
   const self = state.players.find((player) => player.id === playerId);
+  const { settings, updateSettings } = useSettings();
+  const toggleHearing = (target: Player) =>
+    updateSettings({
+      mutedPlayers: settings.mutedPlayers.includes(target.id)
+        ? settings.mutedPlayers.filter((id) => id !== target.id)
+        : [...settings.mutedPlayers, target.id],
+    });
   return (
     <>
       {self && <ProfileEditor state={state} self={self} onUpdateProfile={onUpdateProfile} />}
@@ -339,6 +355,30 @@ function PlayersTab({
                 )}
               </span>
               <span className="player-actions">
+                {!isSelf && (
+                  <button
+                    type="button"
+                    className={
+                      settings.mutedPlayers.includes(player.id)
+                        ? 'icon-button hearing-off'
+                        : 'icon-button'
+                    }
+                    aria-pressed={settings.mutedPlayers.includes(player.id)}
+                    title={
+                      settings.mutedPlayers.includes(player.id)
+                        ? `You don't hear ${player.name}'s sounds — press to hear them again`
+                        : `Silence ${player.name}'s sounds, only for you`
+                    }
+                    aria-label={
+                      settings.mutedPlayers.includes(player.id)
+                        ? `Hear ${player.name}'s sounds again`
+                        : `Silence ${player.name}'s sounds for you`
+                    }
+                    onClick={() => toggleHearing(player)}
+                  >
+                    {settings.mutedPlayers.includes(player.id) ? <SoundOffIcon /> : <SoundIcon />}
+                  </button>
+                )}
                 {canPromote && (
                   <button
                     type="button"
@@ -1236,8 +1276,14 @@ function SettingsTab() {
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [rebinding, updateSettings]);
 
+  const setCategory = (category: SoundCategory, change: Partial<CategoryMix>) =>
+    updateSettings({
+      sound: { ...settings.sound, [category]: { ...settings.sound[category], ...change } },
+    });
+
   return (
     <div className="settings-tab">
+      <p className="host-section">Sound</p>
       <label className="settings-row">
         <span>Volume</span>
         <span className="settings-volume">
@@ -1251,7 +1297,54 @@ function SettingsTab() {
           <output>{Math.round(settings.masterVolume * 100)}%</output>
         </span>
       </label>
+      <p className="settings-hint">Only for you — everyone else hears what they choose.</p>
+      <ul className="sound-mix" aria-label="Each kind of sound">
+        {SOUND_CATEGORIES.map(({ id, label, hint }) => {
+          const mix = settings.sound[id];
+          return (
+            <li key={id} className={mix.on ? 'sound-mix-row' : 'sound-mix-row off'}>
+              <input
+                type="checkbox"
+                role="switch"
+                className="switch"
+                checked={mix.on}
+                aria-label={label}
+                onChange={(event) => setCategory(id, { on: event.target.checked })}
+              />
+              <span className="sound-mix-label">
+                <span>{label}</span>
+                <small>{hint}</small>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(mix.volume * 100)}
+                disabled={!mix.on}
+                aria-label={`${label} volume`}
+                onChange={(event) => setCategory(id, { volume: Number(event.target.value) / 100 })}
+              />
+            </li>
+          );
+        })}
+      </ul>
 
+      <p className="host-section">Comfort</p>
+      <label className="settings-row">
+        <span className="settings-row-label">
+          <span>No flashing lights</span>
+          <small>No thunder flashes, no camera flash</small>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          className="switch"
+          checked={settings.noFlashing}
+          onChange={(event) => updateSettings({ noFlashing: event.target.checked })}
+        />
+      </label>
+
+      <p className="host-section">Controls</p>
       <div className="settings-row">
         <span>Interact key</span>
         <button type="button" onClick={() => setRebinding(true)} disabled={rebinding}>
@@ -1264,28 +1357,6 @@ function SettingsTab() {
           {rebindError}
         </p>
       )}
-
-      <label className="settings-row">
-        <span>Fireplace sound</span>
-        <input
-          type="checkbox"
-          role="switch"
-          className="switch"
-          checked={settings.fireSound}
-          onChange={(event) => updateSettings({ fireSound: event.target.checked })}
-        />
-      </label>
-
-      <label className="settings-row">
-        <span>Night sounds</span>
-        <input
-          type="checkbox"
-          role="switch"
-          className="switch"
-          checked={settings.nightSounds}
-          onChange={(event) => updateSettings({ nightSounds: event.target.checked })}
-        />
-      </label>
     </div>
   );
 }

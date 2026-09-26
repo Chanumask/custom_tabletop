@@ -1,4 +1,5 @@
 import type { SoundState } from '@custom-tabletop/shared';
+import { categoryOutput, categoryVolume, type SoundCategory } from './audioMix.js';
 
 interface ToneParams {
   frequency: number;
@@ -46,35 +47,27 @@ export function getAudioContext(): AudioContext | null {
   return sharedContext;
 }
 
-// The peak gain a tone plays at when masterVolume is 1 — kept well under
-// 1.0 so even full volume doesn't clip.
+// The peak gain a tone plays at, at full volume — kept well under 1.0 so
+// even full volume doesn't clip.
 const TONE_PEAK_GAIN = 0.2;
 
-// Client-only preference (settings.ts), applied here rather than threaded
-// as a parameter through every playSound call site — App.tsx syncs this
-// from SettingsContext whenever the player changes it.
-let masterVolume = 1;
-
-/** Sets the volume every subsequent `playSound` call uses, for both
- * synthesized tones and uploaded/linked audio. Clamped to [0, 1] — a
- * malformed/out-of-range value from a future settings-import feature
- * shouldn't be able to blow out a player's speakers. */
-/** The volume every sound currently plays at (0..1). */
-export function getMasterVolume(): number {
-  return masterVolume;
-}
-
-export function setMasterVolume(volume: number): void {
-  masterVolume = Math.min(1, Math.max(0, volume));
+/** The shared context, woken if the browser suspended it — or null when
+ * there's no Web Audio, or when `category` is silenced (nothing to build). */
+export function audioFor(category: SoundCategory): AudioContext | null {
+  if (categoryVolume(category) === 0) {
+    return null;
+  }
+  const ctx = getAudioContext();
+  if (ctx?.state === 'suspended') {
+    void ctx.resume();
+  }
+  return ctx;
 }
 
 function playTone(params: ToneParams): void {
-  const ctx = getAudioContext();
+  const ctx = audioFor('soundboard');
   if (!ctx) {
     return;
-  }
-  if (ctx.state === 'suspended') {
-    void ctx.resume();
   }
 
   const oscillator = ctx.createOscillator();
@@ -83,22 +76,21 @@ function playTone(params: ToneParams): void {
   oscillator.frequency.value = params.frequency;
 
   const durationSeconds = params.durationMs / 1000;
-  const peakGain = TONE_PEAK_GAIN * masterVolume;
-  gain.gain.setValueAtTime(peakGain, ctx.currentTime);
-  // A zero peak (volume all the way down) can't be ramped to
-  // exponentially — go silent immediately instead of throwing.
-  if (peakGain > 0) {
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationSeconds);
-  }
+  gain.gain.setValueAtTime(TONE_PEAK_GAIN, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationSeconds);
 
-  oscillator.connect(gain).connect(ctx.destination);
+  oscillator.connect(gain).connect(categoryOutput(ctx, 'soundboard'));
   oscillator.start();
   oscillator.stop(ctx.currentTime + durationSeconds);
 }
 
 function playAudioFile(url: string): Promise<void> {
+  const volume = categoryVolume('soundboard');
+  if (volume === 0) {
+    return Promise.resolve();
+  }
   const audio = new Audio(url);
-  audio.volume = masterVolume;
+  audio.volume = volume;
   return audio.play();
 }
 
@@ -123,7 +115,7 @@ export function playSound(entry: SoundState): Promise<void> {
   return Promise.resolve();
 }
 
-// How loud one die's clatter peaks at masterVolume 1 (several dice add up).
+// How loud one die's clatter peaks at full volume (several dice add up).
 const CLATTER_PEAK_GAIN = 0.35;
 
 /**
@@ -132,16 +124,11 @@ const CLATTER_PEAK_GAIN = 0.35;
  * there's no audio asset to ship. Timed to `DiceManager`'s tumble.
  */
 export function playDiceClatter(diceCount: number, durationSeconds: number): void {
-  if (masterVolume === 0 || diceCount === 0) {
-    return;
-  }
-  const ctx = getAudioContext();
+  const ctx = diceCount > 0 ? audioFor('table') : null;
   if (!ctx) {
     return;
   }
-  if (ctx.state === 'suspended') {
-    void ctx.resume();
-  }
+  const output = categoryOutput(ctx, 'table');
 
   const noise = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.03), ctx.sampleRate);
   const samples = noise.getChannelData(0);
@@ -163,10 +150,9 @@ export function playDiceClatter(diceCount: number, durationSeconds: number): voi
       filter.frequency.value = 1800 + Math.random() * 2600;
       filter.Q.value = 4;
       const gain = ctx.createGain();
-      const peak = perDie * loudness * masterVolume;
-      gain.gain.setValueAtTime(peak, at);
+      gain.gain.setValueAtTime(perDie * loudness, at);
       gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.025);
-      source.connect(filter).connect(gain).connect(ctx.destination);
+      source.connect(filter).connect(gain).connect(output);
       source.start(at);
       source.stop(at + 0.03);
 
@@ -179,16 +165,11 @@ export function playDiceClatter(diceCount: number, durationSeconds: number): voi
 
 /** A soft two-note chime for a ping on the table ("look here!"). */
 export function playPingSound(): void {
-  if (masterVolume === 0) {
-    return;
-  }
-  const ctx = getAudioContext();
+  const ctx = audioFor('table');
   if (!ctx) {
     return;
   }
-  if (ctx.state === 'suspended') {
-    void ctx.resume();
-  }
+  const output = categoryOutput(ctx, 'table');
   const start = ctx.currentTime + 0.01;
   [880, 1320].forEach((frequency, index) => {
     const at = start + index * 0.09;
@@ -197,9 +178,9 @@ export function playPingSound(): void {
     oscillator.type = 'sine';
     oscillator.frequency.value = frequency;
     gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(0.12 * masterVolume, at + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.12, at + 0.015);
     gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.35);
-    oscillator.connect(gain).connect(ctx.destination);
+    oscillator.connect(gain).connect(output);
     oscillator.start(at);
     oscillator.stop(at + 0.36);
   });
@@ -209,16 +190,11 @@ export function playPingSound(): void {
  * square-wave clicks, a mechanical "clack-clack" rather than a musical
  * tone. */
 export function playShutterSound(): void {
-  if (masterVolume === 0) {
-    return;
-  }
-  const ctx = getAudioContext();
+  const ctx = audioFor('gadgets');
   if (!ctx) {
     return;
   }
-  if (ctx.state === 'suspended') {
-    void ctx.resume();
-  }
+  const output = categoryOutput(ctx, 'gadgets');
   const start = ctx.currentTime + 0.01;
   [0, 0.05].forEach((offset) => {
     const at = start + offset;
@@ -227,9 +203,9 @@ export function playShutterSound(): void {
     oscillator.type = 'square';
     oscillator.frequency.value = 1800;
     gain.gain.setValueAtTime(0.0001, at);
-    gain.gain.exponentialRampToValueAtTime(0.16 * masterVolume, at + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.16, at + 0.004);
     gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
-    oscillator.connect(gain).connect(ctx.destination);
+    oscillator.connect(gain).connect(output);
     oscillator.start(at);
     oscillator.stop(at + 0.06);
   });

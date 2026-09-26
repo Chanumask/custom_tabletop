@@ -62,6 +62,22 @@ export function SoundIcon({ className }: IconProps) {
   );
 }
 
+/** The speaker, crossed out: someone's sounds silenced (only for you). */
+export function SoundOffIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" width={SIZE} height={SIZE} className={className} aria-hidden="true">
+      <path d="M4 9v6h4l5 4V5L8 9H4Z" fill="currentColor" />
+      <path
+        d="M16.5 9.5l5 5M21.5 9.5l-5 5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function PlayersIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" width={SIZE} height={SIZE} className={className} aria-hidden="true">

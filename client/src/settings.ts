@@ -1,3 +1,10 @@
+import {
+  DEFAULT_SOUND_MIX,
+  SOUND_CATEGORIES,
+  type AudioPreferences,
+  type SoundMix,
+} from './audioMix.js';
+
 /**
  * Client-only preferences (Milestone 10 follow-up, user request) — never
  * shared `GameState`, just a per-browser convenience persisted in
@@ -7,17 +14,13 @@
  * we will add in the future") is a one-line addition to `ClientSettings`
  * and `DEFAULT_SETTINGS`, not a new storage/loading mechanism.
  */
-export interface ClientSettings {
-  /** 0 (silent) to 1 (full) — applied to both synthesized tones and
-   * uploaded/linked audio playback (client/src/sounds.ts). */
+export interface ClientSettings extends AudioPreferences {
+  /** 0 (silent) to 1 (full): everything this player hears, on top of each
+   * sound category's own volume (`sound`, audioMix.ts). */
   masterVolume: number;
   /** A `KeyboardEvent.code` value (e.g. "KeyE") — which key triggers a
    * room interactable (client/src/three/RoomView.tsx). */
   interactKey: string;
-  /** The fireplace's crackle (fireAmbience.ts) — on by default. */
-  fireSound: boolean;
-  /** The night outside through the windows (nightAmbience.ts) — on by default. */
-  nightSounds: boolean;
   /** The session menu folded down to its header, leaving the room clear. */
   menuCollapsed: boolean;
 }
@@ -25,8 +28,9 @@ export interface ClientSettings {
 export const DEFAULT_SETTINGS: ClientSettings = {
   masterVolume: 1,
   interactKey: 'KeyE',
-  fireSound: true,
-  nightSounds: true,
+  sound: DEFAULT_SOUND_MIX,
+  mutedPlayers: [],
+  noFlashing: false,
   menuCollapsed: false,
 };
 
@@ -52,6 +56,29 @@ function isPartialSettings(value: unknown): value is Partial<ClientSettings> {
   return typeof value === 'object' && value !== null;
 }
 
+/** A saved sound mix, filled in: every category defaults to on at full
+ * volume (a category added since keeps that), and a save from before the
+ * mix existed carries its old "Fireplace sound"/"Night sounds" switches over. */
+function soundMixFrom(saved: Partial<ClientSettings> & Record<string, unknown>): SoundMix {
+  const mix: SoundMix = { ...DEFAULT_SOUND_MIX };
+  const stored = typeof saved.sound === 'object' && saved.sound !== null ? saved.sound : {};
+  for (const { id } of SOUND_CATEGORIES) {
+    const entry = (stored as Partial<SoundMix>)[id];
+    if (entry && typeof entry === 'object') {
+      mix[id] = {
+        on: typeof entry.on === 'boolean' ? entry.on : true,
+        volume:
+          typeof entry.volume === 'number' && Number.isFinite(entry.volume)
+            ? Math.min(1, Math.max(0, entry.volume))
+            : 1,
+      };
+    }
+  }
+  if (saved.fireSound === false && !('fire' in stored)) mix.fire = { on: false, volume: 1 };
+  if (saved.nightSounds === false && !('night' in stored)) mix.night = { on: false, volume: 1 };
+  return mix;
+}
+
 /** Reads persisted settings, filling in defaults for anything missing —
  * including everything, the first time, or if storage holds corrupt JSON
  * from an older shape. Never throws: a broken/blocked storage should
@@ -66,11 +93,20 @@ export function loadSettings(storage: SettingsStorage): ClientSettings {
     if (!isPartialSettings(parsed)) {
       return { ...DEFAULT_SETTINGS };
     }
-    const settings = { ...DEFAULT_SETTINGS, ...parsed };
+    // The old separate fire/night switches now live in the sound mix.
+    const rest: Record<string, unknown> = { ...parsed };
+    delete rest.fireSound;
+    delete rest.nightSounds;
+    const settings = { ...DEFAULT_SETTINGS, ...(rest as Partial<ClientSettings>) };
     // An interact key saved before its key was reserved goes back to E.
     if (typeof settings.interactKey !== 'string' || RESERVED_KEYS.has(settings.interactKey)) {
       settings.interactKey = DEFAULT_SETTINGS.interactKey;
     }
+    settings.sound = soundMixFrom(parsed as Partial<ClientSettings> & Record<string, unknown>);
+    settings.mutedPlayers = Array.isArray(settings.mutedPlayers)
+      ? settings.mutedPlayers.filter((id): id is string => typeof id === 'string')
+      : [];
+    settings.noFlashing = settings.noFlashing === true;
     return settings;
   } catch {
     return { ...DEFAULT_SETTINGS };
