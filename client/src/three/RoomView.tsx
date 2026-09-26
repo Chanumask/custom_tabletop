@@ -113,7 +113,7 @@ import { HeldMugView } from './HeldMugView.js';
 import type { HeldKind } from './heldItems.js';
 import { buildSnackBowl, SNACK_BOWL, TEA_SET } from './refreshmentMeshes.js';
 import { CAT_NAME, RoomCat } from './RoomCat.js';
-import { catTarget } from './catRoutes.js';
+import { catFloorObstacle, catTarget, spotTaken, type CatSpotId } from './catRoutes.js';
 import { CatPurr, playMrrp } from '../catSounds.js';
 import { HeldItems } from '../HeldItems.js';
 import { createPinboard, syncPinboard, disposePinboard, type Pinboard } from './Pinboard.js';
@@ -1399,6 +1399,16 @@ export function RoomView({
         aimTargetsRef.current = [
           ...aimTargetsRef.current,
           {
+            // Look at the lampshade: the reading lamp's switch — in reach from
+            // the armchair too, where E otherwise means getting up.
+            id: 'reading-lamp',
+            center: { x: LAMP_POSITION.x, y: 1.42, z: LAMP_POSITION.z },
+            radius: 0.22,
+            reach: 2.4,
+            prompt: () => `Press ${keyLabel()} to switch the reading lamp on/off`,
+            act: () => onObjectInteractRef.current('lamp'),
+          },
+          {
             id: 'lectern',
             center: lectern.aim.center,
             radius: lectern.aim.radius,
@@ -1593,6 +1603,8 @@ export function RoomView({
         const purr = new CatPurr();
         purr.start();
         const catNow = () => catTarget(Date.now() + serverOffsetRef.current, playersRef.current);
+        let catObstacle: ReturnType<typeof catFloorObstacle> = null;
+        let catBlocking: CatSpotId | null = null;
         disposeCat = () => {
           cat.dispose();
           purr.dispose();
@@ -1655,6 +1667,7 @@ export function RoomView({
             music,
             recordPlayer,
             cat,
+            aimTargets: aimTargetsRef,
             // Live-tunable: the arm poses and grips read this every frame.
             holds: HOLDS,
           };
@@ -2182,7 +2195,8 @@ export function RoomView({
             if (selfDrink()) raiseMug();
             return;
           }
-          if (controller.isSeated) {
+          // Sitting down, the character can't wave or roll about.
+          if (controller.isSeated || controller.isLounging) {
             return;
           }
           const emote = EMOTES.find((candidate) => candidate.key === event.code);
@@ -2248,7 +2262,25 @@ export function RoomView({
           windowsRef.current?.update(delta);
           recordPlayer.update(delta);
           heldMug.update(delta, controller.seatedView !== 'table');
-          cat.update(delta, catNow(), reducedMotion);
+          {
+            const lying = cat.restingSpot;
+            cat.update(
+              delta,
+              catNow(),
+              reducedMotion,
+              lying !== null && spotTaken(lying, playersRef.current),
+            );
+            // Asleep on the rug, she's in the way: walk round her.
+            const spot = cat.restingSpot;
+            if (spot !== catBlocking) {
+              const obstacles = room.layout.obstacles;
+              const at = catObstacle ? obstacles.indexOf(catObstacle) : -1;
+              if (at >= 0) obstacles.splice(at, 1);
+              catObstacle = spot ? catFloorObstacle(spot) : null;
+              if (catObstacle) obstacles.push(catObstacle);
+              catBlocking = spot;
+            }
+          }
           purr.update(delta, placeSound(hearing(), cat.position, 0.6, 3.5));
           {
             const place = placeSound(

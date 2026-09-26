@@ -161,6 +161,9 @@ export class MusicPlayer {
   private stop(): void {
     const playing = this.playing;
     this.playing = null;
+    // Nothing left to schedule until the next record.
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
     if (!playing) return;
     const ctx = this.ctx;
     if (playing.output && ctx) {
@@ -266,8 +269,16 @@ export class MusicPlayer {
     const song = playing.song;
     const band = playing.band;
     if (!ctx || !song || !band) return;
-    if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
     const songNow = (this.now() - playing.startedAt) / 1000;
+    // Not before the browser lets sound play (a suspended clock stands
+    // still, and notes put on it would all sound at once when it starts):
+    // keep up with the record, schedule nothing.
+    if (ctx.state !== 'running') {
+      playing.scheduledUntil = songNow;
+      playing.anchor = null;
+      void ctx.resume().catch(() => {});
+      return;
+    }
     const audioNow = ctx.currentTime;
     // Keep the record's clock on the audio clock, re-pinning only if they
     // drift apart (so notes stay evenly spaced).

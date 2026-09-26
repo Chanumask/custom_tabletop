@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CAT_SPOTS, catPath, type CatSpotId, type PathPoint } from './catRoutes.js';
+import { CAT_SPOTS, catPath, catPathFrom, type CatSpotId, type PathPoint } from './catRoutes.js';
 
 /** The cat's name, for the prompt. */
 export const CAT_NAME = 'Ember';
@@ -7,6 +7,8 @@ export const CAT_NAME = 'Ember';
 const WALK_SPEED = 0.55;
 const JUMP_SECONDS = 0.5;
 const STAND_SECONDS = 0.8;
+/** Up and off quickly when someone sits down where she's lying. */
+const HURRY_SECONDS = 0.2;
 const PET_SECONDS = 4;
 
 /** Every part's placement in one pose: curled up asleep, or up on its feet. */
@@ -41,7 +43,7 @@ type State =
 
 /**
  * The room's cat (docs/decisions.md, "The cozy room, lived in"): curled up asleep by
- * the fire — or on the sofa, the armchair, the chest — breathing slowly,
+ * the fire — or on the sofa or in the armchair — breathing slowly,
  * wandering to another spot now and then (catRoutes.ts decides where, the
  * same for everyone), and waking for a moment to be petted. Made of a few
  * shapes, flat-shaded like the characters.
@@ -63,7 +65,12 @@ export class RoomCat {
   private time = 0;
   private stride = 0;
   private heading: number | null = null;
-  private pettedAt = -Infinity;
+  /** Where she's meant to be now, and whether she's leaving in a hurry. */
+  private target: CatSpotId = 'fire';
+  private hurry = false;
+  /** When she was last stroked (a long time ago: finite, so the maths of
+   * her ears and tail never meets sin(∞)). */
+  private pettedAt = -1e6;
 
   constructor(scene: THREE.Scene) {
     this.group.name = 'room-cat';
@@ -157,14 +164,17 @@ export class RoomCat {
   }
 
   /** Follow `target` (catRoutes.ts's `catTarget`): walk there if it isn't
-   * there already. The first call puts it straight there. */
-  update(dt: number, target: CatSpotId, reducedMotion: boolean): void {
+   * there already. The first call puts it straight there. `displaced`:
+   * someone just sat down where she's lying — she's up and off at once. */
+  update(dt: number, target: CatSpotId, reducedMotion: boolean, displaced = false): void {
     this.time += dt;
+    this.target = target;
     if (!this.state) this.state = { kind: 'resting', spot: target };
     const state = this.state;
     let at: { x: number; y: number; z: number; yaw: number };
     if (state.kind === 'resting') {
-      if (state.spot !== target && this.time - this.pettedAt > 1.5) {
+      if (state.spot !== target && (displaced || this.time - this.pettedAt > 1.5)) {
+        this.hurry = displaced;
         this.state = {
           kind: 'walking',
           path: catPath(state.spot, target),
@@ -178,7 +188,7 @@ export class RoomCat {
       at = { x: spot.x, y: spot.y, z: spot.z, yaw: spot.yaw };
     } else {
       // Up onto its feet first, then along the path.
-      this.up = Math.min(1, this.up + dt / STAND_SECONDS);
+      this.up = Math.min(1, this.up + dt / (this.hurry ? HURRY_SECONDS : STAND_SECONDS));
       at = this.walk(state, this.up >= 1 ? dt : 0);
     }
     this.group.position.set(at.x, at.y, at.z);
@@ -201,6 +211,11 @@ export class RoomCat {
   /** Whether it's lying down (to be petted), and where it is. */
   get resting(): boolean {
     return this.state?.kind === 'resting';
+  }
+
+  /** Where she's lying, or null while she's walking. */
+  get restingSpot(): CatSpotId | null {
+    return this.state?.kind === 'resting' ? this.state.spot : null;
   }
 
   get position(): THREE.Vector3 {
@@ -231,6 +246,14 @@ export class RoomCat {
       left -= (1 - state.t) * seconds;
       state.leg += 1;
       state.t = 0;
+      // Somewhere else to go now (someone sat down where she was headed):
+      // on from here, if she's on the floor.
+      const reached = state.path[state.leg]!;
+      if (this.target !== state.to && reached.y < 0.1 && state.leg < state.path.length - 1) {
+        state.path = catPathFrom(reached, this.target);
+        state.leg = 0;
+        state.to = this.target;
+      }
     }
     if (state.leg >= state.path.length - 1) {
       // Arrived: turn to settle, and curl up.
@@ -256,7 +279,7 @@ export class RoomCat {
     const w = this.up * this.up * (3 - 2 * this.up);
     const mix = (a: number, b: number) => a + (b - a) * w;
     // Awake a moment when petted: the head comes up, the eyes open.
-    const since = this.time - this.pettedAt;
+    const since = Math.min(this.time - this.pettedAt, PET_SECONDS);
     const awake =
       since < PET_SECONDS ? Math.min(1, since / 0.4) * Math.min(1, (PET_SECONDS - since) / 0.8) : 0;
     const open = Math.max(w, awake);

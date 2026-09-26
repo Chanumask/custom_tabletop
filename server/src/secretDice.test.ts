@@ -11,7 +11,7 @@ import {
 import { createAppServer, type AppServer } from './server.js';
 import { SessionStore } from './sessionStore.js';
 import { viewFor } from './privacy.js';
-import { onStateUpdates } from './testSupport.js';
+import { eventually, onStateUpdates } from './testSupport.js';
 
 // The host's secret dice (docs/decisions.md, "Secret dice"): never sent to
 // anyone but their owner — not in acks, patches, snapshots or relays.
@@ -143,7 +143,9 @@ describe('secret dice', () => {
     const rolled = await roll(alice, 'alice', ['open', 'hidden']);
     const aliceRolls = rolled.ok ? rolled.state.log.filter((entry) => entry.kind === 'roll') : [];
     expect(aliceRolls).toHaveLength(2);
-    await settle();
+    await eventually(() => {
+      expect(bobSees.state.log.filter((entry) => entry.kind === 'roll')).toHaveLength(1);
+    });
     const bobRolls = bobSees.state.log.filter((entry) => entry.kind === 'roll');
     expect(bobRolls).toHaveLength(1);
     expect(bobRolls[0]).not.toHaveProperty('visibleTo');

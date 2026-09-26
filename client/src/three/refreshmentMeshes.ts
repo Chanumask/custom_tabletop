@@ -147,14 +147,18 @@ export function steamWisp(
 export const TEA_SET = { x: 1.41, y: 0.53, z: -3.56 };
 
 /** Where the popcorn bowl stands: on a corner of the game table's wooden
- * frame, nearest the sofa — clear of the map. */
-export const SNACK_BOWL = { x: 1.055, y: 0.8, z: -1.055 };
+ * frame (its rails run from 1.00 to 1.12 m out, their top at 0.82 m),
+ * nearest the sofa — clear of the map. */
+export const SNACK_BOWL = { x: 1.06, y: 0.82, z: -1.06 };
+/** Built at 7.4 cm across the rim; this fits it on the rails exactly. */
+const BOWL_SCALE = 0.8;
 
 /** A little turned-wood bowl heaped with popcorn. */
 export function buildSnackBowl(wood: THREE.Material | null): THREE.Group {
   const bowl = new THREE.Group();
   bowl.name = 'snack-bowl';
   bowl.position.set(SNACK_BOWL.x, SNACK_BOWL.y, SNACK_BOWL.z);
+  bowl.scale.setScalar(BOWL_SCALE);
   const profile = [
     new THREE.Vector2(0.0001, 0.006),
     new THREE.Vector2(0.05, 0.008),

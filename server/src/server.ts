@@ -164,6 +164,10 @@ const PRESENCE_KEYS: PatchKey[] = ['players', 'hostId', 'log', 'inventory'];
 const PING_MIN_INTERVAL_MS = 300;
 /** Records change at most this often per player (each one is logged). */
 const RECORD_MIN_INTERVAL_MS = 1000;
+/** Room interactions (switches, windows, seats, candles, the tea set…) per
+ * socket: plenty for anyone playing, not a stream of sounds at everyone. */
+const INTERACT_WINDOW_MS = 2000;
+const INTERACT_MAX_PER_WINDOW = 12;
 /** Chat flood guard, per socket: at most this many lines per window. */
 const CHAT_WINDOW_MS = 5000;
 const CHAT_MAX_PER_WINDOW = 6;
@@ -775,6 +779,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     let lastGestureAt = 0;
     // Putting a record on says so in the log: not faster than this.
     let lastRecordAt = 0;
+    let recentInteracts: number[] = [];
     socket.on(SocketEvent.PlayerGesture, (payload: unknown) => {
       const request = parsePlayerGestureRequest(payload);
       if (!request || !actsAs(request.sessionId, request.playerId)) {
@@ -1405,6 +1410,13 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           ack?.({ ok: false, error: NOT_JOINED_AS_PLAYER });
           return;
         }
+        const interactAt = Date.now();
+        recentInteracts = recentInteracts.filter((at) => interactAt - at < INTERACT_WINDOW_MS);
+        if (recentInteracts.length >= INTERACT_MAX_PER_WINDOW) {
+          ack?.({ ok: false, error: 'Easy — give it a moment.' });
+          return;
+        }
+        recentInteracts.push(interactAt);
 
         let result: ObjectInteractResponse;
         switch (request.objectId) {

@@ -78,3 +78,19 @@ export function waitForState(
 export function nextUpdate(client: ClientSocket): Promise<GameState> {
   return waitForState(client, () => true);
 }
+
+/** Retries `check` (an assertion) until it passes, or rethrows its last
+ * failure after `timeoutMs` — for what has to arrive over a socket, instead
+ * of a fixed sleep that a busy machine can outrun. */
+export async function eventually(check: () => void, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    try {
+      check();
+      return;
+    } catch (error) {
+      if (Date.now() - start > timeoutMs) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+}

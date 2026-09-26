@@ -10,7 +10,7 @@ import {
 } from '@custom-tabletop/shared';
 import { createAppServer, type AppServer } from './server.js';
 import { SessionStore } from './sessionStore.js';
-import { onStateUpdates } from './testSupport.js';
+import { eventually, onStateUpdates } from './testSupport.js';
 
 // The room's shared switches (docs/decisions.md, "The cozy room, lived in").
 
@@ -72,8 +72,9 @@ describe('the reading lamp', () => {
     expect(off.ok).toBe(true);
     expect(off.state?.room.readingLampOn).toBe(false);
     expect(off.state?.lightOn).toBe(true);
-    await settle();
-    expect(bobSees.room.readingLampOn).toBe(false);
+    await eventually(() => {
+      expect(bobSees.room.readingLampOn).toBe(false);
+    });
 
     // No `on`: the other way round. The room light is still its own switch.
     const toggled = await interact(bob, 'bob', { objectId: 'lamp' });
@@ -152,9 +153,10 @@ describe('the fire and the candles', () => {
     expect(out.ok).toBe(true);
     const stoked = await interact(alice, 'alice', { objectId: 'hearth' });
     expect(stoked.state?.room.fireStokedAt).toEqual(expect.any(Number));
-    await settle();
-    expect(bobSees.room.candlesOut).toEqual(['sconce-east']);
-    expect(bobSees.room.fireStokedAt).toBe(stoked.state?.room.fireStokedAt);
+    await eventually(() => {
+      expect(bobSees.room.candlesOut).toEqual(['sconce-east']);
+      expect(bobSees.room.fireStokedAt).toBe(stoked.state?.room.fireStokedAt);
+    });
   });
 });
 
@@ -188,8 +190,9 @@ describe('the windows', () => {
     expect(opened.ok).toBe(true);
     const drawn = await interact(alice, 'alice', { objectId: 'curtains', target: 'west-1' });
     expect(drawn.state?.room.windows['west-1']).toEqual({ open: true, drawn: true });
-    await settle();
-    expect(bobSees.room.windows['west-1']).toEqual({ open: true, drawn: true });
+    await eventually(() => {
+      expect(bobSees.room.windows['west-1']).toEqual({ open: true, drawn: true });
+    });
   });
 });
 
@@ -216,9 +219,10 @@ describe('the weather', () => {
     const storm = await host(alice, 'alice', 'storm');
     expect(storm.ok).toBe(true);
     expect(storm.state?.room.weather).toBe('storm');
-    await settle();
-    expect(bobSees.room.weather).toBe('storm');
-    expect(bobSees.log.at(-1)).toMatchObject({ kind: 'system', text: 'alice called up a storm' });
+    await eventually(() => {
+      expect(bobSees.room.weather).toBe('storm');
+      expect(bobSees.log.at(-1)).toMatchObject({ kind: 'system', text: 'alice called up a storm' });
+    });
     expect((await host(alice, 'alice', 'hail')).ok).toBe(false);
   });
 
@@ -308,8 +312,9 @@ describe('the sofa and the chairs away from the table', () => {
     expect(sat.ok).toBe(true);
     const taken = await interact(bob, 'bob', { objectId: 'lounge', target: 'rocking-chair' });
     expect(taken).toMatchObject({ ok: false, error: 'alice is already sitting there.' });
-    await settle();
-    expect(bobSees.players.find((player) => player.id === 'alice')?.lounge).toBe('rocking-chair');
+    await eventually(() => {
+      expect(bobSees.players.find((player) => player.id === 'alice')?.lounge).toBe('rocking-chair');
+    });
     const up = await interact(alice, 'alice', {
       objectId: 'lounge',
       target: 'rocking-chair',
@@ -369,9 +374,10 @@ describe('the record player', () => {
     // Not a flood of records (each one is logged).
     const again = await interact(bob, 'bob', { objectId: 'record', target: 'tavern' });
     expect(again.ok).toBe(false);
-    await settle();
-    expect(bobSees.room.record?.record).toBe('lofi');
-    expect(bobSees.log.at(-1)).toMatchObject({ text: 'bob put on Lo-fi Evening' });
+    await eventually(() => {
+      expect(bobSees.room.record?.record).toBe('lofi');
+      expect(bobSees.log.at(-1)).toMatchObject({ text: 'bob put on Lo-fi Evening' });
+    });
     await emitAck(alice, SocketEvent.HostAction, {
       sessionId: 'ROOM',
       playerId: 'alice',
@@ -453,12 +459,13 @@ describe('tea, cocoa and popcorn', () => {
     gesture('pet');
     await new Promise((resolve) => setTimeout(resolve, 450));
     gesture('juggle');
-    await settle();
-    expect(seen).toEqual([
-      { sessionId: 'ROOM', playerId: 'alice', gesture: 'cheers' },
-      { sessionId: 'ROOM', playerId: 'alice', gesture: 'snack' },
-      { sessionId: 'ROOM', playerId: 'alice', gesture: 'pet' },
-    ]);
+    await eventually(() => {
+      expect(seen).toEqual([
+        { sessionId: 'ROOM', playerId: 'alice', gesture: 'cheers' },
+        { sessionId: 'ROOM', playerId: 'alice', gesture: 'snack' },
+        { sessionId: 'ROOM', playerId: 'alice', gesture: 'pet' },
+      ]);
+    });
   });
 });
 
@@ -554,8 +561,9 @@ describe('the books on the lectern', () => {
       cover: 4,
     });
     expect(written.ok).toBe(true);
-    await settle();
-    expect(bobSees.books).toMatchObject([{ title: 'Letter', text: 'Dear all', cover: 4 }]);
+    await eventually(() => {
+      expect(bobSees.books).toMatchObject([{ title: 'Letter', text: 'Dear all', cover: 4 }]);
+    });
     const refused = await emitAck(bob, SocketEvent.HostAction, {
       sessionId: 'ROOM',
       playerId: 'bob',
@@ -656,9 +664,24 @@ describe('the mood presets', () => {
       mood: 'storm',
     });
     expect(storm.ok).toBe(true);
-    await settle();
-    expect(bobSees.room.weather).toBe('storm');
-    expect(bobSees.lightOn).toBe(false);
-    expect(bobSees.log.at(-1)).toMatchObject({ text: 'alice set the mood: storm' });
+    await eventually(() => {
+      expect(bobSees.room.weather).toBe('storm');
+      expect(bobSees.lightOn).toBe(false);
+      expect(bobSees.log.at(-1)).toMatchObject({ text: 'alice set the mood: storm' });
+    });
+  });
+});
+
+describe('room interactions over the socket', () => {
+  it('are plenty for playing, but not a flood of sounds at everyone', async () => {
+    const alice = await connect();
+    await join(alice, 'alice');
+    const results = [];
+    for (let i = 0; i < 16; i++) {
+      results.push(await interact(alice, 'alice', { objectId: 'curtains', target: 'north' }));
+    }
+    expect(results.slice(0, 12).every((result) => result.ok)).toBe(true);
+    expect(results.slice(12).every((result) => !result.ok)).toBe(true);
+    expect(results[12]).toMatchObject({ error: 'Easy — give it a moment.' });
   });
 });

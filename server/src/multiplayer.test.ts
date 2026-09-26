@@ -11,6 +11,7 @@ import {
   type SoundPlayRequest,
 } from '@custom-tabletop/shared';
 import { createAppServer, type AppServer } from './server.js';
+import { eventually } from './testSupport.js';
 
 /**
  * Change request #7: a busy session with four players — soundboard edits
@@ -87,9 +88,6 @@ describe('a four-player session stays in sync', () => {
     };
   }
 
-  /** Lets in-flight broadcasts land. */
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
-
   it('everyone ends up with the same game after a busy session', async () => {
     const alice = await join('alice', 'red');
     const bob = await join('bob', 'blue');
@@ -100,11 +98,12 @@ describe('a four-player session stays in sync', () => {
     const ok = (ack: Ack) => expect(ack.ok, ack.error).toBe(true);
 
     // Everyone starts on their own spot (once the last join has reached all).
-    await settle();
-    const spawns = alice
-      .state()
-      .players.map((player) => `${player.position.x},${player.position.z}`);
-    expect(new Set(spawns).size).toBe(4);
+    await eventually(() => {
+      const spawns = alice
+        .state()
+        .players.map((player) => `${player.position.x},${player.position.z}`);
+      expect(new Set(spawns).size).toBe(4);
+    });
 
     // Soundboard: Carol puts a linked sound on wall button 5; Dave presses it.
     ok(
@@ -158,14 +157,16 @@ describe('a four-player session stays in sync', () => {
 
     // And Bob has to go.
     ok(await bob.emit<Ack>(SocketEvent.SessionLeave, {}));
-    await settle();
 
-    // --- Everyone who stayed sees the same game. ---
+    // --- Everyone who stayed sees the same game (once it has all arrived). ---
     const remaining = [alice, carol, dave];
+    await eventually(() => {
+      expect(alice.state().log.at(-1)).toMatchObject({ text: 'bob left the table' });
+      for (const player of remaining) {
+        expect(player.state()).toEqual(alice.state());
+      }
+    });
     const reference = alice.state();
-    for (const player of remaining) {
-      expect(player.state()).toEqual(reference);
-    }
 
     // ...and it's the game that was played.
     expect(reference.players.map((player) => player.id)).toEqual(['alice', 'carol', 'dave']);

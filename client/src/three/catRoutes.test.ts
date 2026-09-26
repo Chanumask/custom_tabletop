@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   CAT_NAP_MS,
   CAT_SPOTS,
+  catFloorObstacle,
   catPath,
+  catPathFrom,
   catTarget,
   RING,
   scheduledSpot,
@@ -80,5 +82,20 @@ describe('the way the cat walks', () => {
       RING.some((ring) => ring.x === point.x && ring.z === point.z),
     );
     expect(onRing).toHaveLength(2);
+  });
+});
+
+describe('changing course and getting in the way', () => {
+  it('goes on from partway, round the ring, up onto the new spot', () => {
+    const path = catPathFrom({ x: 1.2, z: -2.3 }, 'armchair');
+    expect(path[0]).toMatchObject({ x: 1.2, z: -2.3 });
+    expect(path.at(-1)).toMatchObject({ x: CAT_SPOTS.armchair.x, z: CAT_SPOTS.armchair.z });
+    expect(path.at(-1)!.jump).toBe(true);
+  });
+
+  it('is in the way only asleep on the floor', () => {
+    expect(catFloorObstacle('fire')).not.toBeNull();
+    expect(catFloorObstacle('sofa')).toBeNull();
+    expect(catFloorObstacle('armchair')).toBeNull();
   });
 });

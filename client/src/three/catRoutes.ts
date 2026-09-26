@@ -7,7 +7,7 @@ import type { LoungeSeat } from '@custom-tabletop/shared';
  * every player; only its walk between spots is each room's own.
  */
 
-export type CatSpotId = 'fire' | 'sofa' | 'armchair' | 'chest';
+export type CatSpotId = 'fire' | 'sofa' | 'armchair';
 
 export interface CatSpot {
   id: CatSpotId;
@@ -44,7 +44,9 @@ export const CAT_SPOTS: Record<CatSpotId, CatSpot> = {
     y: 0.46,
     z: -3.42,
     yaw: 0,
-    floor: { x: 3.54, z: -2.75 },
+    // Off the front corner by the arm — not through the legs of whoever
+    // sits beside her (or just sat down where she was).
+    floor: { x: 3.95, z: -2.85 },
     ring: 1,
     seat: 'sofa-east',
   },
@@ -55,20 +57,11 @@ export const CAT_SPOTS: Record<CatSpotId, CatSpot> = {
     y: 0.49,
     z: 3.1,
     yaw: 2.22,
-    floor: { x: -3.61, z: 2.77 },
+    // Off the front-left corner: clear of the chair's own footprint, the
+    // side table, and a sitter's knees.
+    floor: { x: -4.1, z: 2.35 },
     ring: 5,
     seat: 'armchair',
-  },
-  // On top of the treasure chest, beside the oil lamp.
-  chest: {
-    id: 'chest',
-    x: 4.7,
-    y: 0.62,
-    z: 2.47,
-    yaw: -Math.PI / 2,
-    floor: { x: 4.05, z: 2.47 },
-    ring: 3,
-    seat: null,
   },
 };
 
@@ -89,10 +82,9 @@ export const CAT_NAP_MS = 7 * 60_000;
 
 /** How much the cat likes each spot. */
 const LIKING: [CatSpotId, number][] = [
-  ['fire', 0.4],
-  ['sofa', 0.2],
-  ['armchair', 0.2],
-  ['chest', 0.2],
+  ['fire', 0.45],
+  ['sofa', 0.3],
+  ['armchair', 0.25],
 ];
 
 /** Where the cat means to be at `now` (server clock, ms) — the same for
@@ -112,15 +104,33 @@ export function scheduledSpot(now: number): CatSpotId {
   return 'fire';
 }
 
+/** Whether a player is sitting where the cat would lie. */
+export function spotTaken(
+  spot: CatSpotId,
+  players: readonly { lounge: LoungeSeat | null }[],
+): boolean {
+  const seat = CAT_SPOTS[spot].seat;
+  return seat !== null && players.some((player) => player.lounge === seat);
+}
+
 /** Where the cat goes: where it means to be, unless someone's sitting
  * there — then back to the fire. Pure. */
 export function catTarget(
   now: number,
   players: readonly { lounge: LoungeSeat | null }[],
 ): CatSpotId {
-  const spot = CAT_SPOTS[scheduledSpot(now)];
-  const taken = spot.seat !== null && players.some((player) => player.lounge === spot.seat);
-  return taken ? 'fire' : spot.id;
+  const spot = scheduledSpot(now);
+  return spotTaken(spot, players) ? 'fire' : spot;
+}
+
+/** Her footprint while she sleeps on the floor (the fire rug), so nobody
+ * walks through her — or null where she's up on a seat. */
+export function catFloorObstacle(
+  spot: CatSpotId,
+): { minX: number; maxX: number; minZ: number; maxZ: number } | null {
+  const { x, y, z } = CAT_SPOTS[spot];
+  if (y > 0.1) return null;
+  return { minX: x - 0.18, maxX: x + 0.18, minZ: z - 0.18, maxZ: z + 0.18 };
 }
 
 export interface PathPoint {
@@ -129,6 +139,38 @@ export interface PathPoint {
   z: number;
   /** Jumping onto (or down from) this point, rather than walking. */
   jump: boolean;
+}
+
+/** The way on from a point on the floor (partway along a walk, when where
+ * she's going changed): onto the ring at its nearest point, round the
+ * short way, up onto the spot. Pure. */
+export function catPathFrom(point: { x: number; z: number }, to: CatSpotId): PathPoint[] {
+  const b = CAT_SPOTS[to];
+  let nearest = 0;
+  RING.forEach((ring, i) => {
+    const best = RING[nearest]!;
+    if (
+      Math.hypot(ring.x - point.x, ring.z - point.z) <
+      Math.hypot(best.x - point.x, best.z - point.z)
+    ) {
+      nearest = i;
+    }
+  });
+  const points: PathPoint[] = [{ x: point.x, y: 0.012, z: point.z, jump: false }];
+  const n = RING.length;
+  const forward = (b.ring - nearest + n) % n;
+  const step = forward <= n / 2 ? 1 : -1;
+  for (let i = nearest; ; i = (i + step + n) % n) {
+    points.push({ x: RING[i]!.x, y: 0.012, z: RING[i]!.z, jump: false });
+    if (i === b.ring) break;
+  }
+  if (b.y > 0.1) {
+    points.push({ x: b.floor.x, y: 0.012, z: b.floor.z, jump: false });
+    points.push({ x: b.x, y: b.y, z: b.z, jump: true });
+  } else {
+    points.push({ x: b.x, y: b.y, z: b.z, jump: false });
+  }
+  return points;
 }
 
 /** The way from one spot to another: down to the floor, round the table

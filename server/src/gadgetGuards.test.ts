@@ -9,7 +9,7 @@ import {
 import { createAppServer, type AppServer } from './server.js';
 import { SessionStore } from './sessionStore.js';
 import { parsePhotoCaptureRequest } from './validation.js';
-import { onStateUpdates } from './testSupport.js';
+import { eventually, onStateUpdates } from './testSupport.js';
 
 // The gadgets review (docs/decisions.md, "Gadgets review"): every gadget
 // reply is filtered like the rest, a put-back flashlight goes dark for
@@ -118,12 +118,14 @@ describe('the flashlight', () => {
     });
     await take(bob, 'bob', 'flashlight-1');
     await emitAck(bob, SocketEvent.FlashlightToggle, { sessionId: 'ROOM', playerId: 'bob' });
-    await settle();
-    expect(aliceSees.players.find((p) => p.id === 'bob')?.flashlightOn).toBe(true);
+    await eventually(() => {
+      expect(aliceSees.players.find((p) => p.id === 'bob')?.flashlightOn).toBe(true);
+    });
 
     await take(bob, 'bob', 'camera-1');
-    await settle();
-    expect(aliceSees.players.find((p) => p.id === 'bob')?.flashlightOn).toBe(false);
+    await eventually(() => {
+      expect(aliceSees.players.find((p) => p.id === 'bob')?.flashlightOn).toBe(false);
+    });
   });
 
   it('putting it back switches it off for everyone', async () => {
@@ -140,8 +142,9 @@ describe('the flashlight', () => {
       playerId: 'bob',
       itemId: 'flashlight-1',
     });
-    await settle();
-    expect(aliceSees.players.find((p) => p.id === 'bob')?.flashlightOn).toBe(false);
+    await eventually(() => {
+      expect(aliceSees.players.find((p) => p.id === 'bob')?.flashlightOn).toBe(false);
+    });
   });
 });
 

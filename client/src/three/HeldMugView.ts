@@ -5,13 +5,18 @@ import { buildMug, steamWisp } from './refreshmentMeshes.js';
 
 type Pose = { position: [number, number, number]; rotation: [number, number, number] };
 
+/** Your mug is drawn at 40% size and 40% of the distance — the same on
+ * screen, but never further out than ~21 cm, so it can't sink into a wall
+ * you're standing at (you can get within 30 cm of one) or a picture on it. */
+const VIEW_SCALE = 0.4;
+
 /** Where your own mug is, from your eyes (camera space: ahead is -Z). */
-const REST: Pose = { position: [0.2, -0.15, -0.46], rotation: [0.08, -0.35, 0.04] };
+const REST: Pose = { position: [0.08, -0.06, -0.184], rotation: [0.08, -0.35, 0.04] };
 const POSES: Partial<Record<Gesture, Pose>> = {
-  // Up to your lips, tipped toward you.
-  sip: { position: [0.05, -0.11, -0.22], rotation: [0.75, -0.15, 0] },
+  // Up to your lips, tipped toward you (its rim stays past the near plane).
+  sip: { position: [0.018, -0.045, -0.14], rotation: [0.75, -0.15, 0] },
   // Raised to the others.
-  cheers: { position: [0.13, 0.03, -0.48], rotation: [-0.15, -0.3, 0.05] },
+  cheers: { position: [0.052, 0.012, -0.192], rotation: [-0.15, -0.3, 0.05] },
 };
 
 /**
@@ -49,6 +54,7 @@ export class HeldMugView {
         this.steam.push(node);
       }
     });
+    mug.scale.setScalar(VIEW_SCALE);
     this.mug = mug;
     this.anchor.add(mug);
   }
