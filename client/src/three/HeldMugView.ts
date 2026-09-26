@@ -54,7 +54,9 @@ export class HeldMugView {
   }
 
   play(gesture: Gesture): void {
-    if (this.mug && gesture !== 'snack') this.gesture = { kind: gesture, at: this.time };
+    if (this.mug && (gesture === 'sip' || gesture === 'cheers')) {
+      this.gesture = { kind: gesture, at: this.time };
+    }
   }
 
   update(dt: number, visible: boolean): void {

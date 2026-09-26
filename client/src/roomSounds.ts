@@ -394,7 +394,7 @@ export function playNeedleLift(place: Placement): void {
 /** Pouring from the teapot: the lid's little rattle, then the stream
  * filling the cup, rising in pitch as it fills. */
 export function playPour(place: Placement): void {
-  const v = voice('room', place);
+  const v = voice('gadgets', place);
   if (!v) return;
   const { ctx, out } = v;
   const at = ctx.currentTime + 0.02;
@@ -427,7 +427,7 @@ export function playPour(place: Placement): void {
 
 /** A mug set down on its saucer: a small ceramic knock. */
 export function playMugDown(place: Placement): void {
-  const v = voice('room', place);
+  const v = voice('gadgets', place);
   if (!v) return;
   const { ctx, out } = v;
   const at = ctx.currentTime + 0.02;
@@ -437,7 +437,7 @@ export function playMugDown(place: Placement): void {
 
 /** Two mugs meeting in a toast: a bright ceramic clink. */
 export function playClink(place: Placement): void {
-  const v = voice('room', place);
+  const v = voice('gadgets', place);
   if (!v) return;
   const { ctx, out } = v;
   const at = ctx.currentTime + 0.25;
@@ -447,7 +447,7 @@ export function playClink(place: Placement): void {
 
 /** A sip of something hot — quiet, only for the one sipping. */
 export function playSip(place: Placement): void {
-  const v = voice('room', place);
+  const v = voice('gadgets', place);
   if (!v) return;
   const { ctx, out } = v;
   const at = ctx.currentTime + 0.35;
@@ -457,7 +457,7 @@ export function playSip(place: Placement): void {
 
 /** A mouthful of popcorn: a few soft crunches. */
 export function playCrunch(place: Placement): void {
-  const v = voice('room', place);
+  const v = voice('gadgets', place);
   if (!v) return;
   const { ctx, out } = v;
   const at = ctx.currentTime + 0.3;

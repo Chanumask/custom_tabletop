@@ -19,6 +19,9 @@ export interface AimTarget {
   act: (shift: boolean) => void;
   /** Hidden or unavailable right now (e.g. not a candle to blow out). */
   disabled?: () => boolean;
+  /** Wins over the others the crosshair is also on (the cat curled up on a
+   * seat: the seat's bigger, so it's still there round the cat). */
+  priority?: number;
 }
 
 export interface Ray {
@@ -55,7 +58,10 @@ export function pickAimTarget(ray: Ray, targets: readonly AimTarget[]): AimTarge
   for (const target of targets) {
     if (target.disabled?.()) continue;
     const distance = rayHitsSphere(ray, target.center, target.radius);
-    if (distance !== null && distance <= target.reach && distance < bestDistance) {
+    if (distance === null || distance > target.reach) continue;
+    const rank = target.priority ?? 0;
+    const bestRank = best?.priority ?? 0;
+    if (!best || rank > bestRank || (rank === bestRank && distance < bestDistance)) {
       best = target;
       bestDistance = distance;
     }

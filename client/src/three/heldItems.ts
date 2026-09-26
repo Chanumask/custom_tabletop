@@ -220,6 +220,15 @@ export const GESTURE_POSES: Record<Gesture, ArmPose> = {
     grip: 0.85,
     thumb: 0.65,
   },
+  // Down and forward, palm down, fingers open: stroking the cat.
+  pet: {
+    upperArm: [-0.12, -0.72, 0.68],
+    forearm: [0, -0.62, 0.8],
+    fingers: [0, -0.45, 0.9],
+    palm: [0, -1, 0.2],
+    grip: 0.08,
+    thumb: 0.05,
+  },
   // Up to the mouth, palm in, fingers loosely closed round the popcorn.
   snack: {
     upperArm: [-0.05, -0.5, 0.45],
@@ -236,6 +245,7 @@ const GESTURE_TIMES: Record<Gesture, [up: number, hold: number, down: number]> =
   sip: [0.35, 0.8, 0.4],
   cheers: [0.3, 1, 0.4],
   snack: [0.3, 0.35, 0.35],
+  pet: [0.35, 1.3, 0.45],
 };
 
 /** How far into its pose a gesture is, `elapsed` seconds in (0..1), or
@@ -275,12 +285,11 @@ export function blendPose(pose: HoldPose, gesture: ArmPose, t: number): HoldPose
   };
 }
 
-/** The snack gesture with nothing in hand: the arm alone. */
-export const EMPTY_HAND_SNACK: HoldPose = {
-  ...GESTURE_POSES.snack,
-  position: [0, 0, 0],
-  rotation: [0, 0, 0],
-};
+/** A gesture with nothing in hand (a snack, stroking the cat): the arm
+ * alone. */
+export function emptyHandPose(gesture: Gesture): HoldPose {
+  return { ...GESTURE_POSES[gesture], position: [0, 0, 0], rotation: [0, 0, 0] };
+}
 
 /** A finger or thumb bone and how it sits in the characters' own fist. */
 interface FistJoint {

@@ -14,5 +14,6 @@ describe('refreshments', () => {
     expect(gestureNeedsDrink('sip')).toBe(true);
     expect(gestureNeedsDrink('cheers')).toBe(true);
     expect(gestureNeedsDrink('snack')).toBe(false);
+    expect(gestureNeedsDrink('pet')).toBe(false);
   });
 });

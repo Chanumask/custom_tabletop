@@ -62,3 +62,28 @@ describe('the candles', () => {
     expect(candlePrompt('sconce-west', true, 'F')).toBe('Press F to blow out the candle');
   });
 });
+
+describe('aim priority', () => {
+  it('prefers a target that asks for it, when the crosshair is on both', () => {
+    const ray = { origin: { x: 0, y: 1, z: 0 }, direction: { x: 0, y: 0, z: -1 } };
+    const seat: AimTarget = {
+      id: 'seat',
+      center: { x: 0, y: 1, z: -1.4 },
+      radius: 0.3,
+      reach: 3,
+      prompt: () => 'sit',
+      act: () => {},
+    };
+    const cat: AimTarget = {
+      ...seat,
+      id: 'cat',
+      center: { x: 0, y: 1, z: -1.5 },
+      radius: 0.2,
+      priority: 1,
+    };
+    expect(pickAimTarget(ray, [seat, cat])?.id).toBe('cat');
+    // Aimed beside the cat, the seat's still there.
+    const beside = { ...ray, origin: { x: 0.25, y: 1, z: 0 } };
+    expect(pickAimTarget(beside, [seat, cat])?.id).toBe('seat');
+  });
+});

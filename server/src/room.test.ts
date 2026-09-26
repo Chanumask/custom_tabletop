@@ -446,11 +446,14 @@ describe('tea, cocoa and popcorn', () => {
     await new Promise((resolve) => setTimeout(resolve, 450));
     gesture('snack');
     await new Promise((resolve) => setTimeout(resolve, 450));
+    gesture('pet');
+    await new Promise((resolve) => setTimeout(resolve, 450));
     gesture('juggle');
     await settle();
     expect(seen).toEqual([
       { sessionId: 'ROOM', playerId: 'alice', gesture: 'cheers' },
       { sessionId: 'ROOM', playerId: 'alice', gesture: 'snack' },
+      { sessionId: 'ROOM', playerId: 'alice', gesture: 'pet' },
     ]);
   });
 });

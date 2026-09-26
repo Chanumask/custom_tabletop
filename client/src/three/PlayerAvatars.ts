@@ -22,7 +22,7 @@ import { EMOTE_CLIPS, type CharacterSource } from './characters.js';
 import { GadgetLibrary, type GadgetSource } from './gadgetMeshes.js';
 import {
   blendPose,
-  EMPTY_HAND_SNACK,
+  emptyHandPose,
   findArmRig,
   GESTURE_POSES,
   gestureWeight,
@@ -730,16 +730,20 @@ export class PlayerAvatars {
     if (avatar.arm && avatar.model && kind && (avatar.holdWeight > 0 || avatar.gripWeight > 0)) {
       const hold = HOLDS[kind];
       let pose = avatar.seated ? hold.seated : hold.standing;
-      // The hand that holds something can't also dip into the popcorn.
-      if (avatar.gesture && avatar.gesture.kind !== 'snack') {
+      // The hand that holds something can't also dip into the popcorn or
+      // stroke the cat.
+      if (avatar.gesture && (avatar.gesture.kind === 'sip' || avatar.gesture.kind === 'cheers')) {
         pose = blendPose(pose, GESTURE_POSES[avatar.gesture.kind], gesture);
       }
       poseHold(avatar.model, avatar.arm, pose, avatar.holdWeight, avatar.gripWeight);
       if (avatar.heldItemMesh) {
         placeInHand(avatar.heldItemMesh, hold, pose);
       }
-    } else if (avatar.arm && avatar.model && avatar.gesture?.kind === 'snack' && gesture > 0) {
-      poseHold(avatar.model, avatar.arm, EMPTY_HAND_SNACK, gesture, gesture);
+    } else if (avatar.arm && avatar.model && avatar.gesture && gesture > 0) {
+      const empty = avatar.gesture.kind;
+      if (empty === 'snack' || empty === 'pet') {
+        poseHold(avatar.model, avatar.arm, emptyHandPose(empty), gesture, gesture);
+      }
     }
     // A hot drink steams.
     for (const wisp of avatar.heldItemParts?.steam ?? []) {

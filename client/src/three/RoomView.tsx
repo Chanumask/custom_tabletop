@@ -107,6 +107,9 @@ import { RecordPlayer } from './RecordPlayer.js';
 import { HeldMugView } from './HeldMugView.js';
 import type { HeldKind } from './heldItems.js';
 import { buildSnackBowl, SNACK_BOWL, TEA_SET } from './refreshmentMeshes.js';
+import { CAT_NAME, RoomCat } from './RoomCat.js';
+import { catTarget } from './catRoutes.js';
+import { CatPurr, playMrrp } from '../catSounds.js';
 import { HeldItems } from '../HeldItems.js';
 import { createPinboard, syncPinboard, disposePinboard, type Pinboard } from './Pinboard.js';
 import { uploadImage } from '../uploads.js';
@@ -1087,6 +1090,7 @@ export function RoomView({
     let handleInteractKey: ((event: KeyboardEvent) => void) | null = null;
     let handleEmoteKey: ((event: KeyboardEvent) => void) | null = null;
     let handleRemoteGesture: ((request: PlayerGestureRequest) => void) | null = null;
+    let disposeCat: (() => void) | null = null;
     let handleViewKey: ((event: KeyboardEvent) => void) | null = null;
     let handleUseItemKey: ((event: KeyboardEvent) => void) | null = null;
     let fireAudioRef: FireAmbience | null = null;
@@ -1499,6 +1503,7 @@ export function RoomView({
             avatarsRef.current?.say(request.playerId, 'Cheers!');
             clinkIfToasting(request.playerId);
           }
+          if (request.gesture === 'pet' && cat.pet()) purr.pet();
         };
         socket.on(SocketEvent.PlayerGesture, handleRemoteGesture);
         aimTargetsRef.current = [
@@ -1535,6 +1540,35 @@ export function RoomView({
         ];
         const rockingSpot = LOUNGE_SPOTS['rocking-chair'];
         const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        // The cat: asleep by the fire (or wherever it's wandered to — the same
+        // spot for everyone, from the server's clock), purring close by.
+        const cat = new RoomCat(scene);
+        const purr = new CatPurr();
+        purr.start();
+        const catNow = () => catTarget(Date.now() + serverOffsetRef.current, playersRef.current);
+        disposeCat = () => {
+          cat.dispose();
+          purr.dispose();
+        };
+        aimTargetsRef.current = [
+          ...aimTargetsRef.current,
+          {
+            id: 'cat',
+            center: cat.aimPoint,
+            radius: 0.2,
+            reach: 2,
+            prompt: () => `Press ${keyLabel()} to pet ${CAT_NAME}`,
+            disabled: () => !cat.resting,
+            priority: 1,
+            act: () => {
+              if (!cat.pet()) return;
+              purr.pet();
+              if (Math.random() < 0.4) playMrrp(placeSound(hearing(), cat.position, 1, 6));
+              sendGesture('pet');
+            },
+          },
+        ];
 
         const diceManager = new DiceManager(scene, (count) =>
           playDiceClatter(count, TUMBLE_SECONDS),
@@ -1574,6 +1608,7 @@ export function RoomView({
             outside,
             music,
             recordPlayer,
+            cat,
             // Live-tunable: the arm poses and grips read this every frame.
             holds: HOLDS,
           };
@@ -2165,6 +2200,8 @@ export function RoomView({
           windowsRef.current?.update(delta);
           recordPlayer.update(delta);
           heldMug.update(delta, controller.seatedView !== 'table');
+          cat.update(delta, catNow(), reducedMotion);
+          purr.update(delta, placeSound(hearing(), cat.position, 0.6, 3.5));
           {
             const place = placeSound(
               { x: camera.position.x, z: camera.position.z, yaw: controller.getYaw() },
@@ -2422,6 +2459,7 @@ export function RoomView({
       recordPlayerRef.current?.dispose();
       recordPlayerRef.current = null;
       scene.getObjectByName('snack-bowl')?.removeFromParent();
+      disposeCat?.();
       musicRef.current?.dispose();
       musicRef.current = null;
       whiteboardCanvasRef.current?.dispose();

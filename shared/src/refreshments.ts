@@ -13,9 +13,9 @@ export function isDrink(value: unknown): value is Drink {
 }
 
 /** Little things a player does that everyone else sees (and hears): a sip
- * of their drink, raising it to the others, a handful from the snack bowl.
- * Relayed, never stored — like an emote. */
-export const GESTURES = ['sip', 'cheers', 'snack'] as const;
+ * of their drink, raising it to the others, a handful from the snack bowl,
+ * stroking the cat. Relayed, never stored — like an emote. */
+export const GESTURES = ['sip', 'cheers', 'snack', 'pet'] as const;
 export type Gesture = (typeof GESTURES)[number];
 
 export function isGesture(value: unknown): value is Gesture {
@@ -24,7 +24,7 @@ export function isGesture(value: unknown): value is Gesture {
 
 /** A sip or a toast needs a drink in hand. */
 export function gestureNeedsDrink(gesture: Gesture): boolean {
-  return gesture !== 'snack';
+  return gesture === 'sip' || gesture === 'cheers';
 }
 
 export interface PlayerGestureRequest {
