@@ -296,3 +296,31 @@ export function playMatchStrike(place: Placement): void {
   burst(ctx, out, at, 'highpass', 2600, 0.7, 0.12, 0.12);
   burst(ctx, out, at + 0.1, 'bandpass', 900, 0.9, 0.12, 0.35);
 }
+
+/** A window swinging open (a wooden scrape and the latch) or shut (a knock
+ * into the frame). */
+export function playWindowSwing(place: Placement, opening: boolean): void {
+  const v = voice('room', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.01;
+  burst(ctx, out, at, 'bandpass', 3000, 5, 0.08, 0.03); // the latch
+  if (opening) {
+    burst(ctx, out, at + 0.05, 'bandpass', 700, 1.2, 0.07, 0.45);
+  } else {
+    burst(ctx, out, at + 0.6, 'lowpass', 900, 0.8, 0.14, 0.1);
+    thump(ctx, out, at + 0.6, 140, 80, 0.12, 0.12);
+  }
+}
+
+/** Curtains drawn along their rod: fabric sweeping and the rings sliding. */
+export function playCurtains(place: Placement): void {
+  const v = voice('room', place);
+  if (!v) return;
+  const { ctx, out } = v;
+  const at = ctx.currentTime + 0.01;
+  burst(ctx, out, at, 'bandpass', 2400, 0.6, 0.06, 0.9);
+  for (let i = 0; i < 6; i++) {
+    burst(ctx, out, at + i * 0.12 + Math.random() * 0.04, 'bandpass', 4200, 8, 0.03, 0.03);
+  }
+}

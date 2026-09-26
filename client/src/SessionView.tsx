@@ -7,6 +7,8 @@ import {
   type FormEvent,
 } from 'react';
 import {
+  type RoomTheme,
+  type Weather,
   EMOTES,
   MAX_PLAYER_NAME_LENGTH,
   DIE_KINDS,
@@ -1093,6 +1095,31 @@ function ConfirmButton({
   );
 }
 
+/** How the host can dress the room (host.ts), and what each means. */
+const THEME_CHOICES: { id: RoomTheme; label: string }[] = [
+  { id: 'classic', label: 'Classic' },
+  { id: 'halloween', label: 'Halloween' },
+  { id: 'winter', label: 'Winter' },
+];
+const THEME_HINTS: Record<RoomTheme, string> = {
+  classic: 'the cozy room as it is',
+  halloween: 'pumpkins, bats, a graveyard outside',
+  winter: 'a tree, stockings, snow outside',
+};
+/** The weather outside (room.ts) — the host's choice, like the theme. */
+const WEATHER_CHOICES: { id: Weather; label: string }[] = [
+  { id: 'clear', label: 'Clear' },
+  { id: 'rain', label: 'Rain' },
+  { id: 'storm', label: 'Storm' },
+  { id: 'snow', label: 'Snow' },
+];
+const WEATHER_HINTS: Record<Weather, string> = {
+  clear: 'a clear night, the moon and the stars',
+  rain: 'rain on the windows and the roof',
+  storm: 'heavy rain, thunder and lightning',
+  snow: 'snow falling outside',
+};
+
 /** What the host can clear, and how much of it is on the table now — null
  * for the drawings: they travel stroke by stroke and only reach this copy of
  * the state with the next full snapshot, so it can't count them. */
@@ -1128,21 +1155,46 @@ function HostTab({
   return (
     <div className="host-tab">
       <p className="host-section">The room</p>
-      <label className="settings-row">
+      <div className="host-choice">
         <span>
-          Halloween night
-          <span className="row-hint">pumpkins, bats, a graveyard outside — for everyone</span>
+          Dressed for
+          <span className="row-hint">{THEME_HINTS[state.theme ?? 'classic']}</span>
         </span>
-        <input
-          type="checkbox"
-          role="switch"
-          className="switch"
-          checked={state.theme === 'halloween'}
-          onChange={(event) =>
-            onHostAction({ action: 'theme', theme: event.target.checked ? 'halloween' : 'classic' })
-          }
-        />
-      </label>
+        <div className="choice-row" role="radiogroup" aria-label="How the room is dressed">
+          {THEME_CHOICES.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={(state.theme ?? 'classic') === id}
+              className={(state.theme ?? 'classic') === id ? 'active' : undefined}
+              onClick={() => onHostAction({ action: 'theme', theme: id })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="host-choice">
+        <span>
+          Weather
+          <span className="row-hint">{WEATHER_HINTS[state.room?.weather ?? 'clear']}</span>
+        </span>
+        <div className="choice-row" role="radiogroup" aria-label="The weather outside">
+          {WEATHER_CHOICES.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-checked={(state.room?.weather ?? 'clear') === id}
+              className={(state.room?.weather ?? 'clear') === id ? 'active' : undefined}
+              onClick={() => onHostAction({ action: 'weather', weather: id })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <p className="host-section">The table</p>
       <label className="settings-row">

@@ -5,6 +5,7 @@ import {
   FIRE_STOKE_BOOST,
   fireLevel,
   normalizeRoomState,
+  WINDOWS,
 } from './room.js';
 
 describe('the fire', () => {
@@ -33,6 +34,19 @@ describe('normalizeRoomState', () => {
       ...DEFAULT_ROOM_STATE,
       readingLampOn: false,
     });
+  });
+
+  it('knows the weather and every window, and nothing else', () => {
+    const saved = {
+      weather: 'hail',
+      windows: { north: { open: true, drawn: 'yes' }, attic: { open: true, drawn: true } },
+    } as never;
+    const room = normalizeRoomState(saved);
+    expect(room.weather).toBe('clear');
+    expect(Object.keys(room.windows)).toEqual([...WINDOWS]);
+    expect(room.windows.north).toEqual({ open: true, drawn: false });
+    expect(room.windows['west-2']).toEqual({ open: false, drawn: false });
+    expect(normalizeRoomState({ weather: 'storm' }).weather).toBe('storm');
   });
 
   it('keeps only real candle groups, in their own order', () => {

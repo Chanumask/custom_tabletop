@@ -41,3 +41,9 @@ export function placeSound(
   // Never hard left/right: both ears hear everything in a small room.
   return { volume, pan: Math.max(-0.8, Math.min(0.8, right * 0.8)) };
 }
+
+/** What a window does to the sound of outside (the night, the rain) heard
+ * through it: open, louder; its curtains drawn, softer. */
+export function throughWindow(open: boolean, drawn: boolean): number {
+  return open ? 1.6 : drawn ? 0.55 : 1;
+}

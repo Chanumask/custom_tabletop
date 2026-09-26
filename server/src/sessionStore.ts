@@ -14,7 +14,10 @@ import {
   PINBOARD_SLOT_COUNT,
   emptyWhiteboard,
   isCandleGroup,
+  isWindowId,
   normalizeRoomState,
+  type Weather,
+  type WindowState,
   STOKE_MIN_INTERVAL_MS,
   spawnPointFor,
   parseYouTubeUrl,
@@ -47,6 +50,14 @@ import {
 } from '@custom-tabletop/shared';
 
 const DEFAULT_SCENE_ID = 'default';
+
+/** How the log says the host changed the weather ("Alice …"). */
+const WEATHER_WORDS: Record<Weather, string> = {
+  clear: 'let the sky clear',
+  rain: 'brought the rain in',
+  storm: 'called up a storm',
+  snow: 'let it snow',
+};
 
 /** A table everyone has just left, as it was — for saving (tableArchive.ts). */
 export interface EmptiedTable {
@@ -1191,12 +1202,67 @@ export class SessionStore {
         state,
         theme === 'halloween'
           ? `${host.name} dressed the room for Halloween`
-          : state.theme === 'halloween'
-            ? `${host.name} took the Halloween decorations down`
-            : `${host.name} changed the room`,
+          : theme === 'winter'
+            ? `${host.name} dressed the room for winter`
+            : state.theme === 'halloween'
+              ? `${host.name} took the Halloween decorations down`
+              : state.theme === 'winter'
+                ? `${host.name} took the winter decorations down`
+                : `${host.name} changed the room`,
       );
       state.theme = theme;
     }
+    return { ok: true, state };
+  }
+
+  /** Host only: the weather outside. */
+  setWeather(sessionId: string, actorId: string, weather: Weather): GameStateMutationResult {
+    const table = this.asHost(sessionId, actorId);
+    if (!table.ok) return table;
+    const { state, host } = table;
+    if (state.room.weather !== weather) {
+      state.room = { ...state.room, weather };
+      addSystemEntry(state, `${host.name} ${WEATHER_WORDS[weather]}`);
+    }
+    return { ok: true, state };
+  }
+
+  /** Opens (`on`) or shuts a window; no `on` = the other way round. */
+  setWindow(sessionId: string, target: string | undefined, on?: boolean): GameStateMutationResult {
+    return this.changeWindow(sessionId, target, (window) => ({
+      ...window,
+      open: on ?? !window.open,
+    }));
+  }
+
+  /** Draws (`on`) or opens a window's curtains; no `on` = the other way round. */
+  setCurtains(
+    sessionId: string,
+    target: string | undefined,
+    on?: boolean,
+  ): GameStateMutationResult {
+    return this.changeWindow(sessionId, target, (window) => ({
+      ...window,
+      drawn: on ?? !window.drawn,
+    }));
+  }
+
+  private changeWindow(
+    sessionId: string,
+    target: string | undefined,
+    change: (window: WindowState) => WindowState,
+  ): GameStateMutationResult {
+    const state = this.sessions.get(sessionId);
+    if (!state) {
+      return { ok: false, error: 'Session not found.' };
+    }
+    if (!isWindowId(target)) {
+      return { ok: false, error: 'There is no window there.' };
+    }
+    state.room = {
+      ...state.room,
+      windows: { ...state.room.windows, [target]: change(state.room.windows[target]) },
+    };
     return { ok: true, state };
   }
 

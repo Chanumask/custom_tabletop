@@ -15,8 +15,8 @@ export interface AimTarget {
   reach: number;
   /** What the prompt says now (it can change: "light" or "blow out"). */
   prompt: () => string;
-  /** What E does. */
-  act: () => void;
+  /** What E does — Shift+E may do something else (a window's curtains). */
+  act: (shift: boolean) => void;
   /** Hidden or unavailable right now (e.g. not a candle to blow out). */
   disabled?: () => boolean;
 }

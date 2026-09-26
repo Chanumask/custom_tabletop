@@ -1,6 +1,7 @@
-import type { RoomTheme } from '@custom-tabletop/shared';
+import type { RoomTheme, Weather } from '@custom-tabletop/shared';
 import { categoryOutput, categoryVolume } from './audioMix.js';
 import { getAudioContext } from './sounds.js';
+import { throughWindow } from './spatialAudio.js';
 
 /**
  * The night outside, heard through the windows (docs/decisions.md, "Night
@@ -34,7 +35,8 @@ export interface Cricket {
 
 /** A small chorus of crickets, each its own voice; fewer on Halloween. */
 export function crickets(theme: RoomTheme, random: () => number): Cricket[] {
-  const count = theme === 'halloween' ? 2 : 4;
+  // A winter night is too cold for them.
+  const count = theme === 'winter' ? 0 : theme === 'halloween' ? 2 : 4;
   return Array.from({ length: count }, () => ({
     pitch: 3900 + random() * 1300,
     interval: 0.55 + random() * 0.7,
@@ -61,6 +63,7 @@ export class NightAmbience {
   private loudness = 0;
   private gust = 0.5;
   private theme: RoomTheme = 'classic';
+  private weather: Weather = 'clear';
   private chorus: (Cricket & { next: number })[] = [];
   private nextOwl = between(OWL_EVERY) * 0.4;
   private nextHowl = between(HOWL_EVERY) * 0.4;
@@ -125,11 +128,19 @@ export class NightAmbience {
     }));
   }
 
-  /** Per frame: how far the listener is from the nearest window. */
-  update(dt: number, windowDistance: number): void {
+  /** The weather outside: the crickets and the owl keep quiet in rain and
+   * snow, and a storm's wind blows harder. */
+  setWeather(weather: Weather): void {
+    this.weather = weather;
+  }
+
+  /** Per frame: how far the listener is from the nearest window, and
+   * whether that window is open (louder) or its curtains drawn (softer). */
+  update(dt: number, windowDistance: number, open = false, drawn = false): void {
     const ctx = this.ctx;
     if (!ctx || !this.master || !this.wind) return;
-    const target = categoryVolume('night') > 0 ? nightLoudness(windowDistance) : 0;
+    const target =
+      categoryVolume('night') > 0 ? nightLoudness(windowDistance) * throughWindow(open, drawn) : 0;
     this.loudness += (target - this.loudness) * Math.min(1, dt * 2);
     this.master.gain.setTargetAtTime(this.loudness * PEAK_GAIN, ctx.currentTime, 0.1);
     if (this.loudness < 0.01) return;
@@ -137,18 +148,24 @@ export class NightAmbience {
     // Gusts: a slow random walk of the wind's level.
     this.gust += (Math.random() - 0.5) * dt * 0.8;
     this.gust = Math.min(1, Math.max(0.15, this.gust));
-    const windLevel = (this.theme === 'halloween' ? 0.75 : 0.45) * this.gust;
+    const windLevel =
+      (this.weather === 'storm'
+        ? 1.1
+        : this.theme === 'halloween' || this.weather === 'snow'
+          ? 0.75
+          : 0.45) * this.gust;
     this.wind.gain.setTargetAtTime(windLevel, ctx.currentTime, 0.4);
 
     const now = ctx.currentTime;
-    for (const cricket of this.chorus) {
+    const quiet = this.weather !== 'clear';
+    for (const cricket of quiet ? [] : this.chorus) {
       if (now >= cricket.next) {
         this.chirp(cricket, now + 0.02);
         cricket.next = now + cricket.interval * (0.85 + Math.random() * 0.3);
       }
     }
     this.nextOwl -= dt;
-    if (this.nextOwl <= 0) {
+    if (this.nextOwl <= 0 && !quiet) {
       this.nextOwl = between(OWL_EVERY);
       this.owl(now + 0.05);
     }

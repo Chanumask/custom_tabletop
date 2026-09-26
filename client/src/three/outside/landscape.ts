@@ -99,6 +99,7 @@ function buildLake(kit: Kit, palette: () => SkyPalette): Piece {
       uMoonColor: { value: new THREE.Color('#fff2d8') },
       uMoonDir: { value: moonDirection },
       uTime: { value: 0 },
+      uIce: { value: 0 },
     },
   ]);
   const material = kit.keep(
@@ -123,11 +124,13 @@ function buildLake(kit: Kit, palette: () => SkyPalette): Piece {
         uniform vec3 uMoonColor;
         uniform vec3 uMoonDir;
         uniform float uTime;
+        uniform float uIce;
         varying vec3 vWorld;
         #include <fog_pars_fragment>
         void main() {
           vec2 p = vWorld.xz;
-          float t = uTime;
+          // Frozen, the water stops moving.
+          float t = uTime * (1.0 - uIce);
           vec3 n = normalize(vec3(
             0.05 * sin(p.x * 0.8 + t * 1.1) * cos(p.y * 0.6 - t * 0.7)
               + 0.035 * sin(p.x * 3.1 - p.y * 2.3 + t * 2.3)
@@ -143,6 +146,11 @@ function buildLake(kit: Kit, palette: () => SkyPalette): Piece {
           float toMoon = max(dot(r, uMoonDir), 0.0);
           float glitter = pow(toMoon, 1400.0) * 40.0 + pow(toMoon, 90.0) * 0.5;
           vec3 color = mix(uDeep, sky, fresnel) + uMoonColor * glitter;
+          // Ice: pale and dull, frosted in patches, a soft sheen of moonlight.
+          float frost = 0.5 + 0.5 * sin(p.x * 0.7 + sin(p.y * 0.5) * 2.0) * sin(p.y * 0.9);
+          vec3 ice = mix(vec3(0.34, 0.4, 0.5), vec3(0.62, 0.68, 0.78), frost * 0.6)
+            + uMoonColor * pow(toMoon, 30.0) * 0.25;
+          color = mix(color, ice, uIce);
           gl_FragColor = vec4(color, 1.0);
           #include <fog_fragment>
         }
@@ -163,6 +171,7 @@ function buildLake(kit: Kit, palette: () => SkyPalette): Piece {
     },
     setTheme(theme) {
       uniforms.uMoonColor!.value.set(theme === 'halloween' ? '#ffb070' : '#fff2d8');
+      uniforms.uIce!.value = theme === 'winter' ? 1 : 0;
     },
   };
 }
@@ -209,7 +218,9 @@ function buildYardTrees(kit: Kit): Piece {
   const group = new THREE.Group();
   const random = seededRandom(0x0a4);
   const bark = kit.keep(new THREE.MeshLambertMaterial({ color: '#4a3626', flatShading: true }));
-  const leaves = ['#a8501c', '#c07a1c', '#8a2a18', '#b8902a'].map((color) =>
+  const autumn = ['#a8501c', '#c07a1c', '#8a2a18', '#b8902a'];
+  const frosted = ['#4a5a52', '#56665e', '#42524a', '#5a6a62'];
+  const leaves = autumn.map((color) =>
     kit.keep(new THREE.MeshLambertMaterial({ color, flatShading: true })),
   );
   const trunkGeometry = kit.keep(
@@ -243,6 +254,11 @@ function buildYardTrees(kit: Kit): Piece {
   }
   return {
     object: group,
+    setTheme(theme) {
+      leaves.forEach((material, i) =>
+        material.color.set(theme === 'winter' ? frosted[i]! : autumn[i]!),
+      );
+    },
     update(_dt, time) {
       if (kit.reducedMotion) return;
       for (const { tree, phase } of trees) {

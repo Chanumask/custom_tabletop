@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { seededRandom } from '../parchment.js';
 import { MOON_DIRECTION } from './terrain.js';
 import type { Kit, OutsideTheme, Piece } from './kit.js';
+import type { Weather } from '@custom-tabletop/shared';
 
 /** The sky, clouds and moon sit this far out and move with the viewer —
  * as good as infinitely far away. */
@@ -34,13 +35,35 @@ export const SKY_PALETTES: Record<OutsideTheme, SkyPalette> = {
     moonGlow: new THREE.Color('#a8501c'),
     stars: 0.7,
   },
+  // A clear, cold winter night: the snow lights the horizon from below.
+  winter: {
+    zenith: new THREE.Color('#050c20'),
+    horizon: new THREE.Color('#3a4a70'),
+    low: new THREE.Color('#5a6a92'),
+    moonGlow: new THREE.Color('#7088c8'),
+    stars: 1.15,
+  },
+};
+
+/** How grey the sky goes under the weather's clouds (0 clear, 1 overcast). */
+const OVERCAST: Record<Weather, { cover: number; color: string }> = {
+  clear: { cover: 0, color: '#1c2232' },
+  rain: { cover: 0.85, color: '#1b2130' },
+  storm: { cover: 1, color: '#10141e' },
+  snow: { cover: 0.8, color: '#2e3548' },
 };
 
 const moonDirection = new THREE.Vector3(MOON_DIRECTION.x, MOON_DIRECTION.y, MOON_DIRECTION.z);
 
 /** The night sky: a gradient dome with twinkling stars and a faint milky
  * way, the moon with its halo, drifting clouds and the odd shooting star. */
-export function buildSky(kit: Kit): Piece & { palette: () => SkyPalette } {
+export function buildSky(kit: Kit): Piece & {
+  palette: () => SkyPalette;
+  /** How much of the sky the weather's clouds cover (0..1), eased. */
+  overcast: () => number;
+  /** Lightning lighting the clouds from inside (0..1), set each frame. */
+  setFlash: (amount: number) => void;
+} {
   const group = new THREE.Group();
   group.name = 'sky';
   let palette = SKY_PALETTES.classic;
@@ -53,7 +76,12 @@ export function buildSky(kit: Kit): Piece & { palette: () => SkyPalette } {
     uMoonDir: { value: moonDirection },
     uTime: { value: 0 },
     uStars: { value: palette.stars },
+    uOvercast: { value: 0 },
+    uCloud: { value: new THREE.Color(OVERCAST.clear.color) },
+    uFlash: { value: 0 },
   };
+  let overcastTarget = 0;
+  const cloudTarget = new THREE.Color(OVERCAST.clear.color);
   const dome = new THREE.Mesh(
     kit.keep(new THREE.SphereGeometry(SKY_RADIUS, 48, 24)),
     kit.keep(
@@ -76,6 +104,9 @@ export function buildSky(kit: Kit): Piece & { palette: () => SkyPalette } {
           uniform vec3 uMoonDir;
           uniform float uTime;
           uniform float uStars;
+          uniform float uOvercast;
+          uniform vec3 uCloud;
+          uniform float uFlash;
           varying vec3 vDir;
 
           float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -112,7 +143,14 @@ export function buildSky(kit: Kit): Piece & { palette: () => SkyPalette } {
             float dust = noise(sphere * 9.0) * 0.6 + noise(sphere * 23.0) * 0.4;
             color += vec3(0.07, 0.08, 0.12) * band * dust * fade * uStars;
             star += step(0.9, noise(sphere * 160.0)) * band * 0.25;
-            color += vec3(1.0, 0.95, 0.88) * star * fade * uStars;
+            color += vec3(1.0, 0.95, 0.88) * star * fade * uStars * (1.0 - uOvercast);
+            // The weather's clouds: a low grey ceiling, lumpy and slowly moving,
+            // lit from inside when lightning strikes.
+            float lumps = noise(sphere * 6.0 + vec2(uTime * 0.01, 0.0)) * 0.6
+              + noise(sphere * 17.0 - vec2(uTime * 0.02, 0.0)) * 0.4;
+            vec3 ceiling = uCloud * (0.75 + 0.5 * lumps) * mix(1.25, 0.8, smoothstep(0.0, 0.6, up));
+            color = mix(color, ceiling, uOvercast * smoothstep(-0.2, 0.05, up));
+            color += vec3(0.62, 0.68, 0.85) * uFlash * (0.5 + 0.8 * lumps) * smoothstep(-0.1, 0.3, up);
             gl_FragColor = vec4(color, 1.0);
           }
         `,
@@ -256,6 +294,14 @@ export function buildSky(kit: Kit): Piece & { palette: () => SkyPalette } {
   return {
     object: group,
     palette: () => palette,
+    overcast: () => uniforms.uOvercast.value,
+    setFlash(amount) {
+      uniforms.uFlash.value = amount;
+    },
+    setWeather(weather) {
+      overcastTarget = OVERCAST[weather].cover;
+      cloudTarget.set(OVERCAST[weather].color);
+    },
     setTheme(theme) {
       palette = SKY_PALETTES[theme];
       uniforms.uZenith.value.copy(palette.zenith);
@@ -271,6 +317,15 @@ export function buildSky(kit: Kit): Piece & { palette: () => SkyPalette } {
     update(dt, time, camera) {
       group.position.copy(camera.position);
       uniforms.uTime.value = time;
+      // Clouds roll in (and clear away) over several seconds.
+      const ease = Math.min(1, dt * 0.35);
+      uniforms.uOvercast.value += (overcastTarget - uniforms.uOvercast.value) * ease;
+      uniforms.uCloud.value.lerp(cloudTarget, ease);
+      const clear = 1 - uniforms.uOvercast.value;
+      moon.visible = clear > 0.05;
+      moonHalo.visible = moon.visible;
+      moonMaterial.opacity = clear;
+      moonMaterial.transparent = clear < 1;
       const drift = kit.reducedMotion ? 0 : dt;
       for (const cloud of clouds) {
         cloud.azimuth += cloud.speed * drift;

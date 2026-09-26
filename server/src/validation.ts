@@ -3,6 +3,7 @@ import {
   MAX_SCENE_NAME_LENGTH,
   type SceneDeleteRequest,
   ROOM_THEMES,
+  WEATHERS,
   type HostActionRequest,
   type DiceMoveRequest,
   type MiniMoveRequest,
@@ -865,6 +866,10 @@ export function parseHostActionRequest(payload: unknown): HostActionRequest | nu
   const theme = ROOM_THEMES.find((candidate) => candidate === fields.theme);
   if (action === 'theme' && theme) {
     return { ...base, action, theme };
+  }
+  const weather = WEATHERS.find((candidate) => candidate === fields.weather);
+  if (action === 'weather' && weather) {
+    return { ...base, action, weather };
   }
   const target = CLEAR_TARGETS.find((candidate) => candidate === fields.target);
   if (action === 'clear' && target) {

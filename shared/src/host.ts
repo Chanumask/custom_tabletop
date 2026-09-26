@@ -4,6 +4,7 @@
  * things off the table. One host-only event, `host:action`, carries them all.
  */
 import type { GameState } from './types.js';
+import type { Weather } from './room.js';
 
 /** What the host can turn off for everyone else (the host always may). */
 export interface TablePermissions {
@@ -19,7 +20,7 @@ export const DEFAULT_PERMISSIONS: TablePermissions = { draw: true, sounds: true 
 
 /** How the room is dressed (docs/decisions.md, "Halloween"): the host's
  * choice, the same for everyone — the world outside the windows too. */
-export const ROOM_THEMES = ['classic', 'halloween'] as const;
+export const ROOM_THEMES = ['classic', 'halloween', 'winter'] as const;
 export type RoomTheme = (typeof ROOM_THEMES)[number];
 
 /** What "clear" can sweep off: the active map's drawings, the whiteboard,
@@ -32,7 +33,8 @@ export type HostAction =
   | { action: 'permission'; permission: TablePermission; allowed: boolean }
   | { action: 'remove'; targetPlayerId: string }
   | { action: 'clear'; target: ClearTarget }
-  | { action: 'theme'; theme: RoomTheme };
+  | { action: 'theme'; theme: RoomTheme }
+  | { action: 'weather'; weather: Weather };
 
 export type HostActionRequest = { sessionId: string; playerId: string } & HostAction;
 

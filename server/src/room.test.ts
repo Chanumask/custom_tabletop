@@ -155,3 +155,78 @@ describe('the fire and the candles', () => {
     expect(bobSees.room.fireStokedAt).toBe(stoked.state?.room.fireStokedAt);
   });
 });
+
+describe('the windows', () => {
+  it('open and shut, and draw their curtains, one window at a time', () => {
+    const store = new SessionStore();
+    store.join('ROOM', 'alice', 'Alice');
+    store.setWindow('ROOM', 'east-1', true);
+    store.setCurtains('ROOM', 'north');
+    const room = store.get('ROOM')!.room;
+    expect(room.windows['east-1']).toEqual({ open: true, drawn: false });
+    expect(room.windows.north).toEqual({ open: false, drawn: true });
+    expect(room.windows['west-2']).toEqual({ open: false, drawn: false });
+    // No `on`: the other way round.
+    store.setWindow('ROOM', 'east-1');
+    expect(store.get('ROOM')!.room.windows['east-1'].open).toBe(false);
+    expect(store.setWindow('ROOM', 'skylight', true).ok).toBe(false);
+    expect(store.setCurtains('ROOM', undefined).ok).toBe(false);
+  });
+
+  it('reach everyone over the socket', async () => {
+    const alice = await connect();
+    const bob = await connect();
+    await join(alice, 'alice');
+    await join(bob, 'bob');
+    let bobSees = {} as GameState;
+    onStateUpdates(bob, (state) => {
+      bobSees = state;
+    });
+    const opened = await interact(bob, 'bob', { objectId: 'window', target: 'west-1', on: true });
+    expect(opened.ok).toBe(true);
+    const drawn = await interact(alice, 'alice', { objectId: 'curtains', target: 'west-1' });
+    expect(drawn.state?.room.windows['west-1']).toEqual({ open: true, drawn: true });
+    await settle();
+    expect(bobSees.room.windows['west-1']).toEqual({ open: true, drawn: true });
+  });
+});
+
+describe('the weather', () => {
+  const host = (client: ClientSocket, playerId: string, weather: unknown) =>
+    emitAck(client, SocketEvent.HostAction, {
+      sessionId: 'ROOM',
+      playerId,
+      action: 'weather',
+      weather,
+    });
+
+  it("is the host's to change, and everyone sees it and reads it in the log", async () => {
+    const alice = await connect();
+    const bob = await connect();
+    await join(alice, 'alice');
+    await join(bob, 'bob');
+    let bobSees = {} as GameState;
+    onStateUpdates(bob, (state) => {
+      bobSees = state;
+    });
+    const refused = await host(bob, 'bob', 'storm');
+    expect(refused.ok).toBe(false);
+    const storm = await host(alice, 'alice', 'storm');
+    expect(storm.ok).toBe(true);
+    expect(storm.state?.room.weather).toBe('storm');
+    await settle();
+    expect(bobSees.room.weather).toBe('storm');
+    expect(bobSees.log.at(-1)).toMatchObject({ kind: 'system', text: 'alice called up a storm' });
+    expect((await host(alice, 'alice', 'hail')).ok).toBe(false);
+  });
+
+  it('says nothing in the log when it stays the same', () => {
+    const store = new SessionStore();
+    store.join('ROOM', 'alice', 'Alice');
+    store.setWeather('ROOM', 'alice', 'snow');
+    const entries = store.get('ROOM')!.log.length;
+    store.setWeather('ROOM', 'alice', 'snow');
+    expect(store.get('ROOM')!.log.length).toBe(entries);
+    expect(store.get('ROOM')!.log.at(-1)).toMatchObject({ text: 'Alice let it snow' });
+  });
+});

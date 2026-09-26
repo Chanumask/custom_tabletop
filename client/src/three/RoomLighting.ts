@@ -81,6 +81,27 @@ export function setRoomLightsOn(lights: RoomLights, on: boolean): void {
   }
 }
 
+/** Lightning through the windows (a storm): the room's soft ambient light
+ * flares cold and bright for a moment — no extra light (adding one would
+ * recompile every material). `amount` 0..1; 0 puts it back. */
+export function setLightningFlash(lights: RoomLights, amount: number, lightOn: boolean): void {
+  for (const entry of lights.entries) {
+    if (!(entry.light instanceof THREE.HemisphereLight)) continue;
+    const base = entry.baseIntensity * (lightOn ? 1 : LIGHTS_OFF_SCALE);
+    entry.light.intensity = base + amount * 2.2;
+    let color = baseColors.get(entry.light);
+    if (!color) {
+      color = entry.light.color.clone();
+      baseColors.set(entry.light, color);
+    }
+    entry.light.color.copy(color).lerp(FLASH_COLOR, Math.min(1, amount * 1.5));
+  }
+}
+
+const FLASH_COLOR = new THREE.Color(0.75, 0.85, 1);
+/** Each ambient light's own colour, to go back to after a flash. */
+const baseColors = new WeakMap<THREE.Light, THREE.Color>();
+
 /** Filmic tone mapping keeps the photometric lights above from clipping to
  * flat white. (The table's map surface opts out of it — see RoomView.) */
 export function configureRoomToneMapping(renderer: THREE.WebGLRenderer): void {

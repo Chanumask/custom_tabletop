@@ -62,6 +62,11 @@ export class RoomDoor {
     return new RoomDoor(leaf, root.getObjectByName('Door_Knob') ?? null);
   }
 
+  /** Hangs something on the door (a wreath), so it swings with it. */
+  hang(object: THREE.Object3D): void {
+    this.pivot.attach(object);
+  }
+
   /** Swing open (true) or shut (false); `update` moves it there. */
   setOpen(open: boolean): void {
     this.target = open ? OPEN_ANGLE : 0;

@@ -90,6 +90,11 @@ export class RoomLife {
     if (!quietly) playSwitchClick(placeSound(this.listener, LIGHT_SWITCH_POSITION, 1, 7));
   }
 
+  /** Hangs something on the door (the winter wreath), swinging with it. */
+  hangOnDoor(object: THREE.Object3D): void {
+    this.door?.hang(object);
+  }
+
   /** The reading lamp's switch clicking over. */
   readingLampSwitched(): void {
     playSwitchClick(placeSound(this.listener, LAMP_POSITION, 1, 7));

@@ -2690,6 +2690,49 @@ button.primary {
   margin-top: 0;
 }
 
+/* The host's room choices: a label, and a row of options to pick one. */
+.host-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  text-align: left;
+}
+
+.choice-row {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--field);
+}
+
+.choice-row button {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.2rem;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 150ms ease,
+    background 150ms ease;
+}
+
+.choice-row button:hover:not(.active) {
+  color: rgba(243, 230, 211, 0.85);
+}
+
+.choice-row button.active {
+  color: var(--ink);
+  background: linear-gradient(180deg, rgba(240, 196, 106, 0.22), rgba(217, 164, 65, 0.12));
+  box-shadow: inset 0 0 0 1px rgba(240, 196, 106, 0.45);
+}
+
 .row-hint {
   display: block;
   color: var(--ink-muted);

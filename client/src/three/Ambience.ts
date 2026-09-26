@@ -545,6 +545,13 @@ export class Ambience {
         new THREE.Color(1, 0.6, 0.2),
         new THREE.Color(0.55, 1, 0.35),
       ],
+      // Old-fashioned Christmas lights: red, green, gold and warm white.
+      winter: [
+        new THREE.Color(1, 0.25, 0.2),
+        new THREE.Color(0.35, 1, 0.4),
+        new THREE.Color(1, 0.8, 0.35),
+        new THREE.Color(1, 0.95, 0.85),
+      ],
     };
     const glowColors: Record<RoomTheme, THREE.Color[]> = {
       classic: [new THREE.Color(1, 0.72, 0.4)],
@@ -553,6 +560,12 @@ export class Ambience {
         new THREE.Color(0.62, 0.28, 1),
         new THREE.Color(1, 0.5, 0.12),
         new THREE.Color(0.4, 1, 0.3),
+      ],
+      winter: [
+        new THREE.Color(1, 0.18, 0.12),
+        new THREE.Color(0.25, 1, 0.3),
+        new THREE.Color(1, 0.7, 0.25),
+        new THREE.Color(1, 0.85, 0.65),
       ],
     };
     const matrix = new THREE.Matrix4();

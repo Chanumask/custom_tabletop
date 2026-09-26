@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 
+import type { Weather } from '@custom-tabletop/shared';
+
 /** Which world is outside the windows (docs/decisions.md, "The world outside"). */
-export type OutsideTheme = 'classic' | 'halloween';
+export type OutsideTheme = 'classic' | 'halloween' | 'winter';
 
 /** A part of the world outside: its objects, and what it does each frame. */
 export interface Piece {
@@ -9,6 +11,8 @@ export interface Piece {
   /** `camera` is where the player looks from (sky parts follow it). */
   update?: (dt: number, time: number, camera: THREE.Camera) => void;
   setTheme?: (theme: OutsideTheme) => void;
+  /** The host's weather (room.ts): rain, a storm, snow, or clear skies. */
+  setWeather?: (weather: Weather) => void;
 }
 
 /** Collects everything GPU-side a piece makes, so the world disposes in one go. */

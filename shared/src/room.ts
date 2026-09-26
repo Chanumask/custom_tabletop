@@ -23,6 +23,26 @@ export function isCandleGroup(value: unknown): value is CandleGroup {
   return CANDLE_GROUPS.some((group) => group === value);
 }
 
+/** The weather outside — the host's choice, like the theme. A storm is
+ * heavy rain with thunder and lightning. */
+export const WEATHERS = ['clear', 'rain', 'storm', 'snow'] as const;
+export type Weather = (typeof WEATHERS)[number];
+
+/** The room's five windows: the big one in the north wall, and two each in
+ * the east and west walls (north one first). */
+export const WINDOWS = ['north', 'east-1', 'east-2', 'west-1', 'west-2'] as const;
+export type WindowId = (typeof WINDOWS)[number];
+
+export function isWindowId(value: unknown): value is WindowId {
+  return WINDOWS.some((id) => id === value);
+}
+
+/** A window: open or shut, and its curtains drawn or not. */
+export interface WindowState {
+  open: boolean;
+  drawn: boolean;
+}
+
 export interface RoomState {
   /** The reading lamp by the armchair — its own switch, apart from the
    * room's main light (`GameState.lightOn`, the switch by the door). */
@@ -32,12 +52,24 @@ export interface RoomState {
   fireStokedAt: number | null;
   /** Candle groups that are out; every other one burns. */
   candlesOut: CandleGroup[];
+  /** The weather outside (host-set). */
+  weather: Weather;
+  /** Every window, open or shut, curtains drawn or not. */
+  windows: Record<WindowId, WindowState>;
 }
+
+const closedWindows = (): Record<WindowId, WindowState> =>
+  Object.fromEntries(WINDOWS.map((id) => [id, { open: false, drawn: false }])) as Record<
+    WindowId,
+    WindowState
+  >;
 
 export const DEFAULT_ROOM_STATE: RoomState = {
   readingLampOn: true,
   fireStokedAt: null,
   candlesOut: [],
+  weather: 'clear',
+  windows: closedWindows(),
 };
 
 /** How long a freshly stoked fire takes to burn back down (ms). */
@@ -72,5 +104,12 @@ export function normalizeRoomState(saved: Partial<RoomState> | undefined): RoomS
     candlesOut: Array.isArray(saved?.candlesOut)
       ? CANDLE_GROUPS.filter((group) => saved.candlesOut!.includes(group))
       : [],
+    weather: WEATHERS.find((weather) => weather === saved?.weather) ?? 'clear',
+    windows: Object.fromEntries(
+      WINDOWS.map((id) => {
+        const window = saved?.windows?.[id];
+        return [id, { open: window?.open === true, drawn: window?.drawn === true }];
+      }),
+    ) as Record<WindowId, WindowState>,
   };
 }

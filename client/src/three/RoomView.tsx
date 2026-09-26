@@ -102,9 +102,19 @@ import { createPinboard, syncPinboard, disposePinboard, type Pinboard } from './
 import { uploadImage } from '../uploads.js';
 import { aimFlashlightBeam } from './flashlightBeam.js';
 import { RoomLife } from './RoomLife.js';
+import { RoomWindows } from './RoomWindows.js';
+import { WinterDecor } from './WinterDecor.js';
+import { WeatherAudio } from '../weatherAudio.js';
+import { setLightningFlash } from './RoomLighting.js';
 import { pickAimTarget, type AimTarget } from './aimTargets.js';
 import { candlePrompt } from './candles.js';
-import { playBlowOut, playLogOnFire, playMatchStrike } from '../roomSounds.js';
+import {
+  playBlowOut,
+  playCurtains,
+  playLogOnFire,
+  playMatchStrike,
+  playWindowSwing,
+} from '../roomSounds.js';
 import { placeSound } from '../spatialAudio.js';
 import { LIGHT_SWITCH_RANGE, LIGHT_SWITCH_SPOT } from './LightSwitch.js';
 import { GadgetLibrary } from './gadgetMeshes.js';
@@ -340,6 +350,20 @@ function promptFor(
   }
 }
 
+/** The winter decorations up or down — and the tree solid while it's up. */
+function showWinter(
+  winter: WinterDecor | null,
+  obstacles: import('./collision.js').Obstacle[] | null,
+  visible: boolean,
+): void {
+  if (!winter) return;
+  winter.setVisible(visible);
+  if (!obstacles) return;
+  const index = obstacles.indexOf(winter.obstacle);
+  if (visible && index < 0) obstacles.push(winter.obstacle);
+  if (!visible && index >= 0) obstacles.splice(index, 1);
+}
+
 /** Full first-person view of the room: renders the real Blender-exported
  * room (`public/models/room.glb`, see docs/engineering/blender-workflow.md)
  * via `loadRoom`'s `gltfUrl` option, drives WASD + mouse-look movement
@@ -426,6 +450,12 @@ export function RoomView({
   const themeRef = useRef(theme);
   const outsideRef = useRef<OutsideWorld | null>(null);
   const decorRef = useRef<HalloweenDecor | null>(null);
+  const winterRef = useRef<WinterDecor | null>(null);
+  const windowsRef = useRef<RoomWindows | null>(null);
+  const weatherAudioRef = useRef<WeatherAudio | null>(null);
+  // The room's obstacles (the controller walks against these): the winter
+  // tree joins them while it's up.
+  const obstaclesRef = useRef<import('./collision.js').Obstacle[] | null>(null);
   // The host's theme: the night outside, the decorations, the fairy lights.
   useEffect(() => {
     themeRef.current = theme;
@@ -433,6 +463,7 @@ export function RoomView({
     nightRef.current?.setTheme(theme);
     decorRef.current?.setVisible(theme === 'halloween');
     ambienceRef.current?.setTheme(theme);
+    showWinter(winterRef.current, obstaclesRef.current, theme === 'winter');
   }, [theme]);
   const canDrawRef = useRef(canDraw);
   const canUseSoundsRef = useRef(canUseSounds);
@@ -775,6 +806,22 @@ export function RoomView({
       const fire = fireSpotRef.current;
       if (listener && fire) playLogOnFire(placeSound(listener, fire, 1.5, 12));
     }
+    // The weather, and every window: open or shut, curtains drawn or not.
+    outsideRef.current?.setWeather(room.weather);
+    nightRef.current?.setWeather(room.weather);
+    weatherAudioRef.current?.setWeather(room.weather);
+    windowsRef.current?.setStates(room.windows);
+    const windowSpots = windowsRef.current?.list() ?? [];
+    if (listener) {
+      for (const window of windowSpots) {
+        const old = before.windows[window.id];
+        const next = room.windows[window.id];
+        if (!old || !next) continue;
+        const place = placeSound(listener, window.center, 1, 9);
+        if (old.open !== next.open) playWindowSwing(place, next.open);
+        if (old.drawn !== next.drawn) playCurtains(place);
+      }
+    }
     const was = new Set(before.candlesOut);
     const now = new Set(room.candlesOut);
     ambience?.setCandlesOut(now);
@@ -850,6 +897,7 @@ export function RoomView({
       applyViewportSize(camera, renderer, container, controllerRef.current?.seatedView === 'table');
       ambienceRef.current?.setViewport(renderer.domElement.clientHeight, camera.fov);
       decorRef.current?.setViewport(renderer.domElement.clientHeight, camera.fov);
+      winterRef.current?.setViewport(renderer.domElement.clientHeight, camera.fov);
     };
     window.addEventListener('resize', handleResize);
 
@@ -1055,11 +1103,51 @@ export function RoomView({
             ]
           : [];
         aimTargetsRef.current = [...candleTargets, ...fireTarget];
+        const weatherAudio = new WeatherAudio();
+        weatherAudio.setWeather(roomRef.current.weather);
+        weatherAudioRef.current = weatherAudio;
         outside = new OutsideWorld(
           room.windowViews,
           window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+          (loudness, delay) => weatherAudio.thunder(loudness, delay),
         );
+        outside.setWeather(roomRef.current.weather);
         outsideRef.current = outside;
+        const outsideWorld = outside;
+        const windows = new RoomWindows(room.object3D, (pane, openTo) =>
+          outsideWorld.setPaneOpen(pane, openTo),
+        );
+        windows.setStates(roomRef.current.windows);
+        windowsRef.current = windows;
+        // The windows: E opens or shuts one, Shift+E draws its curtains.
+        const windowTargets: AimTarget[] = windows.list().map((spot) => ({
+          id: `window:${spot.id}`,
+          center: spot.center,
+          radius: spot.radius,
+          reach: 2.8,
+          prompt: () => {
+            const state = roomRef.current.windows[spot.id];
+            return `Press ${keyLabel()} to ${state?.open ? 'shut' : 'open'} the window · Shift+${keyLabel()} to ${state?.drawn ? 'open' : 'draw'} the curtains`;
+          },
+          act: (shift) => {
+            const state = roomRef.current.windows[spot.id];
+            if (shift) {
+              onRoomActionRef.current('curtains', { target: spot.id, on: !state?.drawn });
+            } else {
+              onRoomActionRef.current('window', { target: spot.id, on: !state?.open });
+            }
+          },
+        }));
+        aimTargetsRef.current = [...aimTargetsRef.current, ...windowTargets];
+        obstaclesRef.current = room.layout.obstacles;
+        const winter = new WinterDecor(
+          scene,
+          room,
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        );
+        winter.setViewport(renderer.domElement.clientHeight, camera.fov);
+        winterRef.current = winter;
+        showWinter(winter, room.layout.obstacles, themeRef.current === 'winter');
         const decor = new HalloweenDecor(
           scene,
           room,
@@ -1076,22 +1164,33 @@ export function RoomView({
         // The night outside, loudest by a window (nightAmbience.ts).
         const night = new NightAmbience();
         night.setTheme(themeRef.current);
+        night.setWeather(roomRef.current.weather);
         nightRef.current = night;
-        const windowSpots = room.windowViews.map((pane) =>
-          new THREE.Box3().setFromObject(pane).getCenter(new THREE.Vector3()),
-        );
-        startNight = () => night.start();
+        startNight = () => {
+          night.start();
+          weatherAudio.start();
+        };
         document.addEventListener('pointerdown', startNight);
         document.addEventListener('keydown', startNight);
+        // The night and the rain, heard through the nearest window — louder
+        // through an open one, softer through drawn curtains.
         updateNight = (dt: number) => {
           let nearest = Infinity;
-          for (const spot of windowSpots) {
-            nearest = Math.min(
-              nearest,
-              Math.hypot(camera.position.x - spot.x, camera.position.z - spot.z),
+          let open = false;
+          let drawn = false;
+          for (const spot of windows.list()) {
+            const distance = Math.hypot(
+              camera.position.x - spot.center.x,
+              camera.position.z - spot.center.z,
             );
+            if (distance < nearest) {
+              nearest = distance;
+              open = spot.state.open;
+              drawn = spot.state.drawn && !spot.state.open;
+            }
           }
-          night.update(dt, nearest);
+          night.update(dt, nearest, open, drawn);
+          weatherAudio.update(dt, nearest, open, drawn);
         };
 
         const fireSpot = room.fireSpot;
@@ -1197,6 +1296,7 @@ export function RoomView({
         const roomLife = new RoomLife(scene, room, avatars, playerId);
         roomLife.syncPlayers(playersRef.current);
         roomLife.setLightOn(lightOnRef.current, true);
+        if (winter.wreath) roomLife.hangOnDoor(winter.wreath);
         roomLifeRef.current = roomLife;
 
         const diceManager = new DiceManager(scene, (count) =>
@@ -1633,7 +1733,7 @@ export function RoomView({
             return;
           }
           if (aimTargetRef.current) {
-            aimTargetRef.current.act();
+            aimTargetRef.current.act(event.shiftKey);
             return;
           }
           const nearestId = nearestInteractableIdRef.current;
@@ -1798,6 +1898,14 @@ export function RoomView({
           }
           soundboardWallRef.current?.update(delta);
           decorRef.current?.update(delta, timer.getElapsed());
+          winterRef.current?.update(delta, timer.getElapsed());
+          windowsRef.current?.update(delta);
+          // Lightning through the windows (a storm; never for a player who
+          // turned flashing effects off).
+          outside?.setFlashAllowed(flashingAllowed());
+          if (roomLightsRef.current) {
+            setLightningFlash(roomLightsRef.current, outside?.flash ?? 0, lightOnRef.current);
+          }
           outside?.render(renderer, camera, delta, timer.getElapsed());
           tableCanvasRef.current?.flush(renderer);
           renderer.render(scene, camera);
@@ -2017,6 +2125,12 @@ export function RoomView({
       outsideRef.current = null;
       decorRef.current?.dispose();
       decorRef.current = null;
+      winterRef.current?.dispose();
+      winterRef.current = null;
+      windowsRef.current?.dispose();
+      windowsRef.current = null;
+      weatherAudioRef.current?.dispose();
+      weatherAudioRef.current = null;
       whiteboardCanvasRef.current?.dispose();
       whiteboardCanvasRef.current = null;
       roomLightsRef.current = null;

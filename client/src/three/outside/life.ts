@@ -42,11 +42,23 @@ export function buildFireflies(kit: Kit): Piece {
   );
   const points = new THREE.Points(geometry, material);
   points.frustumCulled = false;
+  // No fireflies on a winter night, or out in the rain or snow.
+  let winter = false;
+  let clear = true;
+  const show = () => {
+    points.visible = !winter && clear;
+  };
   return {
     object: points,
     setTheme(theme) {
       material.uniforms.color!.value =
         theme === 'halloween' ? new THREE.Color(1.5, 0.9, 2.6) : new THREE.Color(2.2, 2.6, 0.9);
+      winter = theme === 'winter';
+      show();
+    },
+    setWeather(weather) {
+      clear = weather === 'clear';
+      show();
     },
     update(_dt, time) {
       for (let i = 0; i < count; i += 1) {
@@ -129,8 +141,22 @@ export function buildFallingLeaves(kit: Kit): Piece {
   const quaternion = new THREE.Quaternion();
   const scale = new THREE.Vector3(1, 1, 1);
   const position = new THREE.Vector3();
+  // Autumn leaves: not in winter, and not while it snows.
+  let winter = false;
+  let snowing = false;
+  const show = () => {
+    mesh.visible = !winter && !snowing;
+  };
   return {
     object: mesh,
+    setTheme(theme) {
+      winter = theme === 'winter';
+      show();
+    },
+    setWeather(weather) {
+      snowing = weather === 'snow';
+      show();
+    },
     update(dt, time) {
       leaves.forEach((leaf, index) => {
         if (!kit.reducedMotion) {
