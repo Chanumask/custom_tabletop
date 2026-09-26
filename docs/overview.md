@@ -56,6 +56,17 @@ Earlier this day:
 - the walkies carry messages only the two holders hear;
 - the calculator is a pocket four-function one.
 
+**The cozy room, lived in** (the same day, [changelog.md](changelog.md)):
+- **Your own sound.** Every kind of sound has its own switch and volume, and you can silence one player just for yourself. There's also a "no flashing lights" setting.
+- **The room's life.** Footsteps, a grandfather clock that strikes the hours, a knock at the door when someone arrives, a light switch by the door, the reading lamp, a log on the fire, and candles to blow out.
+- **Weather, windows and winter.** The host brings in rain, a storm or snow. Windows slide open and curtains draw, and a winter theme brings a tree, stockings, a wreath and snow outside.
+- **Sitting anywhere.** The sofa, the armchair and a rocking chair that rocks.
+- **A record player** with three records composed in the browser (the same notes for everyone), plus any audio file from the soundboard.
+- **Tea and cocoa** in the hand (R sips, 7 raises a toast), and popcorn on the table.
+- **Ember, the cat.** Asleep by the fire, wandering now and then, to be petted.
+- **Books** the host writes at a lectern and everyone reads, with a guide to the room always there.
+- **Moods.** Story time, break and storm set the room in one click for the host.
+
 Nothing on the roadmap is left. What's next is whatever playtesting turns up, plus the "later" list in [roadmap.md](roadmap.md): map presets, wall drawing, fog of war, an initiative tracker.
 
 ### Earlier on 2026-09-25

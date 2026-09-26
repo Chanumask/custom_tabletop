@@ -6,6 +6,53 @@ Dated log of what happened each session. Newest first.
 
 ---
 
+## 2026-09-26 — The cozy room, lived in
+
+The owner asked for a room that feels lived in, for everyone's own control over what they hear, and for five extras, all in one go ("ok do all of them … in the end push and deploy"). Every decision is recorded in decisions.md, "The cozy room, lived in".
+
+### What landed
+
+Each part was built on its own branch and squash-merged into `main`:
+- **Your own sound** (`3936679`): a switch and a volume for each of ten kinds of sound, silencing one player just for yourself, and "no flashing lights". Everything defaults to on.
+- **The room's life** (`255856a`): footsteps (softer on the rugs), a grandfather clock that keeps real time and strikes the hours, a knock at the door for newcomers (who then walk in), a light switch by the door, and the reading lamp on its own switch.
+- **Fire and candles** (`741dd1e`): a log on the fire (it flares up and burns back down), and candles to blow out and light again, in six groups.
+- **Weather, windows and winter** (`ca0b441`):
+  - the host brings in rain, a storm (lightning and thunder) or snow, with rain beading on the glass;
+  - windows slide open (E) and curtains draw (Shift+E);
+  - a winter theme brings a tree, stockings, a garland, a wreath on the door, snow outside and a frozen lake.
+- **Sitting anywhere** (`3fbec12`): three places on the sofa, the armchair and the rocking chair (it rocks), leaning back into the cushions.
+- **A record player** (`af82bb9`): a record cabinet by the reading lamp. Its three records (Tavern Night, Lo-fi Evening, Rain Jazz) are composed in the browser, the same notes for everyone. Any audio file from the soundboard plays as a record too.
+- **Tea, cocoa and popcorn** (`d8c2451`): pour one at the tea set and carry it (one hand, like a gadget). R sips, 7 raises your mug to the others (with a clink when someone's close), and there's a bowl of popcorn on the table's corner.
+- **Ember, the cat** (`7d0f2dd`): asleep by the fire, purring. She wanders to the sofa, the armchair or the chest, is in the same place for everyone, and can be petted.
+- **Books** (`1b9a828`): the host writes lore, letters or house rules at a lectern by the bookshelf, and everyone reads them. A guide to the room is always there.
+- **Moods** (`622f9d5`): story time, break and storm, as one click for the host, while every switch stays manual.
+- **Fewer draw calls** (`66a0284`): the new furniture's static parts are merged, taking the whole room from 374 to 315 calls (431 to 325 in winter) with no visible change.
+
+### Checked
+
+- **Live, two players at a time**, for every part, from both sides:
+  - seats taken and refused ("Alice is sitting there");
+  - the same record at the same bar for both (identical note counts);
+  - the same cat nap for both;
+  - toasts, sips and snacks seen from the other side;
+  - a book written by the host and read by the other;
+  - moods reaching the other player.
+- **Tuned from screenshots:**
+  - the sash window, after the first try (a tilt) poked through drawn curtains;
+  - the cat's tail and ears;
+  - the mug held at the stomach, not the hip;
+  - the wreath's bow;
+  - the lectern's ribbon.
+- **The music was rendered offline and measured per instrument.** The bass was 12 dB too loud and the percussion 15–30 dB too quiet until rebalanced. The records now play within a few dB of each other.
+- **A production build, locally:**
+  - the cross-browser smoke tests pass 9/9 in Chromium, Firefox and WebKit;
+  - the moods, weather, winter and music, driven through the menus in all three engines, raised no errors;
+  - 60 fps at 1920×1080 with the storm, winter, music and the cat all on.
+- **Sanity pass:** 826 tests (63 shared, 404 server, 359 client), lint, format and build clean.
+- **One flaky test:** `gadgetGuards.test.ts` failed once under the full parallel run and passed in seven reruns. This batch didn't touch it; it looks like a timing flake under load.
+
+---
+
 ## 2026-09-26 — Real gadget models, held properly
 
 ### What landed

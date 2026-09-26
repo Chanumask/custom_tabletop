@@ -141,6 +141,21 @@ Details: [decisions.md](decisions.md) "Saved tables", [engineering/deployment.md
 
 ---
 
+## The cozy room, lived in (2026-09-26) ✅
+
+The owner's batch ("ok do all of them"), built and checked. Details are in [decisions.md](decisions.md), "The cozy room, lived in":
+- per-player sound control: a switch and volume per kind of sound, silencing a player just for yourself, and no flashing lights;
+- footsteps, a clock, a knock at the door, the light switch and reading lamp, stoking the fire, and candles;
+- host-set weather (rain, storm, snow), windows and curtains, and a winter theme;
+- sitting on the sofa, in the armchair or the rocking chair;
+- a record player with shared music;
+- tea and cocoa in hand, a toast, and popcorn;
+- a cat to pet;
+- books the host writes and everyone reads;
+- the host's mood presets.
+
+---
+
 Later — **in discussion, not decided.** Each of these is an idea on the table, not a plan: talk it through with the user and get an explicit go-ahead (and a shape) before building any of it. Nothing here should be picked up "because it's next" (user, 2026-09-25).
 
 - **Map presets**: a handful of built-in map backgrounds to pick from, mirroring the soundboard's presets. 2026-09-24 user request. (The crop/zoom/pan fit it came with landed on 2026-09-25 as the map crop dialog.)
